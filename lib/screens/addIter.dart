@@ -12,16 +12,17 @@ class AddIter extends StatefulWidget {
 
 class _AddIterState extends State<AddIter> {
   List<String> bairros = fortaleza_bairros;
+  List<String> selectedBairros = [];
   int selectedCompanyIndex = 0;
   String? status;
   DateTime selectedDate = DateTime.now();
-  String? selectedBairro;
 
   TextEditingController valueController = TextEditingController();
   TextEditingController kmInicialController = TextEditingController();
   TextEditingController kmFinalController = TextEditingController();
   TextEditingController pctInicialController = TextEditingController();
   TextEditingController pctFinalController = TextEditingController();
+  TextEditingController searchBairroController = TextEditingController();
 
   void _showCupertinoDatePicker(BuildContext context) {
     showCupertinoModalPopup<void>(
@@ -52,6 +53,104 @@ class _AddIterState extends State<AddIter> {
     );
   }
 
+  void _showBairrosMultiSelect(BuildContext context) {
+    // Copia os bairros para podermos filtrar na busca interna do modal
+    List<String> filteredBairros = List.from(bairros);
+    searchBairroController.clear();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          // Necessário para atualizar o estado interno do modal
+          builder: (BuildContext context, StateSetter setModalState) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.7,
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  const Text(
+                    'Selecione os Bairros',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 10),
+                  // Campo de Busca
+                  TextField(
+                    controller: searchBairroController,
+                    decoration: InputDecoration(
+                      hintText: 'Buscar bairro...',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    onChanged: (value) {
+                      setModalState(() {
+                        filteredBairros = bairros
+                            .where(
+                              (bairro) => bairro.toLowerCase().contains(
+                                value.toLowerCase(),
+                              ),
+                            )
+                            .toList();
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  // Lista de Bairros com Checkbox
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: filteredBairros.length,
+                      itemBuilder: (context, index) {
+                        final bairro = filteredBairros[index];
+                        final isSelected = selectedBairros.contains(bairro);
+                        return CheckboxListTile(
+                          title: Text(bairro),
+                          value: isSelected,
+                          activeColor: Colors.green,
+                          onChanged: (bool? checked) {
+                            // Atualiza dentro do modal
+                            setModalState(() {
+                              if (checked == true) {
+                                selectedBairros.add(bairro);
+                              } else {
+                                selectedBairros.remove(bairro);
+                              }
+                            });
+                            // Atualiza a tela principal (para desenhar as tags)
+                            setState(() {});
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  // Botão de fechar
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                      ),
+                      child: const Text(
+                        'Confirmar',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -61,11 +160,6 @@ class _AddIterState extends State<AddIter> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Empresa:',
-              style: TextStyle(fontSize: 20.0, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 10.0),
             _companySelector(),
             Expanded(child: _buildContent()),
           ],
@@ -276,9 +370,26 @@ class _AddIterState extends State<AddIter> {
                   },
                 ),
                 SizedBox(height: 30),
-                const Text(
-                  'Opcionais',
-                  style: TextStyle(fontSize: 20.0, fontWeight: FontWeight.bold),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Opcionais',
+                      style: TextStyle(
+                        fontSize: 20.0,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Tooltip(
+                      margin: EdgeInsets.symmetric(horizontal: 20.0),
+                      message:
+                          'Informações que serviram de métricas se preenchidas corretamente!',
+                      child: Icon(
+                        Icons.info_outline_rounded,
+                        color: Colors.grey[400],
+                      ),
+                    ),
+                  ],
                 ),
                 const Divider(color: Colors.grey, thickness: 1.0),
                 SizedBox(height: 10),
@@ -366,32 +477,78 @@ class _AddIterState extends State<AddIter> {
                 SizedBox(height: 10),
                 Row(
                   children: [
-                    Text("Bairro"),
-                    SizedBox(width: 10),
+                    const Text("Bairros"),
+                    const SizedBox(width: 10),
                     Expanded(
-                      child: DropdownButtonFormField<String>(
-                        decoration: InputDecoration(
-                          hintText: 'Selecione um bairro',
-                          border: OutlineInputBorder(
+                      child: InkWell(
+                        onTap: () => _showBairrosMultiSelect(context),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          height: 50,
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey, width: 1.0),
                             borderRadius: BorderRadius.circular(10),
                           ),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                selectedBairros.isEmpty
+                                    ? 'Selecione os bairros'
+                                    : '${selectedBairros.length} selecionado(s)',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: selectedBairros.isEmpty
+                                      ? Colors.grey[600]
+                                      : Colors.black,
+                                ),
+                              ),
+                              const Icon(
+                                Icons.arrow_drop_down,
+                                color: Colors.grey,
+                              ),
+                            ],
+                          ),
                         ),
-                        items: bairros.map((bairro) {
-                          return DropdownMenuItem<String>(
-                            value: bairro,
-                            child: Text(bairro),
-                          );
-                        }).toList(),
-                        onChanged: (value) {
-                          setState(() {
-                            selectedBairro = value;
-                          });
-                        },
                       ),
                     ),
                   ],
                 ),
-                Expanded(child: SizedBox(height: double.infinity)),
+                const SizedBox(height: 15),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Align(
+                      alignment: Alignment.topLeft,
+                      child: Wrap(
+                        spacing: 8.0, // Espaço horizontal entre as tags
+                        runSpacing:
+                            4.0, // Espaço vertical entre as linhas de tags
+                        children: selectedBairros.map((bairro) {
+                          return Chip(
+                            label: Text(
+                              bairro,
+                              style: const TextStyle(fontSize: 13.0),
+                            ),
+                            backgroundColor: Colors.green.shade50,
+                            side: BorderSide(color: Colors.green.shade200),
+                            deleteIcon: const Icon(
+                              Icons.close,
+                              size: 16,
+                              color: Colors.red,
+                            ),
+                            onDeleted: () {
+                              setState(() {
+                                selectedBairros.remove(bairro);
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 10),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
