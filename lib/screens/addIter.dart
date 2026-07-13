@@ -25,6 +25,21 @@ class _AddIterState extends State<AddIter> {
   TextEditingController pctFinalController = TextEditingController();
   TextEditingController searchBairroController = TextEditingController();
 
+  Widget _getStatusIcon(String statusValue) {
+    switch (statusValue) {
+      case 'agendado':
+        return const Icon(Icons.calendar_today, color: Colors.amber);
+      case 'andamento':
+        return const Icon(Icons.directions_car, color: Colors.blue);
+      case 'concluido':
+        return const Icon(Icons.check_circle_outline, color: Colors.green);
+      case 'pago':
+        return const Icon(Icons.monetization_on_outlined, color: Colors.teal);
+      default:
+        return const Icon(Icons.help_outline, color: Colors.grey);
+    }
+  }
+
   void _showCupertinoDatePicker(BuildContext context) {
     showCupertinoModalPopup<void>(
       context: context,
@@ -332,9 +347,38 @@ class _AddIterState extends State<AddIter> {
                         ),
                       ),
                       const SizedBox(width: 10),
-                      // --- DROPDOWN DE STATUS ---
+                    ],
+                  ),
+                  SizedBox(height: 10),
+                  Row(
+                    children: [
                       Expanded(
-                        flex: 5,
+                        flex: 3,
+                        child: TextFormField(
+                          controller: valueController,
+                          keyboardType:
+                              CurrencyFormatterHelper.getCurrencyFormatter()
+                                  .isNotEmpty
+                              ? TextInputType.number
+                              : TextInputType.text,
+                          inputFormatters:
+                              CurrencyFormatterHelper.getCurrencyFormatter(),
+                          decoration: InputDecoration(
+                            labelText: 'Valor',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Por favor, insira um valor';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
                         child: DropdownButtonFormField<String>(
                           value: status,
                           decoration: InputDecoration(
@@ -347,6 +391,16 @@ class _AddIterState extends State<AddIter> {
                               vertical: 14,
                             ),
                           ),
+                          selectedItemBuilder: (BuildContext context) {
+                            return const [
+                              'agendado',
+                              'andamento',
+                              'concluido',
+                              'pago',
+                            ].map((String value) {
+                              return _getStatusIcon(value);
+                            }).toList();
+                          },
                           items: const [
                             DropdownMenuItem(
                               value: 'agendado',
@@ -354,7 +408,7 @@ class _AddIterState extends State<AddIter> {
                             ),
                             DropdownMenuItem(
                               value: 'andamento',
-                              child: Text('Em andamento'),
+                              child: Text('Em Rota'),
                             ),
                             DropdownMenuItem(
                               value: 'concluido',
@@ -373,29 +427,6 @@ class _AddIterState extends State<AddIter> {
                         ),
                       ),
                     ],
-                  ),
-                  SizedBox(height: 10),
-                  TextFormField(
-                    controller: valueController,
-                    keyboardType:
-                        CurrencyFormatterHelper.getCurrencyFormatter()
-                            .isNotEmpty
-                        ? TextInputType.number
-                        : TextInputType.text,
-                    inputFormatters:
-                        CurrencyFormatterHelper.getCurrencyFormatter(),
-                    decoration: InputDecoration(
-                      labelText: 'Valor',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Por favor, insira um valor';
-                      }
-                      return null;
-                    },
                   ),
                   SizedBox(height: 30),
                   Row(
