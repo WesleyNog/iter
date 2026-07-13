@@ -14,8 +14,9 @@ class _AddIterState extends State<AddIter> {
   List<String> bairros = fortaleza_bairros;
   List<String> selectedBairros = [];
   int selectedCompanyIndex = 0;
-  String? status;
+  String status = 'agendado';
   DateTime selectedDate = DateTime.now();
+  bool isInsucessoSelected = false;
 
   TextEditingController valueController = TextEditingController();
   TextEditingController kmInicialController = TextEditingController();
@@ -38,7 +39,7 @@ class _AddIterState extends State<AddIter> {
         child: SafeArea(
           top: false,
           child: CupertinoDatePicker(
-            initialDateTime: selectedDate ?? DateTime.now(),
+            initialDateTime: selectedDate,
             mode: CupertinoDatePickerMode.date,
             use24hFormat: true,
             // Atualiza o estado conforme o usuário gira a roleta
@@ -258,375 +259,396 @@ class _AddIterState extends State<AddIter> {
   }
 
   Widget _buildContent() {
-    switch (selectedCompanyIndex) {
-      case 0:
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 10.0),
+    return selectedCompanyIndex == 2
+        ? Center(
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'Dados da Rota',
-                  style: TextStyle(fontSize: 20.0, fontWeight: FontWeight.bold),
+                Icon(
+                  Icons.precision_manufacturing_outlined,
+                  size: 100,
+                  color: Colors.grey,
                 ),
-                const Divider(color: Colors.grey, thickness: 1.0),
-                SizedBox(height: 10),
-                Row(
-                  children: [
-                    // --- SELETOR DE DATA ---
-                    Expanded(
-                      flex: 4, // Ajusta a proporção do espaço na linha
-                      child: InkWell(
-                        onTap: () => _showCupertinoDatePicker(context),
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          height: 50,
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey, width: 1.0),
-                            borderRadius: const BorderRadius.all(
-                              Radius.circular(10),
+                SizedBox(height: 8),
+                Text(
+                  'Shopee em Desenvolvimento',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ],
+            ),
+          )
+        : Center(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 10.0),
+              child: Column(
+                children: [
+                  const Text(
+                    'Dados da Rota',
+                    style: TextStyle(
+                      fontSize: 20.0,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Divider(color: Colors.grey, thickness: 1.0),
+                  SizedBox(height: 10),
+                  Row(
+                    children: [
+                      // --- SELETOR DE DATA ---
+                      Expanded(
+                        flex: 4, // Ajusta a proporção do espaço na linha
+                        child: InkWell(
+                          onTap: () => _showCupertinoDatePicker(context),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            height: 50,
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: Colors.grey,
+                                width: 1.0,
+                              ),
+                              borderRadius: const BorderRadius.all(
+                                Radius.circular(10),
+                              ),
                             ),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                '${selectedDate.day.toString().padLeft(2, '0')}/${selectedDate.month.toString().padLeft(2, '0')}/${selectedDate.year}',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.black,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  '${selectedDate.day.toString().padLeft(2, '0')}/${selectedDate.month.toString().padLeft(2, '0')}/${selectedDate.year}',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.black,
+                                  ),
                                 ),
-                              ),
-                              const Icon(
-                                Icons.calendar_today,
-                                color: Colors.blue,
-                                size: 20,
-                              ),
-                            ],
+                                const Icon(
+                                  Icons.calendar_today,
+                                  color: Colors.blue,
+                                  size: 20,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    // --- DROPDOWN DE STATUS ---
-                    Expanded(
-                      flex: 5,
-                      child: DropdownButtonFormField<String>(
-                        decoration: InputDecoration(
-                          labelText: 'Status',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
+                      const SizedBox(width: 10),
+                      // --- DROPDOWN DE STATUS ---
+                      Expanded(
+                        flex: 5,
+                        child: DropdownButtonFormField<String>(
+                          value: status,
+                          decoration: InputDecoration(
+                            labelText: 'Status',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
                           ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'agendado',
+                              child: Text('Agendado'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'andamento',
+                              child: Text('Em andamento'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'concluido',
+                              child: Text('Concluído'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'pago',
+                              child: Text('Pago'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            setState(() {
+                              status = value!;
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 10),
+                  TextFormField(
+                    controller: valueController,
+                    keyboardType:
+                        CurrencyFormatterHelper.getCurrencyFormatter()
+                            .isNotEmpty
+                        ? TextInputType.number
+                        : TextInputType.text,
+                    inputFormatters:
+                        CurrencyFormatterHelper.getCurrencyFormatter(),
+                    decoration: InputDecoration(
+                      labelText: 'Valor',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Por favor, insira um valor';
+                      }
+                      return null;
+                    },
+                  ),
+                  SizedBox(height: 30),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Opcionais',
+                        style: TextStyle(
+                          fontSize: 20.0,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Tooltip(
+                        margin: EdgeInsets.symmetric(horizontal: 20.0),
+                        message:
+                            'Informações que serviram de métricas se preenchidas corretamente!',
+                        child: Icon(
+                          Icons.info_outline_rounded,
+                          color: Colors.grey[400],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Divider(color: Colors.grey, thickness: 1.0),
+                  SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Tooltip(
+                        message:
+                            'Quilometragem inicial e final desta Rota.\nObs.: Se inicial ficar vazio, vai ser considerado 0.',
+                        child: Icon(Icons.speed, color: Colors.blue),
+                      ),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: kmInicialController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            hintText: 'KM - Inicial',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
                         ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'agendado',
-                            child: Text('Agendado'),
+                      ),
+                      SizedBox(width: 10),
+                      Text(' - '),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: TextFormField(
+                          controller: kmFinalController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            hintText: 'KM - Final',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
-                          DropdownMenuItem(
-                            value: 'andamento',
-                            child: Text('Em andamento'),
+                          validator: (value) {
+                            if ((value == null || value.isEmpty) &&
+                                kmInicialController.text.isNotEmpty) {
+                              return 'Por favor, insira o KM final';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Tooltip(
+                        message: 'Rota (Pacote | Parada)',
+                        child: Icon(Icons.route, color: Colors.blue),
+                      ),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: pctInicialController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            hintText: 'Pacotes',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
-                          DropdownMenuItem(
-                            value: 'concluido',
-                            child: Text('Concluído'),
+                        ),
+                      ),
+                      SizedBox(width: 10),
+                      Text(' - '),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: TextFormField(
+                          controller: pctFinalController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            hintText: 'Paradas',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
-                          DropdownMenuItem(value: 'pago', child: Text('Pago')),
-                        ],
-                        onChanged: (value) {
+                          validator: (value) {
+                            if ((value == null || value.isEmpty) &&
+                                pctInicialController.text.isNotEmpty) {
+                              return 'Por favor, insira o PCT final';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                      SizedBox(width: 10),
+                      Tooltip(
+                        message: 'Marcador de Insucesso desta Rota',
+                        child: Icon(
+                          Icons.repartition_rounded,
+                          color: Colors.red,
+                        ),
+                      ),
+                      Checkbox(
+                        value: isInsucessoSelected,
+                        onChanged: (bool? value) {
                           setState(() {
-                            status = value!;
+                            isInsucessoSelected = !isInsucessoSelected;
                           });
                         },
                       ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 10),
-                TextFormField(
-                  controller: valueController,
-                  keyboardType:
-                      CurrencyFormatterHelper.getCurrencyFormatter().isNotEmpty
-                      ? TextInputType.number
-                      : TextInputType.text,
-                  inputFormatters:
-                      CurrencyFormatterHelper.getCurrencyFormatter(),
-                  decoration: InputDecoration(
-                    labelText: 'Valor',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                    ],
                   ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Por favor, insira um valor';
-                    }
-                    return null;
-                  },
-                ),
-                SizedBox(height: 30),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Opcionais',
-                      style: TextStyle(
-                        fontSize: 20.0,
-                        fontWeight: FontWeight.bold,
+                  SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Tooltip(
+                        message: 'Bairros',
+                        child: Icon(Icons.streetview, color: Colors.blue),
                       ),
-                    ),
-                    Tooltip(
-                      margin: EdgeInsets.symmetric(horizontal: 20.0),
-                      message:
-                          'Informações que serviram de métricas se preenchidas corretamente!',
-                      child: Icon(
-                        Icons.info_outline_rounded,
-                        color: Colors.grey[400],
-                      ),
-                    ),
-                  ],
-                ),
-                const Divider(color: Colors.grey, thickness: 1.0),
-                SizedBox(height: 10),
-                Row(
-                  children: [
-                    Text('KM'),
-                    SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                        controller: kmInicialController,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          hintText: 'Inicial',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 10),
-                    Text(' - '),
-                    SizedBox(width: 10),
-                    Expanded(
-                      child: TextFormField(
-                        controller: kmFinalController,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          hintText: 'Final',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        validator: (value) {
-                          if ((value == null || value.isEmpty) &&
-                              kmInicialController.text.isNotEmpty) {
-                            return 'Por favor, insira o KM final';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 10),
-                Row(
-                  children: [
-                    Text('Rota (Pacote | Parada)'),
-                    SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                        controller: pctInicialController,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          hintText: 'PCT',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 10),
-                    Text(' - '),
-                    SizedBox(width: 10),
-                    Expanded(
-                      child: TextFormField(
-                        controller: pctFinalController,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          hintText: 'Parada',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        validator: (value) {
-                          if ((value == null || value.isEmpty) &&
-                              pctInicialController.text.isNotEmpty) {
-                            return 'Por favor, insira o PCT final';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 10),
-                Row(
-                  children: [
-                    const Text("Bairros"),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: InkWell(
-                        onTap: () => _showBairrosMultiSelect(context),
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          height: 50,
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey, width: 1.0),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                selectedBairros.isEmpty
-                                    ? 'Selecione os bairros'
-                                    : '${selectedBairros.length} selecionado(s)',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: selectedBairros.isEmpty
-                                      ? Colors.grey[600]
-                                      : Colors.black,
-                                ),
-                              ),
-                              const Icon(
-                                Icons.arrow_drop_down,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => _showBairrosMultiSelect(context),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            height: 50,
+                            decoration: BoxDecoration(
+                              border: Border.all(
                                 color: Colors.grey,
+                                width: 1.0,
                               ),
-                            ],
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  selectedBairros.isEmpty
+                                      ? 'Bairros'
+                                      : selectedBairros.length > 1
+                                      ? '${selectedBairros.length} Selecionados'
+                                      : '${selectedBairros.length} Selecionado',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: selectedBairros.isEmpty
+                                        ? Colors.grey[600]
+                                        : Colors.black,
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.arrow_drop_down,
+                                  color: Colors.grey,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 15),
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: Align(
-                      alignment: Alignment.topLeft,
-                      child: Wrap(
-                        spacing: 8.0, // Espaço horizontal entre as tags
-                        runSpacing:
-                            4.0, // Espaço vertical entre as linhas de tags
-                        children: selectedBairros.map((bairro) {
-                          return Chip(
-                            label: Text(
-                              bairro,
-                              style: const TextStyle(fontSize: 13.0),
-                            ),
-                            backgroundColor: Colors.green.shade50,
-                            side: BorderSide(color: Colors.green.shade200),
-                            deleteIcon: const Icon(
-                              Icons.close,
-                              size: 16,
-                              color: Colors.red,
-                            ),
-                            onDeleted: () {
-                              setState(() {
-                                selectedBairros.remove(bairro);
-                              });
-                            },
-                          );
-                        }).toList(),
-                      ),
-                    ),
+                    ],
                   ),
-                ),
-                SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      showDialog(
-                        context: context,
-                        builder: (BuildContext context) {
-                          return AlertDialog(
-                            title: Text('Rota Salva'),
-                            content: Text('A rota foi salva com sucesso!'),
-                            actions: [
-                              TextButton(
-                                onPressed: () {
-                                  Navigator.pushNamedAndRemoveUntil(
-                                    context,
-                                    '/home',
-                                    (route) => false,
-                                  );
-                                },
-                                child: Text('OK'),
+                  const SizedBox(height: 15),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Align(
+                        alignment: Alignment.topLeft,
+                        child: Wrap(
+                          spacing: 8.0, // Espaço horizontal entre as tags
+                          runSpacing:
+                              4.0, // Espaço vertical entre as linhas de tags
+                          children: selectedBairros.map((bairro) {
+                            return Chip(
+                              label: Text(
+                                bairro,
+                                style: const TextStyle(fontSize: 13.0),
                               ),
-                            ],
-                          );
-                        },
-                      );
-                    },
-                    child: Text('Salvar Rota'),
-                    style: ElevatedButton.styleFrom(
-                      textStyle: TextStyle(color: Colors.white, fontSize: 18.0),
-                      backgroundColor: Colors.green,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10.0),
+                              backgroundColor: Colors.green.shade50,
+                              side: BorderSide(color: Colors.green.shade200),
+                              deleteIcon: const Icon(
+                                Icons.close,
+                                size: 16,
+                                color: Colors.red,
+                              ),
+                              onDeleted: () {
+                                setState(() {
+                                  selectedBairros.remove(bairro);
+                                });
+                              },
+                            );
+                          }).toList(),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
-        );
-
-      case 1:
-        return const Center(
-          child: Padding(
-            padding: EdgeInsets.all(8.0),
-            child: Column(
-              children: [
-                Text(
-                  'Amazon',
-                  style: TextStyle(fontSize: 20.0, fontWeight: FontWeight.bold),
-                ),
-                Divider(color: Colors.grey, thickness: 1.0),
-              ],
-            ),
-          ),
-        );
-
-      case 2:
-        return Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.precision_manufacturing_outlined,
-                size: 100,
-                color: Colors.grey,
+                  SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          builder: (BuildContext context) {
+                            return AlertDialog(
+                              title: Text('Rota Salva'),
+                              content: Text('A rota foi salva com sucesso!'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () {
+                                    Navigator.pushNamedAndRemoveUntil(
+                                      context,
+                                      '/home',
+                                      (route) => false,
+                                    );
+                                  },
+                                  child: Text('OK'),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                      child: Text(
+                        'Salvar Rota',
+                        style: TextStyle(fontSize: 16, color: Colors.white),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10.0),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              SizedBox(height: 8),
-              Text(
-                'Shopee em Desenvolvimento',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ],
-          ),
-        );
-
-      default:
-        return const SizedBox();
-    }
+            ),
+          );
   }
 }
