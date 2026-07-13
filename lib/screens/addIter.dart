@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:iter/Utils/currencyFormat.dart';
 
 class AddIter extends StatefulWidget {
   const AddIter({super.key});
@@ -159,14 +160,15 @@ class _AddIterState extends State<AddIter> {
       case 0:
         return Center(
           child: Padding(
-            padding: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.only(top: 10.0),
             child: Column(
               children: [
                 const Text(
-                  'Mercado Livre',
+                  'Dados da Rota',
                   style: TextStyle(fontSize: 20.0, fontWeight: FontWeight.bold),
                 ),
                 const Divider(color: Colors.grey, thickness: 1.0),
+                SizedBox(height: 10),
                 Row(
                   children: [
                     // --- SELETOR DE DATA ---
@@ -246,15 +248,25 @@ class _AddIterState extends State<AddIter> {
                 SizedBox(height: 10),
                 TextFormField(
                   controller: valueController,
-                  keyboardType: TextInputType.number,
+                  keyboardType:
+                      CurrencyFormatterHelper.getCurrencyFormatter().isNotEmpty
+                      ? TextInputType.number
+                      : TextInputType.text,
+                  inputFormatters:
+                      CurrencyFormatterHelper.getCurrencyFormatter(),
                   decoration: InputDecoration(
                     labelText: 'Valor',
-                    prefixText: 'R\$ ',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
                 ),
+                SizedBox(height: 30),
+                const Text(
+                  'Opcionais',
+                  style: TextStyle(fontSize: 20.0, fontWeight: FontWeight.bold),
+                ),
+                const Divider(color: Colors.grey, thickness: 1.0),
               ],
             ),
           ),
