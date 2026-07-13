@@ -40,6 +40,27 @@ class _AddIterState extends State<AddIter> {
     }
   }
 
+  String _getWeekdayName(int weekday) {
+    switch (weekday) {
+      case 1:
+        return 'Segunda-feira';
+      case 2:
+        return 'Terça-feira';
+      case 3:
+        return 'Quarta-feira';
+      case 4:
+        return 'Quinta-feira';
+      case 5:
+        return 'Sexta-feira';
+      case 6:
+        return 'Sábado';
+      case 7:
+        return 'Domingo';
+      default:
+        return '';
+    }
+  }
+
   void _showCupertinoDatePicker(BuildContext context) {
     showCupertinoModalPopup<void>(
       context: context,
@@ -347,6 +368,15 @@ class _AddIterState extends State<AddIter> {
                         ),
                       ),
                       const SizedBox(width: 10),
+                      Container(
+                        height: 50,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Center(
+                          child: Text(_getWeekdayName(selectedDate.weekday)),
+                        ),
+                      ),
                     ],
                   ),
                   SizedBox(height: 10),
