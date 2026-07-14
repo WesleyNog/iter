@@ -24,6 +24,9 @@ class _AddIterState extends State<AddIter> {
   TextEditingController pctInicialController = TextEditingController();
   TextEditingController pctFinalController = TextEditingController();
   TextEditingController searchBairroController = TextEditingController();
+  TextEditingController insucessoQntController = TextEditingController();
+  TextEditingController hrInicioController = TextEditingController();
+  TextEditingController hrFimController = TextEditingController();
 
   Widget _getStatusIcon(String statusValue) {
     switch (statusValue) {
@@ -458,7 +461,7 @@ class _AddIterState extends State<AddIter> {
                       ),
                     ],
                   ),
-                  SizedBox(height: 30),
+                  SizedBox(height: 20),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -568,22 +571,6 @@ class _AddIterState extends State<AddIter> {
                           },
                         ),
                       ),
-                      SizedBox(width: 10),
-                      Tooltip(
-                        message: 'Marcador de Insucesso desta Rota',
-                        child: Icon(
-                          Icons.repartition_rounded,
-                          color: Colors.red,
-                        ),
-                      ),
-                      Checkbox(
-                        value: isInsucessoSelected,
-                        onChanged: (bool? value) {
-                          setState(() {
-                            isInsucessoSelected = !isInsucessoSelected;
-                          });
-                        },
-                      ),
                     ],
                   ),
                   SizedBox(height: 10),
@@ -635,38 +622,86 @@ class _AddIterState extends State<AddIter> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 15),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Align(
-                        alignment: Alignment.topLeft,
-                        child: Wrap(
-                          spacing: 8.0, // Espaço horizontal entre as tags
-                          runSpacing:
-                              4.0, // Espaço vertical entre as linhas de tags
-                          children: selectedBairros.map((bairro) {
-                            return Chip(
-                              label: Text(
-                                bairro,
-                                style: const TextStyle(fontSize: 13.0),
-                              ),
-                              backgroundColor: Colors.green.shade50,
-                              side: BorderSide(color: Colors.green.shade200),
-                              deleteIcon: const Icon(
-                                Icons.close,
-                                size: 16,
-                                color: Colors.red,
-                              ),
-                              onDeleted: () {
-                                setState(() {
-                                  selectedBairros.remove(bairro);
-                                });
-                              },
-                            );
-                          }).toList(),
+                  SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Icon(Icons.hourglass_top_outlined, color: Colors.blue),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: TextFormField(
+                          controller: hrInicioController,
+                          decoration: InputDecoration(
+                            labelText: 'Hr Início',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      SizedBox(width: 10),
+                      Text(' - '),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: TextFormField(
+                          controller: hrFimController,
+                          decoration: InputDecoration(
+                            labelText: 'Hr Fim',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          validator: (value) {
+                            if ((value == null || value.isEmpty) &&
+                                hrInicioController.text.isNotEmpty) {
+                              return 'Por favor, insira a Hr Fim';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Tooltip(
+                        message: 'Marcador de Insucesso desta Rota',
+                        child: Icon(
+                          Icons.repartition_rounded,
+                          color: Colors.red,
+                        ),
+                      ),
+                      Checkbox(
+                        value: isInsucessoSelected,
+                        onChanged: (bool? value) {
+                          setState(() {
+                            isInsucessoSelected = !isInsucessoSelected;
+                          });
+                        },
+                      ),
+                      isInsucessoSelected
+                          ? Expanded(
+                              child: TextFormField(
+                                controller: insucessoQntController,
+                                keyboardType: TextInputType.number,
+                                decoration: InputDecoration(
+                                  labelText: 'Qnt',
+                                  labelStyle: TextStyle(color: Colors.red),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                validator: (value) {
+                                  if ((value == null || value.isEmpty) &&
+                                      isInsucessoSelected) {
+                                    return 'Por favor, insira a Qnt';
+                                  }
+                                  return null;
+                                },
+                              ),
+                            )
+                          : const Text(''),
+                    ],
                   ),
                   SizedBox(height: 10),
                   SizedBox(
