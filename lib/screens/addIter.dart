@@ -373,11 +373,25 @@ class _AddIterState extends State<AddIter> {
                       const SizedBox(width: 10),
                       Container(
                         height: 50,
+                        width: 110,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Center(
-                          child: Text(_getWeekdayName(selectedDate.weekday)),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.blueAccent.shade100,
+                            border: Border.all(
+                              color: Colors.blueGrey.shade100,
+                              width: 1.0,
+                            ),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Center(
+                            child: Text(
+                              _getWeekdayName(selectedDate.weekday),
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -483,225 +497,249 @@ class _AddIterState extends State<AddIter> {
                       ),
                     ],
                   ),
-                  const Divider(color: Colors.grey, thickness: 1.0),
                   SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Tooltip(
-                        message:
-                            'Quilometragem inicial e final desta Rota.\nObs.: Se inicial ficar vazio, vai ser considerado 0.',
-                        child: Icon(Icons.speed, color: Colors.blue),
-                      ),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: kmInicialController,
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            hintText: 'KM - Inicial',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 10),
-                      Text(' - '),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: TextFormField(
-                          controller: kmFinalController,
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            hintText: 'KM - Final',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          validator: (value) {
-                            if ((value == null || value.isEmpty) &&
-                                kmInicialController.text.isNotEmpty) {
-                              return 'Por favor, insira o KM final';
-                            }
-                            return null;
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Tooltip(
-                        message: 'Rota (Pacote | Parada)',
-                        child: Icon(Icons.route, color: Colors.blue),
-                      ),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: pctInicialController,
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            hintText: 'Pacotes',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 10),
-                      Text(' - '),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: TextFormField(
-                          controller: pctFinalController,
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            hintText: 'Paradas',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          validator: (value) {
-                            if ((value == null || value.isEmpty) &&
-                                pctInicialController.text.isNotEmpty) {
-                              return 'Por favor, insira o PCT final';
-                            }
-                            return null;
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Tooltip(
-                        message: 'Bairros',
-                        child: Icon(Icons.streetview, color: Colors.blue),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: InkWell(
-                          onTap: () => _showBairrosMultiSelect(context),
-                          borderRadius: BorderRadius.circular(10),
-                          child: Container(
-                            height: 50,
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: Colors.grey,
-                                width: 1.0,
+                  Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(5.0),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(15.0),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: kmInicialController,
+                                  keyboardType: TextInputType.number,
+                                  decoration: InputDecoration(
+                                    hintText: 'KM - Inicial',
+                                    prefixIcon: Icon(
+                                      Icons.speed,
+                                      color: Colors.blue.shade100,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(50),
+                                    ),
+                                  ),
+                                ),
                               ),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  selectedBairros.isEmpty
-                                      ? 'Bairros'
-                                      : selectedBairros.length > 1
-                                      ? '${selectedBairros.length} Selecionados'
-                                      : '${selectedBairros.length} Selecionado',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: selectedBairros.isEmpty
-                                        ? Colors.grey[600]
-                                        : Colors.black,
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: TextFormField(
+                                  controller: kmFinalController,
+                                  keyboardType: TextInputType.number,
+                                  decoration: InputDecoration(
+                                    hintText: 'KM - Final',
+                                    prefixIcon: Icon(
+                                      Icons.speed,
+                                      color: Colors.blue.shade100,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(50),
+                                    ),
+                                  ),
+                                  validator: (value) {
+                                    if ((value == null || value.isEmpty) &&
+                                        kmInicialController.text.isNotEmpty) {
+                                      return 'Por favor, insira o KM final';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: pctInicialController,
+                                  keyboardType: TextInputType.number,
+                                  decoration: InputDecoration(
+                                    hintText: 'Pacotes',
+                                    prefixIcon: Icon(
+                                      Icons.inventory_2_outlined,
+                                      color: Colors.green.shade100,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(50),
+                                    ),
                                   ),
                                 ),
-                                const Icon(
-                                  Icons.arrow_drop_down,
-                                  color: Colors.grey,
+                              ),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: TextFormField(
+                                  controller: pctFinalController,
+                                  keyboardType: TextInputType.number,
+                                  decoration: InputDecoration(
+                                    hintText: 'Paradas',
+                                    prefixIcon: Icon(
+                                      Icons.location_on_outlined,
+                                      color: Colors.red.shade100,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(50),
+                                    ),
+                                  ),
+                                  validator: (value) {
+                                    if ((value == null || value.isEmpty) &&
+                                        pctInicialController.text.isNotEmpty) {
+                                      return 'Por favor, insira o PCT final';
+                                    }
+                                    return null;
+                                  },
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Icon(Icons.hourglass_top_outlined, color: Colors.blue),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: TextFormField(
-                          controller: hrInicioController,
-                          decoration: InputDecoration(
-                            labelText: 'Hr Início',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 10),
-                      Text(' - '),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: TextFormField(
-                          controller: hrFimController,
-                          decoration: InputDecoration(
-                            labelText: 'Hr Fim',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          validator: (value) {
-                            if ((value == null || value.isEmpty) &&
-                                hrInicioController.text.isNotEmpty) {
-                              return 'Por favor, insira a Hr Fim';
-                            }
-                            return null;
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Tooltip(
-                        message: 'Marcador de Insucesso desta Rota',
-                        child: Icon(
-                          Icons.repartition_rounded,
-                          color: Colors.red,
-                        ),
-                      ),
-                      Checkbox(
-                        value: isInsucessoSelected,
-                        onChanged: (bool? value) {
-                          setState(() {
-                            isInsucessoSelected = !isInsucessoSelected;
-                          });
-                        },
-                      ),
-                      isInsucessoSelected
-                          ? Expanded(
-                              child: TextFormField(
-                                controller: insucessoQntController,
-                                keyboardType: TextInputType.number,
-                                decoration: InputDecoration(
-                                  labelText: 'Qnt',
-                                  labelStyle: TextStyle(color: Colors.red),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10),
+                          SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () => _showBairrosMultiSelect(context),
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Container(
+                                    height: 50,
+                                    decoration: BoxDecoration(
+                                      border: Border.all(
+                                        color: Colors.grey,
+                                        width: 1.0,
+                                      ),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Icon(
+                                          Icons.streetview_outlined,
+                                          color: Colors.blue.shade100,
+                                        ),
+                                        Text(
+                                          selectedBairros.isEmpty
+                                              ? 'Bairros'
+                                              : selectedBairros.length > 1
+                                              ? '${selectedBairros.first.substring(0, 20)} + ${selectedBairros.length - 1}'
+                                              : '${selectedBairros.first}',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            color: selectedBairros.isEmpty
+                                                ? Colors.grey[600]
+                                                : Colors.black,
+                                          ),
+                                        ),
+                                        const Icon(
+                                          Icons.arrow_drop_down,
+                                          color: Colors.grey,
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
-                                validator: (value) {
-                                  if ((value == null || value.isEmpty) &&
-                                      isInsucessoSelected) {
-                                    return 'Por favor, insira a Qnt';
-                                  }
-                                  return null;
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  controller: hrInicioController,
+                                  decoration: InputDecoration(
+                                    labelText: 'Hr Início',
+                                    prefixIcon: Icon(
+                                      Icons.access_time,
+                                      color: Colors.amber.shade100,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(50),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: TextFormField(
+                                  controller: hrFimController,
+                                  decoration: InputDecoration(
+                                    labelText: 'Hr Fim',
+                                    prefixIcon: Icon(
+                                      Icons.access_time,
+                                      color: Colors.amber.shade100,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(50),
+                                    ),
+                                  ),
+                                  validator: (value) {
+                                    if ((value == null || value.isEmpty) &&
+                                        hrInicioController.text.isNotEmpty) {
+                                      return 'Por favor, insira a Hr Fim';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Tooltip(
+                                message: 'Marcador de Insucesso desta Rota',
+                                child: Icon(
+                                  Icons.repartition_rounded,
+                                  color: Colors.red,
+                                ),
+                              ),
+                              Checkbox(
+                                value: isInsucessoSelected,
+                                onChanged: (bool? value) {
+                                  setState(() {
+                                    isInsucessoSelected = !isInsucessoSelected;
+                                  });
                                 },
                               ),
-                            )
-                          : const Text(''),
-                    ],
+                              isInsucessoSelected
+                                  ? Expanded(
+                                      child: TextFormField(
+                                        controller: insucessoQntController,
+                                        keyboardType: TextInputType.number,
+                                        decoration: InputDecoration(
+                                          labelText: 'Qnt',
+                                          labelStyle: TextStyle(
+                                            color: Colors.red.shade100,
+                                          ),
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
+                                          ),
+                                        ),
+                                        validator: (value) {
+                                          if ((value == null ||
+                                                  value.isEmpty) &&
+                                              isInsucessoSelected) {
+                                            return 'Por favor, insira a Qnt';
+                                          }
+                                          return null;
+                                        },
+                                      ),
+                                    )
+                                  : const Text(''),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                   SizedBox(height: 10),
                   SizedBox(
