@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:iter/Utils/currencyFormat.dart';
 import 'package:iter/Utils/bairros.dart';
+import 'package:iter/model/newRouteModal.dart';
+import 'package:iter/services/openWeather.dart';
+import 'package:iter/Utils/weather.dart';
+import 'package:uuid/uuid.dart';
 
 class AddIter extends StatefulWidget {
   const AddIter({super.key});
@@ -11,12 +15,16 @@ class AddIter extends StatefulWidget {
 }
 
 class _AddIterState extends State<AddIter> {
+  final _formKey = GlobalKey<FormState>();
   List<String> bairros = fortaleza_bairros;
   List<String> selectedBairros = [];
   int selectedCompanyIndex = 0;
   String status = 'agendado';
   DateTime selectedDate = DateTime.now();
   bool isInsucessoSelected = false;
+  WeatherType currentWeatherType = WeatherType.clear;
+  String weatherIcon = 'assets/images/SOL.png';
+  int insucessoQnt = 1;
 
   TextEditingController valueController = TextEditingController();
   TextEditingController kmInicialController = TextEditingController();
@@ -24,43 +32,76 @@ class _AddIterState extends State<AddIter> {
   TextEditingController pctInicialController = TextEditingController();
   TextEditingController pctFinalController = TextEditingController();
   TextEditingController searchBairroController = TextEditingController();
-  TextEditingController insucessoQntController = TextEditingController();
   TextEditingController hrInicioController = TextEditingController();
   TextEditingController hrFimController = TextEditingController();
+
+  initState() {
+    super.initState();
+    _loadWeatherIcon();
+  }
+
+  void _loadWeatherIcon() async {
+    double lat = -3.71722;
+    double lon = -38.5434;
+
+    WeatherType weatherType = await getWeather(lat, lon);
+
+    setState(() {
+      currentWeatherType = weatherType;
+    });
+  }
 
   Widget _getStatusIcon(String statusValue) {
     switch (statusValue) {
       case 'agendado':
-        return const Icon(Icons.calendar_today, color: Colors.amber);
+        return Icon(Icons.calendar_today, color: Colors.blue.shade100);
       case 'andamento':
-        return const Icon(Icons.directions_car, color: Colors.blue);
+        return Icon(Icons.directions_car, color: Colors.orange.shade100);
       case 'concluido':
-        return const Icon(Icons.check_circle_outline, color: Colors.green);
+        return Icon(Icons.check_circle_outline, color: Colors.purple.shade100);
       case 'pago':
-        return const Icon(Icons.monetization_on_outlined, color: Colors.teal);
+        return Icon(
+          Icons.monetization_on_outlined,
+          color: Colors.teal.shade100,
+        );
       default:
-        return const Icon(Icons.help_outline, color: Colors.grey);
+        return Icon(Icons.help_outline, color: Colors.grey.shade100);
     }
   }
 
-  String _getWeekdayName(int weekday) {
+  String _getButtonName(String statusValue) {
+    switch (statusValue) {
+      case 'agendado':
+        return 'Agendar';
+      case 'andamento':
+        return 'Iniciar';
+      case 'concluido':
+        return 'Finalizar';
+      case 'pago':
+        return 'Receber';
+      default:
+        return 'Desconhecido';
+    }
+  }
+
+  Image _getWeekdayIcon(int weekday) {
     switch (weekday) {
       case 1:
-        return 'Segunda-feira';
+        return Image.asset('assets/images/SEG.png');
       case 2:
-        return 'Terça-feira';
+        return Image.asset('assets/images/TER.png');
       case 3:
-        return 'Quarta-feira';
+        return Image.asset('assets/images/QUA.png');
       case 4:
-        return 'Quinta-feira';
+        return Image.asset('assets/images/QUI.png');
       case 5:
-        return 'Sexta-feira';
+        return Image.asset('assets/images/SEX.png');
       case 6:
-        return 'Sábado';
+        return Image.asset('assets/images/SAB.png');
       case 7:
-        return 'Domingo';
+        return Image.asset('assets/images/DOM.png');
       default:
-        return '';
+        return Image.asset('assets/images/HELP.png');
     }
   }
 
@@ -373,24 +414,23 @@ class _AddIterState extends State<AddIter> {
                       const SizedBox(width: 10),
                       Container(
                         height: 50,
-                        width: 110,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.blueAccent.shade100,
-                            border: Border.all(
-                              color: Colors.blueGrey.shade100,
-                              width: 1.0,
-                            ),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Center(
-                            child: Text(
-                              _getWeekdayName(selectedDate.weekday),
-                              style: const TextStyle(color: Colors.white),
-                            ),
+                        width: 50,
+                        child: Center(
+                          child: Stack(
+                            children: [
+                              _getWeekdayIcon(selectedDate.weekday),
+                              Positioned(
+                                bottom: 3,
+                                right: 8,
+                                child: Text(
+                                  '${selectedDate.day.toString().padLeft(2, '0')}/${selectedDate.month.toString().padLeft(2, '0')}',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.blueGrey,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -693,48 +733,103 @@ class _AddIterState extends State<AddIter> {
                           SizedBox(height: 10),
                           Row(
                             children: [
-                              Tooltip(
-                                message: 'Marcador de Insucesso desta Rota',
-                                child: Icon(
-                                  Icons.repartition_rounded,
-                                  color: Colors.red,
-                                ),
-                              ),
-                              Checkbox(
+                              CupertinoSwitch(
                                 value: isInsucessoSelected,
-                                onChanged: (bool? value) {
+                                onChanged: (bool value) {
                                   setState(() {
-                                    isInsucessoSelected = !isInsucessoSelected;
+                                    isInsucessoSelected = value;
                                   });
                                 },
                               ),
-                              isInsucessoSelected
-                                  ? Expanded(
-                                      child: TextFormField(
-                                        controller: insucessoQntController,
-                                        keyboardType: TextInputType.number,
-                                        decoration: InputDecoration(
-                                          labelText: 'Qnt',
-                                          labelStyle: TextStyle(
-                                            color: Colors.red.shade100,
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Opacity(
+                                  // Desativa visualmente o seletor quando o switch estiver desligado
+                                  opacity: isInsucessoSelected ? 0.6 : 0.4,
+                                  child: Container(
+                                    height:
+                                        44, // Altura padrão de controles iOS
+                                    decoration: BoxDecoration(
+                                      color: CupertinoColors.tertiarySystemFill,
+                                      borderRadius: BorderRadius.circular(
+                                        12,
+                                      ), // Curva padrão do iOS
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        // Botão Decrementar (-)
+                                        CupertinoButton(
+                                          padding: EdgeInsets.zero,
+                                          onPressed:
+                                              (isInsucessoSelected &&
+                                                  insucessoQnt > 1)
+                                              ? () => setState(
+                                                  () => insucessoQnt--,
+                                                )
+                                              : null,
+                                          child: const Icon(
+                                            CupertinoIcons.minus,
+                                            size: 18,
+                                            color: CupertinoColors.label,
                                           ),
-                                          border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              10,
+                                        ),
+
+                                        // Texto Central
+                                        Expanded(
+                                          child: Text(
+                                            isInsucessoSelected
+                                                ? '$insucessoQnt'
+                                                : 'Insucesso',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: isInsucessoSelected
+                                                  ? FontWeight.w600
+                                                  : FontWeight.normal,
+                                              color: isInsucessoSelected
+                                                  ? CupertinoColors.label
+                                                  : CupertinoColors
+                                                        .secondaryLabel,
                                             ),
                                           ),
                                         ),
-                                        validator: (value) {
-                                          if ((value == null ||
-                                                  value.isEmpty) &&
-                                              isInsucessoSelected) {
-                                            return 'Por favor, insira a Qnt';
-                                          }
-                                          return null;
-                                        },
-                                      ),
-                                    )
-                                  : const Text(''),
+
+                                        // Botão Incrementar (+)
+                                        CupertinoButton(
+                                          padding: EdgeInsets.zero,
+                                          onPressed:
+                                              (isInsucessoSelected &&
+                                                  insucessoQnt < 999)
+                                              ? () => setState(
+                                                  () => insucessoQnt++,
+                                                )
+                                              : null,
+                                          child: const Icon(
+                                            CupertinoIcons.plus,
+                                            size: 18,
+                                            color: CupertinoColors.label,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(width: 12),
+
+                              Container(
+                                height: 44,
+                                width: 44,
+                                decoration: BoxDecoration(
+                                  color: CupertinoColors.tertiarySystemFill,
+                                  shape: BoxShape.circle,
+                                ),
+                                padding: const EdgeInsets.all(6.0),
+                                child: Image.asset(
+                                  getWeatherIcon(currentWeatherType),
+                                ),
+                              ),
                             ],
                           ),
                         ],
@@ -744,7 +839,7 @@ class _AddIterState extends State<AddIter> {
                   SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
-                    child: ElevatedButton(
+                    child: CupertinoButton(
                       onPressed: () {
                         showDialog(
                           context: context,
@@ -755,6 +850,7 @@ class _AddIterState extends State<AddIter> {
                               actions: [
                                 TextButton(
                                   onPressed: () {
+                                    // _saveRoute();
                                     Navigator.pushNamedAndRemoveUntil(
                                       context,
                                       '/home',
@@ -769,20 +865,56 @@ class _AddIterState extends State<AddIter> {
                         );
                       },
                       child: Text(
-                        'Salvar Rota',
+                        '${_getButtonName(status)} Rota',
                         style: TextStyle(fontSize: 16, color: Colors.white),
                       ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10.0),
-                        ),
-                      ),
+                      color: status == "agendado"
+                          ? Colors.blue.shade300
+                          : status == "andamento"
+                          ? Colors.orange.shade300
+                          : status == "concluido"
+                          ? Colors.purple.shade300
+                          : status == "pago"
+                          ? Colors.teal.shade300
+                          : Colors.grey,
                     ),
                   ),
                 ],
               ),
             ),
           );
+  }
+
+  void _saveRoute() {
+    if (!_formKey.currentState!.validate()) {
+      final newRoute = NewRouteModal(
+        id: Uuid().v4(),
+        company: Company.values[selectedCompanyIndex],
+        dateRoute:
+            '${selectedDate.day.toString().padLeft(2, '0')}/${selectedDate.month.toString().padLeft(2, '0')}/${selectedDate.year}',
+        weekday: selectedDate.weekday,
+        status: StatusRoute.values.firstWhere(
+          (e) => e.toString() == 'StatusRoute.$status',
+        ),
+        value:
+            double.tryParse(valueController.text.replaceAll(',', '.')) ?? 0.0,
+        kmInitial:
+            double.tryParse(kmInicialController.text.replaceAll(',', '.')) ??
+            0.0,
+        kmFinal:
+            double.tryParse(kmFinalController.text.replaceAll(',', '.')) ?? 0.0,
+        packages: int.tryParse(pctInicialController.text),
+        stops: int.tryParse(pctFinalController.text),
+        adress: selectedBairros,
+        hoursInitial: hrInicioController.text,
+        hoursFinal: hrFimController.text,
+        isInsucesso: isInsucessoSelected,
+        insucessoQnt: isInsucessoSelected ? insucessoQnt : null,
+      );
+
+      // Salva a nova rota no banco de dados
+      // DatabaseHelper.instance.insertRoute(newRoute);
+      return;
+    }
   }
 }

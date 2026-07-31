@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "87511151381",
+    "project_id": "iter-mn",
+    "storage_bucket": "iter-mn.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:87511151381:android:ecbb8adf2c53ca176d6f1c",
+        "android_client_info": {
+          "package_name": "com.example.iter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDra1MBcBZJxZTceVZjyTNcSMfCacw8yHc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
