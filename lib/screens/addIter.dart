@@ -685,11 +685,10 @@ class _AddIterState extends State<AddIter> {
                           TextButton(
                             onPressed: () {
                               // _saveRoute();
-                              Navigator.pushNamedAndRemoveUntil(
+                              // Fecha o diálogo e a tela, voltando ao AuthGate.
+                              Navigator.of(
                                 context,
-                                '/home',
-                                (route) => false,
-                              );
+                              ).popUntil((route) => route.isFirst);
                             },
                             child: Text('OK'),
                           ),

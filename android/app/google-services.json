@@ -12,7 +12,20 @@
           "package_name": "com.example.iter"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "87511151381-3bubabk1hd3aodqe0kasaahg6lu72gah.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.iter",
+            "certificate_hash": "66f99df208878cd0ae2bc6a86eb2819ad35b99cc"
+          }
+        },
+        {
+          "client_id": "87511151381-hmpsd8t3h0kfthb2jvru07r2mtfcpqsl.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDra1MBcBZJxZTceVZjyTNcSMfCacw8yHc"
@@ -20,7 +33,63 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "87511151381-hmpsd8t3h0kfthb2jvru07r2mtfcpqsl.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "87511151381-4hog50mbrmv14mtennuirrtgktnst5jg.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.mna.iter"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:87511151381:android:e334b8396d0167256d6f1c",
+        "android_client_info": {
+          "package_name": "com.mna.iter"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "87511151381-6novt6oqgdk5caofkahkpp7o3as093oi.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mna.iter",
+            "certificate_hash": "66f99df208878cd0ae2bc6a86eb2819ad35b99cc"
+          }
+        },
+        {
+          "client_id": "87511151381-hmpsd8t3h0kfthb2jvru07r2mtfcpqsl.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDra1MBcBZJxZTceVZjyTNcSMfCacw8yHc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "87511151381-hmpsd8t3h0kfthb2jvru07r2mtfcpqsl.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "87511151381-4hog50mbrmv14mtennuirrtgktnst5jg.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.mna.iter"
+              }
+            }
+          ]
         }
       }
     }

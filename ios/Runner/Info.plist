@@ -22,6 +22,21 @@
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>google-sign-in</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<!-- Precisa ser igual ao REVERSED_CLIENT_ID do GoogleService-Info.plist.
+				     Ao trocar o app iOS no Firebase, atualize este valor também. -->
+				<string>com.googleusercontent.apps.87511151381-4hog50mbrmv14mtennuirrtgktnst5jg</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>

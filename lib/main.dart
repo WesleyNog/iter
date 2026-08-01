@@ -1,8 +1,26 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_easyloading/flutter_easyloading.dart';
+import 'package:iter/firebase_options.dart';
 import 'package:iter/screens/addIter.dart';
 import 'package:iter/screens/home.dart';
+import 'package:iter/screens/login.dart';
 
-void main() {
+void configLoading() {
+  EasyLoading.instance
+    ..loadingStyle = EasyLoadingStyle.dark
+    ..indicatorType = EasyLoadingIndicatorType.fadingCircle
+    ..indicatorSize = 45.0
+    ..radius = 10.0
+    ..dismissOnTap = false
+    ..userInteractions = false;
+}
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  configLoading();
   runApp(const MyApp());
 }
 
@@ -17,10 +35,35 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const HomeScreen(),
-      routes: {
-        '/home': (context) => const HomeScreen(),
-        '/addIter': (context) => const AddIter(),
+      home: const AuthGate(),
+      routes: {'/addIter': (context) => const AddIter()},
+      // Obrigatório: instala o overlay usado pelo EasyLoading.
+      builder: EasyLoading.init(),
+    );
+  }
+}
+
+/// Escolhe a tela inicial a partir do estado do Firebase Auth.
+///
+/// A sessão é persistida pelo próprio firebase_auth, então quem já entrou cai
+/// direto na Home ao abrir o app. Como é um [StreamBuilder], o login e o logout
+/// trocam a tela sozinhos — nenhuma das duas telas precisa navegar na mão.
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        // Enquanto o Firebase restaura a sessão salva no dispositivo.
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        return snapshot.data == null ? const LoginScreen() : const HomeScreen();
       },
     );
   }

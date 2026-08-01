@@ -1,4 +1,4 @@
-package com.example.iter
+package com.mna.iter
 
 import io.flutter.embedding.android.FlutterActivity
 
