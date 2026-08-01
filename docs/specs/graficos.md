@@ -139,9 +139,10 @@ Texto de interface em pt-BR. Nomes de arquivo em camelCase.
 
 ## Como cada número é calculado
 
-**Recorte base.** Toda a tela olha as rotas com `startAt` dentro do período
-(comparando só a data, início e fim inclusive) **e** `status` em
-`concluido` ou `pago`. Um único recorte alimenta os sete gráficos.
+**Recorte base.** Duas faixas, ver Decisão 8. Os cards de dinheiro do topo
+usam as rotas com `startAt` dentro do período (comparando só a data, início e
+fim inclusive), **em qualquer status**. Os gráficos de análise usam esse mesmo
+período restrito a `concluido` ou `pago`.
 
 **1. Total do período.** `Σ value`. O card resumo mostra também a quantidade de
 rotas e a média por rota (total ÷ quantidade), além de uma barra de proporção
@@ -241,10 +242,9 @@ se aplica: aqui é `EdgeInsets.fromLTRB(16, 16, 16, 24)`, como na lista.
    `debugPrint`. Mesmo tratamento da `ListIterScreen`.
 3. **Sem rota nenhuma** — ícone + "Nenhuma rota cadastrada ainda" + dica do
    botão `+`.
-4. **Sem rota no período** — mensagem diferente: "Nenhuma rota concluída entre
-   dd/MM e dd/MM", com a dica de trocar o período. Dizer "cadastre a primeira"
-   para quem tem 200 rotas em outro mês seria mentira, como já se decidiu no
-   filtro por empresa da lista.
+4. **Sem rota no período** — os cards continuam desenhados, cada um com o
+   próprio vazio (revisto depois da primeira entrega, ver Decisão 7). O card de
+   resumo mostra `R$ 0,00` e "Sem rotas no período."
 5. **Card sem dado** — cada gráfico tem seu próprio vazio (ex.: ninguém
    preencheu bairro no período → só o card de bairros mostra a mensagem, o resto
    da tela continua útil).
@@ -345,6 +345,56 @@ inválido deixou de existir. Custo: dois parâmetros opcionais novos em
 sem argumento (`final _grafics = GraficsScreen();`); vira `late final`, com o
 `user`, como já é o `ListIterScreen`. Lendo o uid do construtor, a tela não pode
 ser montada sem usuário.
+
+**7. Período vazio desenha os gráficos** (pedido depois de ver a tela rodando).
+
+Deixou de ser uma tela de mensagem: os cards aparecem, cada um com o próprio
+vazio. Tela em branco não deixava claro que o problema era o período, e o
+formato da tela mudava a cada troca de data. O estado de **nunca ter cadastrado
+rota nenhuma** continua sendo mensagem com a dica do botão `+`: nenhuma troca de
+período resolve aquele caso.
+
+Isso tornou "ranking vazio" um caminho normal, e não mais impossível —
+`entries.first` nos cards de empresa passou a ser acesso a lista potencialmente
+vazia. Todos viraram `_highest`/`_lowest`, que devolvem `—`.
+
+**8. A tela passou a ter dois recortes, e isso é proposital** (revisão da
+Decisão 1, pedida depois de ver a tela rodando).
+
+O carrossel do topo tem quatro páginas, e cobre o **período inteiro**:
+
+| Página | Status | Para quê |
+|---|---|---|
+| Resumo do período | todos | quanto o período vale, dividido por status |
+| Pago no período | `pago` | o que já caiu na conta |
+| A receber no período | `concluido` | rodado e não pago |
+| Pendentes no período | `agendado` + `andamento` | estimativa do que falta rodar |
+
+A Decisão 1 mantinha `agendado` fora de tudo, para "TOTAL" não misturar previsão
+com faturamento. O caso de uso que apareceu depois derruba isso para o bloco de
+dinheiro: o entregador precisa saber a estimativa do que ainda vai entrar para
+decidir se pega mais uma rota ou se já bateu a meta do dia. Um total que ignora
+a agenda não responde essa pergunta.
+
+A separação por status resolve o risco original sem perder o número: cada página
+diz exatamente qual fatia está mostrando, e a barra da página 1 é o índice das
+outras três — mostra para onde foi cada real do período.
+
+**Os gráficos de análise (empresa, bairro, dia, hora) continuam só em
+`concluido` + `pago`**, pelo motivo de sempre: bairro "rodado" numa rota que não
+saiu e índice de insucesso de rota que não aconteceu não existem.
+
+Consequência aceita: o **TOTAL do topo difere do TOTAL dos gráficos de baixo**.
+Um rótulo entre os dois blocos ("Análise das rotas concluídas e pagas") diz qual
+recorte está valendo, em vez de deixar a diferença parecer erro de conta.
+
+Dois detalhes que caíram junto, para número nenhum mentir:
+- **Pacotes e insucessos só contam de rota realizada.** Uma agendada com pacotes
+  estimados inflaria o denominador e faria a taxa de entrega subir sem ninguém
+  ter entregue nada.
+- **A taxa de recebimento usa `realizedTotal`, não `total`.** Com o total do
+  período no denominador, marcar uma rota nova na agenda derrubaria a taxa
+  sozinha, como se um pagamento tivesse atrasado.
 
 ## Dívidas e fora de escopo
 

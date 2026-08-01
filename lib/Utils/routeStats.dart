@@ -57,12 +57,39 @@ class PeriodSummary {
     required this.count,
     required this.packages,
     required this.failures,
+    required this.pending,
+    required this.received,
+    required this.upcoming,
+    required this.pendingCount,
+    required this.receivedCount,
+    required this.scheduledCount,
+    required this.runningCount,
   });
 
-  /// Soma de `value` das rotas do período.
+  /// Soma de `value` de **todas** as rotas recebidas — o chamador decide se
+  /// passa o período inteiro ou só as realizadas.
   final double total;
 
   final int count;
+
+  /// Rodado e ainda não pago (`concluido`) — o que falta cair na conta.
+  final double pending;
+
+  /// Já pago (`pago`).
+  final double received;
+
+  /// Ainda não rodado (`agendado` + `andamento`) — estimativa.
+  final double upcoming;
+
+  final int pendingCount;
+  final int receivedCount;
+  final int scheduledCount;
+  final int runningCount;
+
+  int get upcomingCount => scheduledCount + runningCount;
+
+  /// O que já aconteceu, em dinheiro: pago mais a receber.
+  double get realizedTotal => received + pending;
 
   /// Pacotes somados **apenas** das rotas que informaram o campo.
   final int packages;
@@ -72,6 +99,16 @@ class PeriodSummary {
   final int failures;
 
   double get average => count == 0 ? 0 : total / count;
+
+  /// Fração do que já aconteceu que foi paga.
+  ///
+  /// O denominador é [realizedTotal], e não [total]: rota agendada ainda nem
+  /// podia ter sido paga, e contá-la faria a taxa cair sozinha toda vez que o
+  /// usuário marcasse uma rota nova na agenda.
+  double? get receivedRate {
+    if (realizedTotal <= 0) return null;
+    return (received / realizedTotal).clamp(0.0, 1.0);
+  }
 
   /// Fração entregue: `(pacotes - insucessos) / pacotes`.
   ///
@@ -90,16 +127,12 @@ int failuresOf(NewRouteModal route) {
   return route.insucessoQnt ?? 1;
 }
 
-/// Rotas realizadas (`concluido` ou `pago`) com início dentro do período.
+/// Rotas com início dentro do período, **em qualquer status**.
 ///
 /// A comparação é por data, com as duas pontas inclusive: a hora que vier em
 /// [start]/[end] é ignorada, senão uma rota das 22h sumiria do último dia do
 /// filtro.
-///
-/// O recorte de status vale para a tela inteira, e não só para os números de
-/// dinheiro: rota agendada é previsão, e bairro "rodado" numa rota que ainda
-/// não aconteceu também não é verdade.
-List<NewRouteModal> realizedInPeriod(
+List<NewRouteModal> inPeriod(
   List<NewRouteModal> routes, {
   required DateTime start,
   required DateTime end,
@@ -108,23 +141,111 @@ List<NewRouteModal> realizedInPeriod(
   final to = _dateOnly(end);
 
   return routes.where((route) {
-    if (route.status != StatusRoute.concluido &&
-        route.status != StatusRoute.pago) {
-      return false;
-    }
-
     final day = _dateOnly(route.startAt);
     return !day.isBefore(from) && !day.isAfter(to);
   }).toList();
+}
+
+/// Rotas que de fato aconteceram (`concluido` ou `pago`).
+///
+/// É o recorte dos gráficos de análise — empresa, bairro, dia e hora. Bairro
+/// "rodado" numa rota que ainda não saiu não é verdade, e insucesso de rota
+/// que não aconteceu não existe. Os cards de dinheiro do topo trabalham com o
+/// período inteiro, de propósito: lá interessa quanto ainda vai entrar.
+List<NewRouteModal> realized(List<NewRouteModal> routes) => routes
+    .where(
+      (route) =>
+          route.status == StatusRoute.concluido ||
+          route.status == StatusRoute.pago,
+    )
+    .toList();
+
+/// Atalho para o recorte de análise: dentro do período **e** realizada.
+List<NewRouteModal> realizedInPeriod(
+  List<NewRouteModal> routes, {
+  required DateTime start,
+  required DateTime end,
+}) => realized(inPeriod(routes, start: start, end: end));
+
+/// Rotas rodadas que ainda não foram pagas.
+///
+/// `concluido` é exatamente esse estado: o serviço acabou e o pagamento não
+/// entrou. `agendado` e `andamento` não entram — a rota nem aconteceu, e
+/// prometer esse dinheiro como "a receber" seria contar com o ovo.
+List<NewRouteModal> pendingPayment(List<NewRouteModal> routes) =>
+    routes.where((route) => route.status == StatusRoute.concluido).toList();
+
+List<NewRouteModal> receivedPayment(List<NewRouteModal> routes) =>
+    routes.where((route) => route.status == StatusRoute.pago).toList();
+
+/// Rotas que ainda não aconteceram: `agendado` e `andamento`.
+///
+/// É estimativa, não faturamento — mas é o número que responde "já bati minha
+/// meta ou pego mais uma rota?", que só dá para decidir vendo o que está
+/// marcado para acontecer.
+List<NewRouteModal> notRunYet(List<NewRouteModal> routes) => routes
+    .where(
+      (route) =>
+          route.status == StatusRoute.agendado ||
+          route.status == StatusRoute.andamento,
+    )
+    .toList();
+
+/// Soma de `value` por status, **na ordem do ciclo** (agendado → pago) e não
+/// por tamanho: a barra do resumo é lida como uma esteira, não como ranking.
+/// Status sem rota vem com zero; quem desenha é que filtra.
+List<({StatusRoute status, double value})> valueByStatus(
+  List<NewRouteModal> routes,
+) {
+  final totals = {for (final status in StatusRoute.values) status: 0.0};
+
+  for (final route in routes) {
+    totals[route.status] = (totals[route.status] ?? 0) + route.value;
+  }
+
+  return [
+    for (final status in StatusRoute.values)
+      (status: status, value: totals[status] ?? 0),
+  ];
 }
 
 PeriodSummary summarize(List<NewRouteModal> routes) {
   var total = 0.0;
   var packages = 0;
   var failures = 0;
+  var pending = 0.0;
+  var received = 0.0;
+  var upcoming = 0.0;
+  var pendingCount = 0;
+  var receivedCount = 0;
+  var scheduledCount = 0;
+  var runningCount = 0;
 
   for (final route in routes) {
     total += route.value;
+
+    switch (route.status) {
+      case StatusRoute.concluido:
+        pending += route.value;
+        pendingCount++;
+      case StatusRoute.pago:
+        received += route.value;
+        receivedCount++;
+      case StatusRoute.agendado:
+        upcoming += route.value;
+        scheduledCount++;
+      case StatusRoute.andamento:
+        upcoming += route.value;
+        runningCount++;
+    }
+
+    // Pacotes e insucessos só contam de rota que aconteceu: uma agendada com
+    // pacotes estimados inflaria o denominador e faria a taxa de entrega subir
+    // sem ninguém ter entregue nada.
+    if (route.status != StatusRoute.concluido &&
+        route.status != StatusRoute.pago) {
+      continue;
+    }
 
     // Rota sem pacotes fica fora dos dois lados da taxa: entrar só com os
     // insucessos puxaria a taxa para baixo com um denominador que não existe.
@@ -140,6 +261,13 @@ PeriodSummary summarize(List<NewRouteModal> routes) {
     count: routes.length,
     packages: packages,
     failures: failures,
+    pending: pending,
+    received: received,
+    upcoming: upcoming,
+    pendingCount: pendingCount,
+    receivedCount: receivedCount,
+    scheduledCount: scheduledCount,
+    runningCount: runningCount,
   );
 }
 

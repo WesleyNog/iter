@@ -11,6 +11,7 @@ import 'package:iter/widget/chartCard.dart';
 import 'package:iter/widget/chartCarousel.dart';
 import 'package:iter/widget/lineChartCard.dart';
 import 'package:iter/widget/periodFilter.dart';
+import 'package:iter/widget/summaryCards.dart';
 
 /// Painel de gráficos das rotas do período.
 ///
@@ -45,11 +46,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
     _end = period.end;
   }
 
-  /// `formatDoubleToMoney` devolve string vazia para zero — aqui zero é
-  /// resultado legítimo e precisa aparecer.
-  String _money(double value) => value == 0
-      ? 'R\$ 0,00'
-      : CurrencyFormatterHelper.formatDoubleToMoney(value);
+  String _money(double value) => CurrencyFormatterHelper.formatMoney(value);
 
   /// Eixo vertical do gráfico de linha: tem 56px para caber.
   String _axisMoney(double value) => value >= 1000
@@ -64,6 +61,14 @@ class _GraficsScreenState extends State<GraficsScreen> {
 
   double _sum(List<RankEntry> entries) =>
       entries.fold(0, (total, entry) => total + entry.value);
+
+  /// Ranking vazio é rotina agora que o período sem rota também desenha os
+  /// cards — `entries.first` estouraria.
+  String _highest(List<RankEntry> entries, String Function(double) format) =>
+      entries.isEmpty ? '—' : format(entries.first.value);
+
+  String _lowest(List<RankEntry> entries, String Function(double) format) =>
+      entries.isEmpty ? '—' : format(entries.last.value);
 
   @override
   Widget build(BuildContext context) {
@@ -113,220 +118,148 @@ class _GraficsScreenState extends State<GraficsScreen> {
           );
         }
 
-        final routes = realizedInPeriod(all, start: _start, end: _end);
-
-        // Tem rota, só nenhuma realizada no período: mandar cadastrar a
-        // primeira aqui seria mentira.
-        if (routes.isEmpty) {
-          return _message(
-            icon: Icons.event_busy_outlined,
-            title:
-                'Nenhuma rota concluída entre '
-                '${PeriodFilter.formatDate(_start)} e '
-                '${PeriodFilter.formatDate(_end)}.',
-            subtitle:
-                'Troque o período acima. Rota agendada ou em andamento não '
-                'entra na conta.',
-          );
-        }
-
-        return _dashboard(routes);
+        // Período sem rota nenhuma continua desenhando os cards, cada um com
+        // seu próprio vazio: tela em branco não deixa claro que o problema é o
+        // período, e some com o formato da tela a cada troca de data.
+        return _dashboard(inPeriod(all, start: _start, end: _end));
       },
     );
   }
 
+  /// [routes] chega com **todos** os status do período.
+  ///
+  /// Os cards de dinheiro do topo usam o período inteiro — é lá que o
+  /// agendado importa, para responder "já bati minha meta ou pego mais uma
+  /// rota?". Os gráficos de análise usam só o que rodou: bairro percorrido e
+  /// índice de insucesso de rota que ainda não saiu não existem.
+  ///
+  /// Por isso o TOTAL dos dois blocos difere de propósito, e o rótulo entre
+  /// eles diz qual recorte está valendo.
   Widget _dashboard(List<NewRouteModal> routes) {
-    final summary = summarize(routes);
+    final periodSummary = summarize(routes);
+    final done = realized(routes);
+    final doneSummary = summarize(done);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       child: Column(
         children: [
-          _summaryCard(summary, routes),
+          ChartCarousel(height: 290, pages: _moneyPages(periodSummary, routes)),
+          const SizedBox(height: 24),
+          _sectionLabel('Análise das rotas concluídas e pagas'),
+          const SizedBox(height: 10),
+          ChartCarousel(height: 340, pages: _companyPages(doneSummary, done)),
           const SizedBox(height: 20),
-          ChartCarousel(height: 340, pages: _companyPages(summary, routes)),
+          ChartCarousel(height: 340, pages: _bairroPages(done)),
           const SizedBox(height: 20),
-          ChartCarousel(height: 340, pages: _bairroPages(routes)),
-          const SizedBox(height: 20),
-          ChartCarousel(height: 330, pages: _timePages(routes)),
+          ChartCarousel(height: 330, pages: _timePages(done)),
         ],
       ),
     );
   }
 
-  // --- Resumo -------------------------------------------------------------
-
-  Widget _summaryCard(PeriodSummary summary, List<NewRouteModal> routes) {
-    final byCompany = valueByCompany(routes);
-
-    return ChartCard(
-      title: 'Resumo do período',
-      fillHeight: false,
-      stats: [
-        ChartStat('TOTAL', _money(summary.total)),
-        ChartStat('ROTAS', '${summary.count}'),
-        ChartStat('MÉDIA/ROTA', _money(summary.average)),
-      ],
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _shareBar(byCompany, summary.total),
-          const SizedBox(height: 14),
-          Center(
-            child: Wrap(
-              spacing: 16,
-              runSpacing: 10,
-              children: [
-                for (final entry in byCompany)
-                  _legendItem(entry, summary.total),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          _deliveryRate(summary),
-        ],
-      ),
-    );
-  }
-
-  Widget _shareBar(
-    List<({Company company, double value})> byCompany,
-    double total,
-  ) {
-    final visible = byCompany.where((entry) => entry.value > 0).toList();
-
-    // Período inteiro de rotas com valor zero: uma barra vazia é mais honesta
-    // que dividir por zero para achar a proporção.
-    if (visible.isEmpty || total <= 0) {
-      return Container(
-        height: 12,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.2),
-          borderRadius: BorderRadius.circular(50),
-        ),
-      );
-    }
-
-    // O arredondamento dos cantos fica no ClipRRect, e não em cada pedaço: a
-    // conta de "sou o primeiro ou o último?" erra assim que uma empresa some.
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(50),
-      child: Row(
-        children: [
-          for (final entry in visible)
-            Expanded(
-              flex: (entry.value / total * 1000).round().clamp(1, 1000),
-              child: Container(
-                height: 12,
-                color: companyColor(entry.company),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _legendItem(({Company company, double value}) entry, double total) {
-    final share = total > 0 ? entry.value / total * 100 : 0.0;
-
+  Widget _sectionLabel(String text) {
     return Row(
-      mainAxisSize: MainAxisSize.min,
       children: [
-        CircleAvatar(radius: 4, backgroundColor: companyColor(entry.company)),
+        Icon(Icons.insights_outlined, size: 15, color: Colors.grey.shade500),
         const SizedBox(width: 6),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '${companyLabel(entry.company)} (${share.toStringAsFixed(0)}%)',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.8),
-                fontSize: 10,
-              ),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.3,
+              color: Colors.grey.shade600,
             ),
-            Text(
-              _money(entry.value),
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-              ),
-            ),
-          ],
+          ),
         ),
       ],
     );
   }
 
-  Widget _deliveryRate(PeriodSummary summary) {
-    final rate = summary.deliveryRate;
+  // --- Dinheiro do período ------------------------------------------------
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Taxa de entrega',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.85),
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 6),
-        if (rate == null)
-          Text(
-            'Preencha "Pacotes" na rota para acompanhar.',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.6),
-              fontSize: 11,
+  List<ShareSlice> _companySlices(List<NewRouteModal> routes) => [
+    for (final entry in valueByCompany(routes))
+      ShareSlice(
+        label: companyLabel(entry.company),
+        value: entry.value,
+        color: companyColor(entry.company),
+      ),
+  ];
+
+  String _average(double total, int count) =>
+      _money(count == 0 ? 0 : total / count);
+
+  List<Widget> _moneyPages(
+    PeriodSummary summary,
+    List<NewRouteModal> routes,
+  ) {
+    return [
+      MoneyBreakdownCard(
+        title: 'Resumo do período',
+        // A barra aqui é por status, e não por empresa: ela é o índice das
+        // outras três páginas — mostra para onde foi cada real do período.
+        slices: [
+          for (final entry in valueByStatus(routes))
+            ShareSlice(
+              label: statusLabel(entry.status),
+              value: entry.value,
+              color: statusChartColor(entry.status),
             ),
-          )
-        else
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(50),
-                  ),
-                  child: FractionallySizedBox(
-                    alignment: Alignment.centerLeft,
-                    widthFactor: rate,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF69F0AE), Color(0xFF00C853)],
-                        ),
-                        borderRadius: BorderRadius.circular(50),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                '${(rate * 100).toStringAsFixed(1)}%',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                '(${summary.failures} de ${summary.packages} pacotes)',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.6),
-                  fontSize: 10,
-                ),
-              ),
-            ],
+        ],
+        total: summary.total,
+        emptyNote: 'Sem rotas no período.',
+        stats: [
+          ChartStat('TOTAL', _money(summary.total)),
+          ChartStat('ROTAS', '${summary.count}'),
+          ChartStat('MÉDIA/ROTA', _average(summary.total, summary.count)),
+        ],
+        extra: DeliveryRateBar(summary: summary),
+      ),
+      MoneyBreakdownCard(
+        title: 'Pago no período',
+        slices: _companySlices(receivedPayment(routes)),
+        total: summary.received,
+        emptyNote: 'Nada foi pago neste período ainda.',
+        stats: [
+          ChartStat('PAGO', _money(summary.received)),
+          ChartStat('ROTAS', '${summary.receivedCount}'),
+          ChartStat(
+            'MÉDIA/ROTA',
+            _average(summary.received, summary.receivedCount),
           ),
-      ],
-    );
+        ],
+      ),
+      MoneyBreakdownCard(
+        title: 'A receber no período',
+        slices: _companySlices(pendingPayment(routes)),
+        total: summary.pending,
+        emptyNote: 'Nada a receber: tudo que rodou já foi pago.',
+        footnote: 'Rota concluída e ainda não paga.',
+        stats: [
+          ChartStat('A RECEBER', _money(summary.pending)),
+          ChartStat('ROTAS', '${summary.pendingCount}'),
+          ChartStat(
+            'MÉDIA/ROTA',
+            _average(summary.pending, summary.pendingCount),
+          ),
+        ],
+      ),
+      MoneyBreakdownCard(
+        title: 'Pendentes no período',
+        slices: _companySlices(notRunYet(routes)),
+        total: summary.upcoming,
+        emptyNote: 'Nenhuma rota marcada para o período.',
+        footnote: 'Estimativa: rota que ainda não rodou pode mudar.',
+        stats: [
+          ChartStat('ESTIMADO', _money(summary.upcoming)),
+          ChartStat('AGENDADAS', '${summary.scheduledCount}'),
+          ChartStat('EM ROTA', '${summary.runningCount}'),
+        ],
+      ),
+    ];
   }
 
   // --- Empresas -----------------------------------------------------------
@@ -352,8 +285,8 @@ class _GraficsScreenState extends State<GraficsScreen> {
         emptyMessage: 'Nenhuma rota no período.',
         stats: [
           ChartStat('TOTAL', _money(summary.total)),
-          ChartStat('MAIOR', _money(byValue.first.value)),
-          ChartStat('MENOR', _money(byValue.last.value)),
+          ChartStat('MAIOR', _highest(byValue, _money)),
+          ChartStat('MENOR', _lowest(byValue, _money)),
         ],
       ),
       BarRankChart(
@@ -363,8 +296,8 @@ class _GraficsScreenState extends State<GraficsScreen> {
         emptyMessage: 'Nenhuma rota no período.',
         stats: [
           ChartStat('TOTAL', '${summary.count}'),
-          ChartStat('MAIOR', _whole(byCount.first.value)),
-          ChartStat('MENOR', _whole(byCount.last.value)),
+          ChartStat('MAIOR', _highest(byCount, _whole)),
+          ChartStat('MENOR', _lowest(byCount, _whole)),
         ],
       ),
       BarRankChart(
@@ -374,8 +307,8 @@ class _GraficsScreenState extends State<GraficsScreen> {
         emptyMessage: 'Nenhuma rota no período.',
         stats: [
           ChartStat('TOTAL', _whole(totalFailures)),
-          ChartStat('MAIOR', _whole(failures.first.value)),
-          ChartStat('MENOR', _whole(failures.last.value)),
+          ChartStat('MAIOR', _highest(failures, _whole)),
+          ChartStat('MENOR', _lowest(failures, _whole)),
         ],
       ),
       BarRankChart(
@@ -390,11 +323,8 @@ class _GraficsScreenState extends State<GraficsScreen> {
             'Sem pacotes não há como calcular o índice.',
         stats: [
           ChartStat('GERAL', overallRate == null ? '—' : _percent(overallRate)),
-          ChartStat(
-            'MAIOR',
-            rates.isEmpty ? '—' : _percent(rates.first.value),
-          ),
-          ChartStat('MENOR', rates.isEmpty ? '—' : _percent(rates.last.value)),
+          ChartStat('MAIOR', _highest(rates, _percent)),
+          ChartStat('MENOR', _lowest(rates, _percent)),
         ],
       ),
     ];
@@ -417,10 +347,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
         stats: [
           ChartStat('BAIRROS', '${rodados.length}'),
           ChartStat('PASSAGENS', _whole(_sum(rodados))),
-          ChartStat(
-            'MAIOR',
-            rodados.isEmpty ? '—' : _whole(rodados.first.value),
-          ),
+          ChartStat('MAIOR', _highest(rodados, _whole)),
         ],
       ),
       BarRankChart(
@@ -432,10 +359,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
         stats: [
           ChartStat('BAIRROS', '${failures.length}'),
           ChartStat('TOTAL', _oneDecimal(_sum(failures))),
-          ChartStat(
-            'MAIOR',
-            failures.isEmpty ? '—' : _oneDecimal(failures.first.value),
-          ),
+          ChartStat('MAIOR', _highest(failures, _oneDecimal)),
         ],
       ),
     ];

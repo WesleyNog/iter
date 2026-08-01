@@ -62,6 +62,15 @@ class CurrencyFormatterHelper {
     return double.tryParse(cleanValue) ?? 0.0;
   }
 
+  /// Como [formatDoubleToMoney], mas zero vira `R$ 0,00` em vez de texto
+  /// vazio.
+  ///
+  /// A versão original devolve `''` para zero porque nasceu para preencher
+  /// campo de formulário, onde vazio é o certo. Em tela de leitura zero é
+  /// resultado legítimo e precisa aparecer.
+  static String formatMoney(double value) =>
+      value == 0 ? 'R\$ 0,00' : formatDoubleToMoney(value);
+
   /// Formata double em texto com moeda
   /// Exemplo: 123.45 -> "R$ 123,45"
   static String formatDoubleToMoney(double value) {

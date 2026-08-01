@@ -42,6 +42,24 @@ Color companyColor(Company company) {
   }
 }
 
+/// Cor do status nos gráficos.
+///
+/// Não é [statusColor]: aquelas foram escolhidas para fundo branco, e o azul do
+/// agendado com o teal do pago somem no gradiente do card. Aqui verde é pago —
+/// dinheiro na conta — e o resto clareia na ordem do ciclo.
+Color statusChartColor(StatusRoute status) {
+  switch (status) {
+    case StatusRoute.agendado:
+      return const Color(0xFF90CAF9);
+    case StatusRoute.andamento:
+      return const Color(0xFFFFCC80);
+    case StatusRoute.concluido:
+      return const Color(0xFFCE93D8);
+    case StatusRoute.pago:
+      return const Color(0xFF69F0AE);
+  }
+}
+
 String statusLabel(StatusRoute status) {
   switch (status) {
     case StatusRoute.agendado:

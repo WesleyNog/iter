@@ -86,6 +86,30 @@ void main() {
       expect(result, hasLength(1));
     });
 
+    test('inPeriod mantém todos os status', () {
+      final routes = [
+        _route(id: 'agendado', status: StatusRoute.agendado),
+        _route(id: 'andamento', status: StatusRoute.andamento),
+        _route(id: 'concluido', status: StatusRoute.concluido),
+        _route(id: 'pago', status: StatusRoute.pago),
+      ];
+
+      final result = inPeriod(routes, start: _start, end: _end);
+
+      expect(result, hasLength(4));
+    });
+
+    test('notRunYet é agendado mais em andamento', () {
+      final routes = [
+        _route(id: 'agendado', status: StatusRoute.agendado),
+        _route(id: 'andamento', status: StatusRoute.andamento),
+        _route(id: 'concluido', status: StatusRoute.concluido),
+        _route(id: 'pago', status: StatusRoute.pago),
+      ];
+
+      expect(notRunYet(routes).map((r) => r.id), ['agendado', 'andamento']);
+    });
+
     test('só concluído e pago entram', () {
       final routes = [
         _route(id: 'agendado', status: StatusRoute.agendado),
@@ -140,12 +164,121 @@ void main() {
       expect(summary.deliveryRate, isNull);
     });
 
+    test('a receber é o concluído; recebido é o pago', () {
+      final summary = summarize([
+        _route(status: StatusRoute.concluido, value: 200),
+        _route(status: StatusRoute.concluido, value: 45),
+        _route(status: StatusRoute.pago, value: 155),
+      ]);
+
+      expect(summary.pending, 245);
+      expect(summary.pendingCount, 2);
+      expect(summary.received, 155);
+      expect(summary.total, 400);
+      expect(summary.receivedRate, closeTo(0.3875, 0.0001));
+    });
+
+    test('agendado e em andamento somam a estimativa', () {
+      final summary = summarize([
+        _route(status: StatusRoute.agendado, value: 100),
+        _route(status: StatusRoute.andamento, value: 80),
+        _route(status: StatusRoute.pago, value: 20),
+      ]);
+
+      expect(summary.upcoming, 180);
+      expect(summary.scheduledCount, 1);
+      expect(summary.runningCount, 1);
+      expect(summary.upcomingCount, 2);
+      expect(summary.total, 200);
+      expect(summary.realizedTotal, 20);
+    });
+
+    test('rota agendada com pacotes não entra na taxa de entrega', () {
+      final summary = summarize([
+        _route(status: StatusRoute.pago, packages: 100),
+        // Pacotes estimados numa rota que ainda não saiu: contá-los faria a
+        // taxa subir sem ninguém ter entregue nada.
+        _route(status: StatusRoute.agendado, packages: 500),
+      ]);
+
+      expect(summary.packages, 100);
+      expect(summary.deliveryRate, 1);
+    });
+
+    test('agendada não derruba a taxa de recebimento', () {
+      final summary = summarize([
+        _route(status: StatusRoute.pago, value: 100),
+        _route(status: StatusRoute.agendado, value: 900),
+      ]);
+
+      // 100% do que aconteceu foi pago; marcar rota na agenda não muda isso.
+      expect(summary.receivedRate, 1);
+    });
+
+    test('tudo pago zera o a receber', () {
+      final summary = summarize([_route(status: StatusRoute.pago, value: 90)]);
+
+      expect(summary.pending, 0);
+      expect(summary.receivedRate, 1);
+    });
+
+    test('sem rota não existe proporção de recebimento', () {
+      expect(summarize([]).receivedRate, isNull);
+    });
+
     test('mais insucessos que pacotes não vira taxa negativa', () {
       final summary = summarize([
         _route(packages: 2, isInsucesso: true, insucessoQnt: 5),
       ]);
 
       expect(summary.deliveryRate, 0);
+    });
+  });
+
+  group('pendingPayment / receivedPayment', () {
+    test('separa o que falta receber do que já entrou', () {
+      final routes = [
+        _route(id: 'a', status: StatusRoute.concluido),
+        _route(id: 'b', status: StatusRoute.pago),
+        _route(id: 'c', status: StatusRoute.concluido),
+      ];
+
+      expect(pendingPayment(routes).map((r) => r.id), ['a', 'c']);
+      expect(receivedPayment(routes).map((r) => r.id), ['b']);
+    });
+
+    test('agendado e em andamento não são "a receber"', () {
+      final routes = [
+        _route(status: StatusRoute.agendado),
+        _route(status: StatusRoute.andamento),
+      ];
+
+      // A rota nem aconteceu; contar o dinheiro dela seria contar com o ovo.
+      expect(pendingPayment(routes), isEmpty);
+    });
+  });
+
+  group('valueByStatus', () {
+    test('vem na ordem do ciclo, não por tamanho', () {
+      final byStatus = valueByStatus([
+        _route(status: StatusRoute.pago, value: 500),
+        _route(status: StatusRoute.agendado, value: 10),
+      ]);
+
+      // A barra do resumo é lida como esteira: agendado → andamento →
+      // concluído → pago, mesmo com o pago sendo o maior.
+      expect(byStatus.map((e) => e.status), StatusRoute.values);
+      expect(byStatus.first.value, 10);
+      expect(byStatus.last.value, 500);
+    });
+
+    test('status sem rota vem zerado', () {
+      final byStatus = valueByStatus([
+        _route(status: StatusRoute.pago, value: 500),
+      ]);
+
+      expect(byStatus.where((e) => e.value > 0), hasLength(1));
+      expect(byStatus, hasLength(4));
     });
   });
 
