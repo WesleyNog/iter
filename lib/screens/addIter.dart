@@ -1,18 +1,25 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:iter/Utils/calendar.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:iter/Utils/currencyFormat.dart';
 import 'package:iter/Utils/bairros.dart';
 import 'package:iter/model/newRouteModal.dart';
+import 'package:iter/services/firebase.dart';
 import 'package:iter/services/openWeather.dart';
 import 'package:iter/Utils/weather.dart';
 import 'package:iter/widget/dataPicker.dart';
+import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/selectAdress.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:math' as math;
 
 class AddIter extends StatefulWidget {
-  const AddIter({super.key});
+  const AddIter({super.key, required this.user});
+
+  final User user;
 
   @override
   State<AddIter> createState() => _AddIterState();
@@ -29,6 +36,8 @@ class _AddIterState extends State<AddIter> {
   WeatherType currentWeatherType = WeatherType.clear;
   String weatherIcon = 'assets/images/SOL.png';
   int insucessoQnt = 1;
+
+  final firestore = FirestoreService.instance;
 
   TextEditingController valueController = TextEditingController();
   TextEditingController kmInicialController = TextEditingController();
@@ -94,12 +103,16 @@ class _AddIterState extends State<AddIter> {
       appBar: AppBar(title: const Text('Nova Rota')),
       body: Padding(
         padding: EdgeInsets.symmetric(horizontal: 20.0, vertical: 20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _companySelector(),
-            Expanded(child: _buildContent()),
-          ],
+        // Sem este Form, `_formKey.currentState` é null e a validação nem roda.
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _companySelector(),
+              Expanded(child: _buildContent()),
+            ],
+          ),
         ),
       ),
     );
@@ -674,29 +687,7 @@ class _AddIterState extends State<AddIter> {
             SizedBox(
               width: double.infinity,
               child: CupertinoButton(
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (BuildContext context) {
-                      return AlertDialog(
-                        title: Text('Rota Salva'),
-                        content: Text('A rota foi salva com sucesso!'),
-                        actions: [
-                          TextButton(
-                            onPressed: () {
-                              // _saveRoute();
-                              // Fecha o diálogo e a tela, voltando ao AuthGate.
-                              Navigator.of(
-                                context,
-                              ).popUntil((route) => route.isFirst);
-                            },
-                            child: Text('OK'),
-                          ),
-                        ],
-                      );
-                    },
-                  );
-                },
+                onPressed: () => _saveRoute(),
                 child: Text(
                   '${_getButtonName(status)} Rota',
                   style: TextStyle(fontSize: 16, color: Colors.white),
@@ -718,9 +709,20 @@ class _AddIterState extends State<AddIter> {
     );
   }
 
-  void _saveRoute() {
-    if (!_formKey.currentState!.validate()) {
-      final newRoute = NewRouteModal(
+  Future<void> _saveRoute() async {
+    // `currentState` continua podendo ser null se o Form sair da árvore.
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      showNotification(
+        context: context,
+        type: 'error',
+        msg: 'Por favor, preencha todos os campos obrigatórios.',
+      );
+      return;
+    }
+
+    final String now = DateTime.now().toIso8601String();
+
+    final newRoute = NewRouteModal(
         id: Uuid().v4(),
         company: Company.values[selectedCompanyIndex],
         dateRoute:
@@ -743,11 +745,38 @@ class _AddIterState extends State<AddIter> {
         hoursFinal: hrFimController.text,
         isInsucesso: isInsucessoSelected,
         insucessoQnt: isInsucessoSelected ? insucessoQnt : null,
+        createdAt: now,
       );
 
-      // Salva a nova rota no banco de dados
-      // DatabaseHelper.instance.insertRoute(newRoute);
-      return;
+    EasyLoading.show(status: 'Salvando rota...').ignore();
+
+    try {
+      await firestore
+          .collection('iter')
+          .doc(widget.user.uid)
+          .collection('routes')
+          .doc(newRoute.id)
+          .set(newRoute.toMap());
+
+      if (!mounted) return;
+      showNotification(
+        context: context,
+        type: 'success',
+        msg: 'Rota salva com sucesso!',
+      );
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } catch (e) {
+      debugPrint('Erro ao salvar rota: $e');
+      if (!mounted) return;
+      showNotification(
+        context: context,
+        type: 'error',
+        msg: kDebugMode
+            ? 'Falha ao salvar: $e'
+            : 'Não foi possível salvar a rota. Tente novamente.',
+      );
+    } finally {
+      await EasyLoading.dismiss();
     }
   }
 }

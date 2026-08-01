@@ -152,12 +152,14 @@ class _HomeScreenState extends State<HomeScreen> {
           icon: Icons.add_rounded,
           iconColor: Colors.green,
           tooltip: "Criar",
-          onTap: () => Navigator.of(context).pushNamed('/addIter'),
+          onTap: () => Navigator.of(
+            context,
+          ).pushNamed('/addIter', arguments: widget.user),
         ),
         items: [
           const GlassNavItem(icon: Icons.bar_chart, label: "Gráfico"),
-          const GlassNavItem(icon: Icons.receipt_long, label: "OS"),
-          const GlassNavItem(icon: Icons.history, label: "Histórico"),
+          const GlassNavItem(icon: Icons.receipt_long, label: "Lista"),
+          const GlassNavItem(icon: Icons.comment_outlined, label: "Social"),
         ],
         onTap: (index) {
           setState(() {

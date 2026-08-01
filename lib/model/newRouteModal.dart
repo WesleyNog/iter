@@ -19,6 +19,7 @@ class NewRouteModal {
   final String? hoursFinal;
   final bool? isInsucesso;
   final int? insucessoQnt;
+  final String createdAt;
 
   NewRouteModal({
     required this.id,
@@ -37,6 +38,7 @@ class NewRouteModal {
     this.hoursFinal,
     this.isInsucesso,
     this.insucessoQnt,
+    required this.createdAt,
   });
 
   NewRouteModal.fromMap(Map<String, dynamic> map)
@@ -61,7 +63,8 @@ class NewRouteModal {
       hoursInitial = map['hoursInitial'],
       hoursFinal = map['hoursFinal'],
       isInsucesso = map['isInsucesso'],
-      insucessoQnt = map['insucessoQnt'];
+      insucessoQnt = map['insucessoQnt'],
+      createdAt = map['createdAt'];
 
   Map<String, dynamic> toMap() => {
     'id': id,
@@ -80,5 +83,6 @@ class NewRouteModal {
     'hoursFinal': hoursFinal,
     'isInsucesso': isInsucesso,
     'insucessoQnt': insucessoQnt,
+    'createdAt': createdAt,
   };
 }

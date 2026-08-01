@@ -8,6 +8,11 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // Rotas de cada usuário: iter/{uid}/routes/{routeId}.
+    match /iter/{userId}/routes/{routeId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Reserva de apelidos: o apelido é o ID do documento, então a unicidade
     // é garantida pelo Firestore. `create` só passa quando o documento ainda
     // não existe — é isso que impede dois usuários de pegarem o mesmo.

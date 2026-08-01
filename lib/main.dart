@@ -36,7 +36,12 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
       home: const AuthGate(),
-      routes: {'/addIter': (context) => const AddIter()},
+      routes: {
+        '/addIter': (context) {
+          final user = ModalRoute.of(context)!.settings.arguments as User;
+          return AddIter(user: user);
+        },
+      },
       // Obrigatório: instala o overlay usado pelo EasyLoading.
       builder: EasyLoading.init(),
     );
