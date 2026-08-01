@@ -1,3 +1,5 @@
+import 'package:iter/Utils/routeTime.dart';
+
 enum Company { mercadolivre, amazon, shopee }
 
 enum StatusRoute { agendado, andamento, concluido, pago }
@@ -15,8 +17,13 @@ class NewRouteModal {
   final int? packages;
   final int? stops;
   final List<String>? adress;
-  final String? hoursInitial;
-  final String? hoursFinal;
+  /// Início da rota com data e hora. Obrigatório: a rota já é agendada
+  /// sabendo a que horas começa.
+  final DateTime startAt;
+
+  /// Fim da rota. Só se sabe ao terminar, então é opcional. Quando a rota
+  /// vira o dia, já vem com a data do dia seguinte (ver [RouteTime.resolveEnd]).
+  final DateTime? endAt;
   final bool? isInsucesso;
   final int? insucessoQnt;
   final String createdAt;
@@ -34,8 +41,8 @@ class NewRouteModal {
     this.packages,
     this.stops,
     this.adress,
-    this.hoursInitial,
-    this.hoursFinal,
+    required this.startAt,
+    this.endAt,
     this.isInsucesso,
     this.insucessoQnt,
     required this.createdAt,
@@ -60,8 +67,8 @@ class NewRouteModal {
       adress = (map['adress'] as List<dynamic>?)
           ?.map((e) => e as String)
           .toList(),
-      hoursInitial = map['hoursInitial'],
-      hoursFinal = map['hoursFinal'],
+      startAt = _readStart(map),
+      endAt = _readEnd(map),
       isInsucesso = map['isInsucesso'],
       insucessoQnt = map['insucessoQnt'],
       createdAt = map['createdAt'];
@@ -79,10 +86,32 @@ class NewRouteModal {
     'packages': packages,
     'stops': stops,
     'adress': adress,
-    'hoursInitial': hoursInitial,
-    'hoursFinal': hoursFinal,
+    'startAt': startAt.toIso8601String(),
+    'endAt': endAt?.toIso8601String(),
     'isInsucesso': isInsucesso,
     'insucessoQnt': insucessoQnt,
     'createdAt': createdAt,
   };
+
+  /// Documentos gravados antes de `startAt` existir têm `dateRoute` e
+  /// `hoursInitial`; sem nada legível, cai na data de cadastro para a rota
+  /// não sumir da lista.
+  static DateTime _readStart(Map<String, dynamic> map) {
+    final direct = DateTime.tryParse(map['startAt'] ?? '');
+    if (direct != null) return direct;
+
+    final date = RouteTime.parseDate(map['dateRoute'] ?? '');
+    if (date != null) {
+      return RouteTime.combine(date, map['hoursInitial'] ?? '') ?? date;
+    }
+
+    return DateTime.tryParse(map['createdAt'] ?? '') ?? DateTime(1970);
+  }
+
+  static DateTime? _readEnd(Map<String, dynamic> map) {
+    final direct = DateTime.tryParse(map['endAt'] ?? '');
+    if (direct != null) return direct;
+
+    return RouteTime.resolveEnd(_readStart(map), map['hoursFinal']);
+  }
 }

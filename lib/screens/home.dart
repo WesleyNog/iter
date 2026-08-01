@@ -24,7 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
 
   final _grafics = GraficsScreen();
-  late final _listIter = ListIterScreen();
+  late final _listIter = ListIterScreen(user: widget.user);
   final _social = SocialScreen();
 
   /// Criado uma única vez: montar o stream dentro do build reinscreveria no

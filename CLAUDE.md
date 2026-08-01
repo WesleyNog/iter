@@ -72,6 +72,18 @@ Sign-in reserves a generated nickname in the same batch that creates the user do
 
 Nicknames are app-generated and there is deliberately no UI to change one — `NicknameController.change()` exists for when that arrives, and stamps `user/{uid}.nickNameChangedAt` so a future cooldown or paid gate has data to read (absent = never changed). If that change ever becomes paid or rate-limited, enforcement has to move out of the client: rules today let the owner delete and re-create their own claim, which is enough while nothing gates it, but a client can never be trusted to charge itself.
 
+## Route list ordering
+
+`NewRouteModal.dateRoute` is a `dd/MM/yyyy` **string**, so a Firestore `orderBy('dateRoute')` sorts it as text and puts `02/01/2026` before `31/12/2025`. `RouteController.watchAll()` therefore reads `iter/{uid}/routes` unordered and sorts in memory: `sortByDate` ranks by **distance from today** (nearest first, in either direction), preferring the future on a tie, `createdAt` as final tiebreak, unparseable dates last. It takes an optional `reference` date so tests do not depend on the clock. No Firestore index can express this ordering — it changes every day. That means the whole collection is downloaded; adding pagination later requires writing a sortable ISO field on save and backfilling existing documents. See `docs/specs/lista-iter.md`.
+
+## Create and edit share one form
+
+`AddIter` is both the create and the edit screen: pass an existing `route` and it prefills the controllers in `initState` and saves with the **same id**, so `RouteController.save()`'s `set` replaces the document instead of adding one. `createdAt` is carried over from the original. The list opens it with `Navigator.push(MaterialPageRoute(...))` rather than the `/addIter` named route, because that route's `settings.arguments` carries a single untyped `Object?` and editing needs both the user and the route.
+
+## Route times
+
+`NewRouteModal.startAt` is a required `DateTime` (ISO in Firestore) and `endAt` an optional one — a route is scheduled knowing when it starts, but the end is only known once it is over. `RouteTime.resolveEnd()` rolls the end to the next day when it is not after the start, so a 22:00→02:00 route has a real 4h duration instead of a negative one; never rebuild an end time without it. `fromMap` reconstructs both from the older `dateRoute` + `hoursInitial`/`hoursFinal` fields when `startAt` is absent, so pre-existing documents keep loading.
+
 ## Model serialization
 
 `NewRouteModal` stores its `Company` and `StatusRoute` enums as bare strings (`company.toString().split('.').last`) and rebuilds them by matching `'Company.${map['company']}'`. Renaming an enum value breaks stored documents; change both directions together.

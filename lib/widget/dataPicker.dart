@@ -1,5 +1,36 @@
 import 'package:flutter/cupertino.dart';
 
+/// Seletor de hora e minuto, no mesmo formato do seletor de data.
+///
+/// [initialTime] é só o ponto de partida da roleta — a data em si é ignorada,
+/// interessa apenas hora e minuto.
+void showCupertinoTimePicker(
+  BuildContext context,
+  DateTime initialTime,
+  Function(DateTime) onTimeChanged,
+) {
+  showCupertinoModalPopup<void>(
+    context: context,
+    builder: (BuildContext context) => Container(
+      height: 250,
+      padding: const EdgeInsets.only(top: 6.0),
+      margin: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      color: CupertinoColors.systemBackground.resolveFrom(context),
+      child: SafeArea(
+        top: false,
+        child: CupertinoDatePicker(
+          initialDateTime: initialTime,
+          mode: CupertinoDatePickerMode.time,
+          use24hFormat: true,
+          onDateTimeChanged: (DateTime newTime) {
+            onTimeChanged(newTime);
+          },
+        ),
+      ),
+    ),
+  );
+}
+
 void showCupertinoDatePicker(
   BuildContext context,
   DateTime selectedDate,

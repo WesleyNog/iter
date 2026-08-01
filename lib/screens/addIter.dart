@@ -5,7 +5,9 @@ import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:iter/Utils/calendar.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:iter/Utils/currencyFormat.dart';
+import 'package:iter/Utils/routeTime.dart';
 import 'package:iter/Utils/bairros.dart';
+import 'package:iter/controller/routeController.dart';
 import 'package:iter/model/newRouteModal.dart';
 import 'package:iter/services/firebase.dart';
 import 'package:iter/services/openWeather.dart';
@@ -17,9 +19,14 @@ import 'package:uuid/uuid.dart';
 import 'dart:math' as math;
 
 class AddIter extends StatefulWidget {
-  const AddIter({super.key, required this.user});
+  const AddIter({super.key, required this.user, this.route});
 
   final User user;
+
+  /// Rota existente = modo edição. `null` = cadastro novo.
+  final NewRouteModal? route;
+
+  bool get isEditing => route != null;
 
   @override
   State<AddIter> createState() => _AddIterState();
@@ -51,6 +58,30 @@ class _AddIterState extends State<AddIter> {
   initState() {
     super.initState();
     _loadWeatherIcon();
+    if (widget.isEditing) _fillFromRoute(widget.route!);
+  }
+
+  /// Reidrata o formulário com a rota que está sendo editada.
+  void _fillFromRoute(NewRouteModal route) {
+    selectedCompanyIndex = Company.values.indexOf(route.company);
+    status = route.status.name;
+    selectedDate = route.startAt;
+    selectedBairros = [...?route.adress];
+    isInsucessoSelected = route.isInsucesso ?? false;
+    insucessoQnt = route.insucessoQnt ?? 1;
+
+    // O campo espera o texto já formatado, igual ao que o formatador produz.
+    valueController.text = CurrencyFormatterHelper.formatDoubleToMoney(
+      route.value,
+    );
+    kmInicialController.text = route.kmInitial?.toString() ?? '';
+    kmFinalController.text = route.kmFinal?.toString() ?? '';
+    pctInicialController.text = route.packages?.toString() ?? '';
+    pctFinalController.text = route.stops?.toString() ?? '';
+    hrInicioController.text = RouteTime.formatTime(route.startAt);
+    hrFimController.text = route.endAt == null
+        ? ''
+        : RouteTime.formatTime(route.endAt!);
   }
 
   void _loadWeatherIcon() async {
@@ -82,6 +113,45 @@ class _AddIterState extends State<AddIter> {
     }
   }
 
+  /// Campo de hora: abre a roleta do Cupertino e nunca o teclado, então só
+  /// entra valor no formato `HH:mm`.
+  ///
+  /// Início é obrigatório — a rota é agendada já sabendo a que horas começa.
+  /// Fim é opcional, porque só se sabe ao terminar.
+  Widget _timeField({required bool isStart}) {
+    final controller = isStart ? hrInicioController : hrFimController;
+    final label = isStart ? 'Hr Início' : 'Hr Fim';
+
+    return TextFormField(
+      controller: controller,
+      readOnly: true,
+      showCursor: false,
+      onTap: () => _pickTime(isStart: isStart),
+      decoration: InputDecoration(
+        labelText: isStart ? '$label *' : label,
+        prefixIcon: Icon(Icons.access_time, color: Colors.amber.shade300),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(50)),
+      ),
+      validator: (value) => isStart && (value == null || value.isEmpty)
+          ? 'Informe a hora de início'
+          : null,
+    );
+  }
+
+  void _pickTime({required bool isStart}) {
+    final controller = isStart ? hrInicioController : hrFimController;
+    final current = RouteTime.combine(selectedDate, controller.text);
+    final initial = current ?? DateTime.now();
+
+    // Grava já o valor inicial: fechar a roleta sem girar deixaria o campo
+    // vazio mesmo com uma hora aparecendo na tela.
+    setState(() => controller.text = RouteTime.formatTime(initial));
+
+    showCupertinoTimePicker(context, initial, (time) {
+      setState(() => controller.text = RouteTime.formatTime(time));
+    });
+  }
+
   String _getButtonName(String statusValue) {
     switch (statusValue) {
       case 'agendado':
@@ -100,7 +170,9 @@ class _AddIterState extends State<AddIter> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Nova Rota')),
+      appBar: AppBar(
+        title: Text(widget.isEditing ? 'Editar Rota' : 'Nova Rota'),
+      ),
       body: Padding(
         padding: EdgeInsets.symmetric(horizontal: 20.0, vertical: 20.0),
         // Sem este Form, `_formKey.currentState` é null e a validação nem roda.
@@ -365,6 +437,14 @@ class _AddIterState extends State<AddIter> {
                 ),
               ],
             ),
+            SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(child: _timeField(isStart: true)),
+                const SizedBox(width: 10),
+                Expanded(child: _timeField(isStart: false)),
+              ],
+            ),
             SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -543,49 +623,6 @@ class _AddIterState extends State<AddIter> {
                     SizedBox(height: 10),
                     Row(
                       children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: hrInicioController,
-                            decoration: InputDecoration(
-                              labelText: 'Hr Início',
-                              prefixIcon: Icon(
-                                Icons.access_time,
-                                color: Colors.amber.shade100,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(50),
-                              ),
-                            ),
-                          ),
-                        ),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: TextFormField(
-                            controller: hrFimController,
-                            decoration: InputDecoration(
-                              labelText: 'Hr Fim',
-                              prefixIcon: Icon(
-                                Icons.access_time,
-                                color: Colors.amber.shade100,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(50),
-                              ),
-                            ),
-                            validator: (value) {
-                              if ((value == null || value.isEmpty) &&
-                                  hrInicioController.text.isNotEmpty) {
-                                return 'Por favor, insira a Hr Fim';
-                              }
-                              return null;
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 10),
-                    Row(
-                      children: [
                         CupertinoSwitch(
                           value: isInsucessoSelected,
                           onChanged: (bool value) {
@@ -689,7 +726,9 @@ class _AddIterState extends State<AddIter> {
               child: CupertinoButton(
                 onPressed: () => _saveRoute(),
                 child: Text(
-                  '${_getButtonName(status)} Rota',
+                  widget.isEditing
+                      ? 'Salvar alterações'
+                      : '${_getButtonName(status)} Rota',
                   style: TextStyle(fontSize: 16, color: Colors.white),
                 ),
                 color: status == "agendado"
@@ -723,7 +762,8 @@ class _AddIterState extends State<AddIter> {
     final String now = DateTime.now().toIso8601String();
 
     final newRoute = NewRouteModal(
-        id: Uuid().v4(),
+        // Mesmo id = o `set` substitui o documento em vez de criar outro.
+        id: widget.route?.id ?? Uuid().v4(),
         company: Company.values[selectedCompanyIndex],
         dateRoute:
             '${selectedDate.day.toString().padLeft(2, '0')}/${selectedDate.month.toString().padLeft(2, '0')}/${selectedDate.year}',
@@ -731,8 +771,9 @@ class _AddIterState extends State<AddIter> {
         status: StatusRoute.values.firstWhere(
           (e) => e.toString() == 'StatusRoute.$status',
         ),
-        value:
-            double.tryParse(valueController.text.replaceAll(',', '.')) ?? 0.0,
+        // O campo é formatado como moeda ("R$ 1.234,56"), então precisa do
+        // parse que remove o símbolo e o separador de milhar.
+        value: CurrencyFormatterHelper.parseMoneyToDouble(valueController.text),
         kmInitial:
             double.tryParse(kmInicialController.text.replaceAll(',', '.')) ??
             0.0,
@@ -741,28 +782,34 @@ class _AddIterState extends State<AddIter> {
         packages: int.tryParse(pctInicialController.text),
         stops: int.tryParse(pctFinalController.text),
         adress: selectedBairros,
-        hoursInitial: hrInicioController.text,
-        hoursFinal: hrFimController.text,
+        // O validator já garante a hora de início; o `??` só existe porque o
+        // tipo é nullable.
+        startAt:
+            RouteTime.combine(selectedDate, hrInicioController.text) ??
+            selectedDate,
+        // Fim antes do início significa rota que virou o dia.
+        endAt: RouteTime.resolveEnd(
+          RouteTime.combine(selectedDate, hrInicioController.text) ??
+              selectedDate,
+          hrFimController.text,
+        ),
         isInsucesso: isInsucessoSelected,
         insucessoQnt: isInsucessoSelected ? insucessoQnt : null,
-        createdAt: now,
+        createdAt: widget.route?.createdAt ?? now,
       );
 
     EasyLoading.show(status: 'Salvando rota...').ignore();
 
     try {
-      await firestore
-          .collection('iter')
-          .doc(widget.user.uid)
-          .collection('routes')
-          .doc(newRoute.id)
-          .set(newRoute.toMap());
+      await RouteController.save(widget.user.uid, newRoute);
 
       if (!mounted) return;
       showNotification(
         context: context,
         type: 'success',
-        msg: 'Rota salva com sucesso!',
+        msg: widget.isEditing
+            ? 'Rota atualizada com sucesso!'
+            : 'Rota salva com sucesso!',
       );
       Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {

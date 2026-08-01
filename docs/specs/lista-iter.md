@@ -1,6 +1,7 @@
 # Spec: Tela Lista Iter
 
-Status: **aguardando aprovação** · Criada em 2026-08-01
+Status: **implementada** · Criada em 2026-08-01 · Falta verificar no simulador
+(depende do deploy das regras)
 
 ## Objetivo
 
@@ -119,12 +120,15 @@ retorno.
 
 ## Decisões
 
-**1. Ordenação no cliente.** `dateRoute` é string `dd/MM/yyyy`, e
-`orderBy('dateRoute')` no Firestore compararia texto — `02/01/2026` viria antes
-de `31/12/2025`, porque o dia é comparado primeiro. Então o `RouteController`
-converte para `DateTime` e ordena em memória, mais recente primeiro, com
-`createdAt` como desempate. Data inválida vai para o fim da lista em vez de
-lançar exceção.
+**1. Ordenação no cliente, por proximidade com hoje.** A rota mais perto da
+data atual primeiro, indo para as mais distantes — nos dois sentidos. Empate de
+distância (ontem x amanhã) fica com a do futuro; mesma data desempata por
+`createdAt`; data ilegível vai para o fim em vez de lançar exceção.
+
+Ordenar no cliente é obrigatório aqui por dois motivos: `dateRoute` é string
+`dd/MM/yyyy`, e `orderBy` compararia texto colocando `02/01/2026` antes de
+`31/12/2025`; e "mais perto de hoje" muda todo dia, então nenhum índice do
+Firestore expressa esse critério.
 
 Dívida assumida: isso exige baixar a coleção inteira. Quando o volume pedir
 paginação, a saída é gravar `dateRouteIso` no `addIter` e ordenar no servidor —
@@ -134,6 +138,20 @@ o que também exige preencher os documentos já existentes.
 gravado e não cabe no resumo: KM rodado, pacotes, paradas, bairros, horários,
 insucesso e clima. Um card aberto por vez. Não há tela de detalhe.
 
+**3. Filtro por empresa** (adicionado depois da primeira entrega). Controle
+segmentado acima da lista: "todas" (padrão) + uma opção por `Company`. Fica
+**fora** do `StreamBuilder`, para continuar visível durante carregamento, vazio
+e erro. Filtra em memória a lista que já veio do stream — nenhuma consulta nova
+ao Firestore. Quando existem rotas mas nenhuma da empresa escolhida, a mensagem
+é diferente da de lista vazia.
+
+**4. Editar e excluir** (adicionado depois da primeira entrega). Deslizar o
+card da direita para a esquerda revela as duas ações (`flutter_slidable` —
+o `Dismissible` nativo é swipe-para-remover, não serve para revelar ações).
+Excluir pede confirmação em diálogo. Editar reaproveita o formulário do
+cadastro: `AddIter` recebe uma `route` opcional, preenche os campos e grava com
+o **mesmo id**, então o `set` substitui o documento em vez de criar outro.
+
 ## Fora de escopo
 
-Filtro por status, separador por mês, paginação, edição e exclusão de rota.
+Filtro por status, separador por mês e paginação.
