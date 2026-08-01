@@ -2,6 +2,10 @@ class Users {
   final String id;
   final String name;
   String? nickName;
+
+  /// Quando o apelido foi trocado pela última vez. `null` = nunca trocou,
+  /// ainda é o gerado no primeiro login.
+  String? nickNameChangedAt;
   final String? birthDate;
   final String? cpf;
   final String email;
@@ -15,6 +19,7 @@ class Users {
     required this.name,
     required this.email,
     this.nickName,
+    this.nickNameChangedAt,
     this.birthDate,
     this.cpf,
     this.phone,
@@ -28,6 +33,7 @@ class Users {
       'id': id,
       'name': name,
       'nickName': nickName,
+      'nickNameChangedAt': nickNameChangedAt,
       'birthDate': birthDate,
       'cpf': cpf,
       'email': email,
@@ -43,6 +49,7 @@ class Users {
       id: map['id'] ?? '',
       name: map['name'] ?? '',
       nickName: map['nickName'],
+      nickNameChangedAt: map['nickNameChangedAt'],
       birthDate: map['birthDate'],
       cpf: map['cpf'],
       email: map['email'] ?? '',

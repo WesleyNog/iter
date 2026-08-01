@@ -28,13 +28,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // Usuário fechou a janela do Google: não é erro, só volta pra tela.
       if (userCredential == null) return;
-
-      // Não navega: o AuthGate troca para a Home ao receber o novo estado.
-      showNotification(
-        context: context,
-        type: 'success',
-        msg: 'Login realizado com sucesso!',
-      );
     } catch (e) {
       debugPrint('Erro no login com Google: $e');
       if (!mounted) return;

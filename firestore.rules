@@ -7,5 +7,28 @@ service cloud.firestore {
     match /user/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
+
+    // Reserva de apelidos: o apelido é o ID do documento, então a unicidade
+    // é garantida pelo Firestore. `create` só passa quando o documento ainda
+    // não existe — é isso que impede dois usuários de pegarem o mesmo.
+    match /nicknames/{nickname} {
+      // Leitura liberada para autenticados: checar disponibilidade e resolver
+      // @apelido -> uid sem expor os documentos de perfil.
+      allow read: if request.auth != null;
+
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid
+                    && nickname.matches('^[a-z0-9._-]{3,20}$');
+
+      // Sem `update`: trocar de dono exige delete + create, senão alguém
+      // poderia sobrescrever a reserva de outra pessoa.
+      //
+      // `resource == null` cobre apagar reserva inexistente (usuário criado
+      // antes desta coleção): sem isso, `resource.data` quebraria a regra e
+      // derrubaria o batch inteiro da troca de apelido.
+      allow delete: if request.auth != null
+                    && (resource == null
+                        || resource.data.uid == request.auth.uid);
+    }
   }
 }

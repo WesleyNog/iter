@@ -31,6 +31,7 @@ lib/
   screens/               full pages (login, home, addIter, listIter)
   widget/                reusable UI helpers exposed as top-level functions
   services/              Firebase + external API access
+  controller/            per-collection Firestore read/write (UserController)
   model/                 plain data classes with toMap/fromMap
   Utils/                 pure helpers (note the capital U — imports are 'package:iter/Utils/...')
 ```
@@ -45,6 +46,10 @@ State is plain `setState` in `StatefulWidget`s — there is no state-management 
 
 `AuthGate` in `main.dart` is the app's `home`: it listens to `authStateChanges()` and swaps between `LoginScreen` and `HomeScreen`, so the session persists across launches. Neither screen navigates after sign-in/sign-out — the gate does it. Keep it that way: it lives on the first route, so anything that removes the first route (`pushNamedAndRemoveUntil('/home', (r) => false)`) would drop the gate and break sign-out. `AddIter` returns with `popUntil((route) => route.isFirst)` for that reason.
 
+The gate passes its `User` to `HomeScreen` as a required constructor argument, so that screen can never be built without one. Read profile fields from `widget.user` there instead of reaching for `FirebaseAuth.instance.currentUser`.
+
+Auth data (`displayName`, `email`, `photoURL`) comes from that `User`; everything else about the profile (`nickName`, `cpf`, `birthDate`) lives in Firestore and is read through `UserController.watch(uid)`, which yields `null` while the document does not exist. Build such streams once in `initState`/a field initializer — creating one inside `build` resubscribes on every rebuild. There is no state-management package: screens consume the stream with `StreamBuilder` and fall back to the auth data while it loads.
+
 `FirestoreService.instance` (`lib/services/firebase.dart`) is the single accessor for Firestore; go through it instead of `FirebaseFirestore.instance`.
 
 `GoogleSignInService` (`lib/services/authService.dart`) is an all-static class using the google_sign_in 7.x flow (`initialize` → `authenticate` → Firebase credential from the idToken). On first sign-in it creates the `user/{uid}` document from the `Users` model. `signInWithGoogle()` returns `null` when the user cancels; anything else throws.
@@ -54,6 +59,18 @@ State is plain `setState` in `StatefulWidget`s — there is no state-management 
 `firebase_options.dart` only configures Android and iOS — macOS, Windows, Linux and web throw `UnsupportedError`, even though those platform folders exist.
 
 The app id is `com.mna.iter` on every platform. On iOS, `ios/Runner/Info.plist` declares a `CFBundleURLTypes` scheme that must stay identical to `REVERSED_CLIENT_ID` in `GoogleService-Info.plist`; re-registering the iOS app in Firebase changes that value and the plist has to be updated by hand.
+
+## Nickname uniqueness
+
+Nicknames are unique, and that is enforced by the *shape* of the data, not by application code: `nicknames/{nickname}` holds `{uid}` with the nickname as the **document ID**. Security rules allow `create` and `delete` there but never `update`, and Firestore only lets `create` succeed when the document does not exist — so two clients cannot claim the same handle, with no read-then-write race.
+
+This is why a `where('nickName', '==', x)` query on `user` is not an option: security rules cannot run queries (only `get()`/`exists()` on a known path), so uniqueness would be unenforceable, and checking availability would require read access to other people's profile documents.
+
+`NicknameController.change()` does the swap in one `WriteBatch` (create new claim + delete old + update `user/{uid}.nickName`) so a rejected claim leaves nothing behind. Nicknames are normalized (lowercase, accents stripped, `^[a-z0-9._-]{3,20}$`) and the same regex is duplicated in `firestore.rules` — change both together. `user/{uid}.nickName` is a deliberate denormalized copy for display.
+
+Sign-in reserves a generated nickname in the same batch that creates the user document, retrying with a new random suffix when the claim is denied.
+
+Nicknames are app-generated and there is deliberately no UI to change one — `NicknameController.change()` exists for when that arrives, and stamps `user/{uid}.nickNameChangedAt` so a future cooldown or paid gate has data to read (absent = never changed). If that change ever becomes paid or rate-limited, enforcement has to move out of the client: rules today let the owner delete and re-create their own claim, which is enough while nothing gates it, but a client can never be trusted to charge itself.
 
 ## Model serialization
 

@@ -1,9 +1,9 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:iter/controller/nicknameController.dart';
 import 'package:iter/model/users.dart';
 import 'package:iter/services/firebase.dart';
-import 'package:uuid/uuid.dart';
 
 // Google Sign-In Service Class
 class GoogleSignInService {
@@ -33,7 +33,6 @@ class GoogleSignInService {
     try {
       final GoogleSignInAccount googleUser = await _googleSignIn.authenticate();
       final String? idToken = googleUser.authentication.idToken;
-      print(googleUser);
 
       if (idToken == null) {
         throw FirebaseAuthException(
@@ -61,21 +60,16 @@ class GoogleSignInService {
     }
   }
 
-  // Cria o documento user/{uid} no primeiro login
+  // Cria o documento user/{uid} e reserva o apelido no primeiro login
   static Future<void> _createUserIfNeeded(User user) async {
     final doc = firestore.collection('user').doc(user.uid);
     final register = await doc.get();
-    final name = user.displayName ?? '';
-    final nickname = name.contains(' ')
-        ? '${name.substring(0, name.indexOf(' '))}-${Uuid().v4().substring(0, 4)}'
-        : name;
     if (register.exists) return;
 
     final String now = DateTime.now().toIso8601String();
     final newUser = Users(
       id: user.uid,
-      name: name,
-      nickName: nickname,
+      name: user.displayName ?? '',
       email: user.email ?? '',
       phone: user.phoneNumber ?? '',
       birthDate: '',
@@ -85,7 +79,37 @@ class GoogleSignInService {
       updatedAt: now,
     );
 
-    await doc.set(newUser.toMap());
+    // O apelido sugerido pode já estar reservado. Nesse caso o `create` da
+    // reserva é negado pelas regras, o batch inteiro é desfeito e sorteamos
+    // outro sufixo — o documento do usuário nunca fica sem apelido.
+    for (var attempt = 0; attempt < 5; attempt++) {
+      final nickname = NicknameController.suggestFrom(
+        displayName: user.displayName,
+        email: user.email,
+      );
+      newUser.nickName = nickname;
+
+      final batch = firestore.batch();
+      batch.set(doc, newUser.toMap());
+      batch.set(
+        NicknameController.docFor(nickname),
+        NicknameController.claimData(user.uid),
+      );
+
+      try {
+        await batch.commit();
+        return;
+      } on FirebaseException catch (e) {
+        if (e.code != 'permission-denied') rethrow;
+        debugPrint('Apelido "$nickname" indisponível, sorteando outro.');
+      }
+    }
+
+    throw FirebaseException(
+      plugin: 'cloud_firestore',
+      code: 'nickname-unavailable',
+      message: 'Não foi possível reservar um apelido para este usuário.',
+    );
   }
 
   // Sign out
