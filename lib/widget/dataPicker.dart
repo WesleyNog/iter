@@ -31,11 +31,18 @@ void showCupertinoTimePicker(
   );
 }
 
+/// [minimumDate] e [maximumDate] travam a roleta no intervalo permitido.
+///
+/// É o jeito de impedir uma escolha inválida em vez de avisar depois dela: o
+/// filtro de período usa isso para o fim nunca poder ser anterior ao início.
+/// Ambos são opcionais — quem não passa nada continua com a roleta livre.
 void showCupertinoDatePicker(
   BuildContext context,
   DateTime selectedDate,
-  Function(DateTime) onDateChanged,
-) {
+  Function(DateTime) onDateChanged, {
+  DateTime? minimumDate,
+  DateTime? maximumDate,
+}) {
   showCupertinoModalPopup<void>(
     context: context,
     builder: (BuildContext context) => Container(
@@ -48,6 +55,8 @@ void showCupertinoDatePicker(
         top: false,
         child: CupertinoDatePicker(
           initialDateTime: selectedDate,
+          minimumDate: minimumDate,
+          maximumDate: maximumDate,
           mode: CupertinoDatePickerMode.date,
           use24hFormat: true,
           // Atualiza o estado conforme o usuário gira a roleta

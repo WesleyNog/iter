@@ -27,6 +27,21 @@ String companyLabel(Company company) {
   }
 }
 
+/// Cor da empresa nos gráficos.
+///
+/// Não são as do seletor de `addIter` (âmbar/azul/laranja): ali o fundo é
+/// branco, aqui é o gradiente azul do card, onde o azul da Amazon sumiria.
+Color companyColor(Company company) {
+  switch (company) {
+    case Company.mercadolivre:
+      return const Color(0xFFFFE082);
+    case Company.amazon:
+      return const Color(0xFF84FFFF);
+    case Company.shopee:
+      return const Color(0xFFFF8A80);
+  }
+}
+
 String statusLabel(StatusRoute status) {
   switch (status) {
     case StatusRoute.agendado:
@@ -69,6 +84,21 @@ IconData statusIcon(StatusRoute status) {
 /// `DateTime.weekday` vai de 1 (segunda) a 7 (domingo).
 String weekdayLabel(int weekday) {
   const labels = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+  if (weekday < 1 || weekday > labels.length) return '';
+  return labels[weekday - 1];
+}
+
+/// Nome por extenso, para onde cabe — o tooltip do gráfico de linha.
+String weekdayFullLabel(int weekday) {
+  const labels = [
+    'Segunda',
+    'Terça',
+    'Quarta',
+    'Quinta',
+    'Sexta',
+    'Sábado',
+    'Domingo',
+  ];
   if (weekday < 1 || weekday > labels.length) return '';
   return labels[weekday - 1];
 }

@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:iter/controller/userController.dart';
 import 'package:iter/model/users.dart';
+import 'package:iter/screens/friendsScreen.dart';
 import 'package:iter/screens/graficsScreen.dart';
 import 'package:iter/screens/listIterScreen.dart';
 import 'package:iter/screens/socialScreen.dart';
@@ -23,8 +24,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isSigningOut = false;
   int _currentIndex = 0;
 
-  final _grafics = GraficsScreen();
+  late final _grafics = GraficsScreen(user: widget.user);
   late final _listIter = ListIterScreen(user: widget.user);
+  final _friends = FriendsScreen();
   final _social = SocialScreen();
 
   /// Criado uma única vez: montar o stream dentro do build reinscreveria no
@@ -61,7 +63,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final photoUrl = widget.user.photoURL;
-    final List<Widget> screens = [_grafics, _listIter, _social];
+    final List<Widget> screens = [_grafics, _listIter, _friends, _social];
     final current = _currentIndex.clamp(0, screens.length - 1);
     return Scaffold(
       appBar: AppBar(
@@ -159,6 +161,7 @@ class _HomeScreenState extends State<HomeScreen> {
         items: [
           const GlassNavItem(icon: Icons.bar_chart, label: "Gráfico"),
           const GlassNavItem(icon: Icons.receipt_long, label: "Lista"),
+          const GlassNavItem(icon: Icons.people, label: "Friends"),
           const GlassNavItem(icon: Icons.comment_outlined, label: "Social"),
         ],
         onTap: (index) {

@@ -45,6 +45,7 @@ dependencies:
   cloud_firestore: ^6.7.1
   flutter_easyloading: ^4.0.2
   flutter_slidable: ^4.0.3
+  fl_chart: ^1.2.0
 
 dev_dependencies:
   flutter_test:
