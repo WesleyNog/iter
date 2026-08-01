@@ -2,7 +2,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:iter/controller/userController.dart';
 import 'package:iter/model/users.dart';
+import 'package:iter/screens/graficsScreen.dart';
+import 'package:iter/screens/listIterScreen.dart';
+import 'package:iter/screens/socialScreen.dart';
 import 'package:iter/services/authService.dart';
+import 'package:iter/widget/glassNavBar.dart';
 import 'package:iter/widget/notificationPush.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -17,6 +21,11 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _isSigningOut = false;
+  int _currentIndex = 0;
+
+  final _grafics = GraficsScreen();
+  late final _listIter = ListIterScreen();
+  final _social = SocialScreen();
 
   /// Criado uma única vez: montar o stream dentro do build reinscreveria no
   /// Firestore a cada rebuild.
@@ -52,7 +61,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final photoUrl = widget.user.photoURL;
-
+    final List<Widget> screens = [_grafics, _listIter, _social];
+    final current = _currentIndex.clamp(0, screens.length - 1);
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 16,
@@ -135,13 +145,25 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [const Center(child: Text('This is the Home screen.'))],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.pushNamed(context, '/addIter'),
-        child: const Icon(Icons.add),
+      body: screens[current],
+      bottomNavigationBar: GlassNavBar(
+        currentIndex: current,
+        trailing: GlassCircleButton(
+          icon: Icons.add_rounded,
+          iconColor: Colors.green,
+          tooltip: "Criar",
+          onTap: () => Navigator.of(context).pushNamed('/addIter'),
+        ),
+        items: [
+          const GlassNavItem(icon: Icons.bar_chart, label: "Gráfico"),
+          const GlassNavItem(icon: Icons.receipt_long, label: "OS"),
+          const GlassNavItem(icon: Icons.history, label: "Histórico"),
+        ],
+        onTap: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
       ),
     );
   }
