@@ -1,5 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:iter/Utils/profileStats.dart';
+import 'package:iter/controller/routeController.dart';
 import 'package:iter/controller/userController.dart';
 import 'package:iter/model/users.dart';
 import 'package:iter/screens/friendsScreen.dart';
@@ -9,6 +11,7 @@ import 'package:iter/screens/socialScreen.dart';
 import 'package:iter/services/authService.dart';
 import 'package:iter/widget/glassNavBar.dart';
 import 'package:iter/widget/notificationPush.dart';
+import 'package:iter/widget/profileDialog.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.user});
@@ -41,6 +44,34 @@ class _HomeScreenState extends State<HomeScreen> {
     return email.isNotEmpty ? email.split('@').first : 'Bem-vindo';
   }
 
+  String get _fullName {
+    final name = widget.user.displayName?.trim() ?? '';
+    return name.isEmpty ? _firstName : name;
+  }
+
+  /// Abre o perfil já com nome e foto — que a AppBar tem de graça — e busca só
+  /// as métricas.
+  ///
+  /// `fetchAll` e não `watchAll`: a lista e os gráficos já mantêm um listener
+  /// cada nesta coleção, e um terceiro permanente para um dialog que quase
+  /// nunca abre seria escuta parada consumindo à toa. A leitura única sai do
+  /// cache que os outros dois já preencheram.
+  void _openProfile(String? nickName) {
+    showProfileDialog(
+      context,
+      name: _fullName,
+      nickName: nickName,
+      photoUrl: widget.user.photoURL,
+      stats: RouteController.fetchAll(widget.user.uid).then(profileStats),
+      actionLabel: 'Compartilhar',
+      onAction: () => showNotification(
+        context: context,
+        type: 'info',
+        msg: 'Compartilhar perfil está em desenvolvimento.',
+      ),
+    );
+  }
+
   Future<void> _handleSignOut() async {
     setState(() => _isSigningOut = true);
 
@@ -68,43 +99,56 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 16,
-        title: Row(
-          children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: Colors.blue.shade100,
-              backgroundImage: photoUrl != null && photoUrl.isNotEmpty
-                  ? NetworkImage(photoUrl)
-                  : null,
-              child: photoUrl == null || photoUrl.isEmpty
-                  ? Text(
-                      _firstName.characters.first.toUpperCase(),
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    )
-                  : null,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Olá,',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        // Um StreamBuilder para a linha inteira: o avatar precisa do mesmo
+        // apelido que o texto, para levá-lo ao dialog de perfil.
+        title: StreamBuilder<Users?>(
+          stream: _profile,
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              debugPrint('Erro ao ler o perfil: ${snapshot.error}');
+            }
+
+            final nickName = snapshot.data?.nickName;
+            final hasNickName = nickName != null && nickName.isNotEmpty;
+
+            return Row(
+              children: [
+                InkWell(
+                  onTap: () => _openProfile(nickName),
+                  customBorder: const CircleBorder(),
+                  child: Tooltip(
+                    message: 'Ver perfil',
+                    child: CircleAvatar(
+                      radius: 18,
+                      backgroundColor: Colors.blue.shade100,
+                      backgroundImage: photoUrl != null && photoUrl.isNotEmpty
+                          ? NetworkImage(photoUrl)
+                          : null,
+                      child: photoUrl == null || photoUrl.isEmpty
+                          ? Text(
+                              _firstName.characters.first.toUpperCase(),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            )
+                          : null,
+                    ),
                   ),
-                  StreamBuilder<Users?>(
-                    stream: _profile,
-                    builder: (context, snapshot) {
-                      if (snapshot.hasError) {
-                        debugPrint('Erro ao ler o perfil: ${snapshot.error}');
-                      }
-
-                      final nickName = snapshot.data?.nickName;
-                      final hasNickName =
-                          nickName != null && nickName.isNotEmpty;
-
-                      return Text.rich(
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Olá,',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      Text.rich(
                         TextSpan(
                           children: [
                             TextSpan(text: _firstName),
@@ -125,13 +169,13 @@ class _HomeScreenState extends State<HomeScreen> {
                           fontSize: 17,
                           fontWeight: FontWeight.bold,
                         ),
-                      );
-                    },
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-          ],
+                ),
+              ],
+            );
+          },
         ),
         actions: [
           IconButton(
