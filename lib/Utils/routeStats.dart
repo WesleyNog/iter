@@ -1,3 +1,4 @@
+import 'package:iter/Utils/insucessoBairro.dart';
 import 'package:iter/Utils/routeStyle.dart';
 import 'package:iter/model/newRouteModal.dart';
 
@@ -335,23 +336,67 @@ List<RankEntry> failureRatePerCompany(List<NewRouteModal> routes) {
 List<RankEntry> routesPerBairro(List<NewRouteModal> routes) =>
     _rankBairros(routes, (route, _) => 1);
 
-/// Insucessos por bairro, **rateados** entre os bairros da rota.
+/// Insucessos por bairro.
 ///
-/// O dado de qual bairro falhou não existe: a rota tem vários bairros e um
-/// único `insucessoQnt`. Ratear (3 insucessos em 3 bairros = 1,0 para cada)
-/// mantém o total do ranking igual ao total real e não premia rota com muitos
-/// bairros — ao custo de número fracionado.
+/// Usa a distribuição que o usuário informou (`insucessoPorBairro`) e **rateia
+/// só o que sobrou**. A decisão é por rota:
+///
+/// | A rota tem | Como conta |
+/// |---|---|
+/// | distribuição cobrindo tudo | exato |
+/// | distribuição parcial | exato + rateio do restante |
+/// | nada (documento antigo) | rateio inteiro, como antes |
+///
+/// O rateio não morreu: é o fallback de todo documento gravado antes de existir
+/// distribuição, e de quem só quis detalhar parte. Em qualquer um dos casos a
+/// soma do ranking bate com o total de insucessos.
+///
+/// A distribuição gravada passa por [reconcileDistribution] antes de somar — o
+/// que está no banco pode citar bairro que a rota não tem mais, ou passar do
+/// total, e nenhum dos dois pode virar ranking.
 ///
 /// Diferente de [failuresPerCompany], bairro sem insucesso **não** aparece:
 /// são três empresas contra mais de cem bairros, e uma lista de zeros esconde
 /// o que importa.
 List<RankEntry> failuresPerBairro(List<NewRouteModal> routes) {
-  final ranking = _rankBairros(
-    routes,
-    (route, bairroCount) => failuresOf(route) / bairroCount,
-  );
+  final totals = <String, double>{};
 
-  return ranking.where((entry) => entry.value > 0).toList();
+  void add(String bairro, double amount) {
+    totals.update(bairro, (value) => value + amount, ifAbsent: () => amount);
+  }
+
+  for (final route in routes) {
+    final failures = failuresOf(route);
+    if (failures == 0) continue;
+
+    final bairros = route.adress ?? const <String>[];
+    if (bairros.isEmpty) continue;
+
+    final exact = reconcileDistribution(
+      distribution: route.insucessoPorBairro,
+      bairros: bairros,
+      total: failures,
+    );
+
+    var attributed = 0;
+    exact.forEach((bairro, qnt) {
+      add(bairro, qnt.toDouble());
+      attributed += qnt;
+    });
+
+    final leftover = failures - attributed;
+    if (leftover > 0) {
+      final share = leftover / bairros.length;
+      for (final bairro in bairros) {
+        add(bairro, share);
+      }
+    }
+  }
+
+  return _sorted([
+    for (final entry in totals.entries)
+      if (entry.value > 0) RankEntry(entry.key, entry.value),
+  ]);
 }
 
 /// Soma de `value` por dia da semana, sempre com os 7 dias.

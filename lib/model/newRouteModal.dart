@@ -1,3 +1,4 @@
+import 'package:iter/Utils/insucessoBairro.dart';
 import 'package:iter/Utils/routeTime.dart';
 
 enum Company { mercadolivre, amazon, shopee }
@@ -26,6 +27,14 @@ class NewRouteModal {
   final DateTime? endAt;
   final bool? isInsucesso;
   final int? insucessoQnt;
+
+  /// Em quais bairros os insucessos aconteceram: bairro → quantidade.
+  ///
+  /// Vazio significa "não distribuído", que é o estado de todo documento
+  /// gravado antes deste campo existir — e o gráfico volta a ratear nesse caso.
+  /// Pode cobrir só parte de [insucessoQnt]: o resto vai para o rateio.
+  final Map<String, int> insucessoPorBairro;
+
   final String createdAt;
 
   NewRouteModal({
@@ -45,6 +54,7 @@ class NewRouteModal {
     this.endAt,
     this.isInsucesso,
     this.insucessoQnt,
+    this.insucessoPorBairro = const {},
     required this.createdAt,
   });
 
@@ -71,6 +81,7 @@ class NewRouteModal {
       endAt = _readEnd(map),
       isInsucesso = map['isInsucesso'],
       insucessoQnt = map['insucessoQnt'],
+      insucessoPorBairro = distributionFromList(map['insucessoPorBairro']),
       createdAt = map['createdAt'];
 
   Map<String, dynamic> toMap() => {
@@ -90,6 +101,7 @@ class NewRouteModal {
     'endAt': endAt?.toIso8601String(),
     'isInsucesso': isInsucesso,
     'insucessoQnt': insucessoQnt,
+    'insucessoPorBairro': distributionToList(insucessoPorBairro),
     'createdAt': createdAt,
   };
 

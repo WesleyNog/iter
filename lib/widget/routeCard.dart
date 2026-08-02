@@ -192,7 +192,7 @@ class RouteCard extends StatelessWidget {
         _detailRow(
           Icons.report_gmailerrorred_outlined,
           'Insucessos',
-          '${route.insucessoQnt ?? 1}',
+          _insucessoLabel(),
         ),
     ];
 
@@ -225,6 +225,23 @@ class RouteCard extends StatelessWidget {
         ],
       ],
     );
+  }
+
+  /// `3` quando não se sabe onde foram, `3 (Aldeota 2, Centro 1)` quando sabe.
+  ///
+  /// Mostra a distribuição parcial como está: o que ficou de fora aparece na
+  /// diferença entre o total e a soma dos parênteses, e é o que o gráfico
+  /// rateia.
+  String _insucessoLabel() {
+    final total = route.insucessoQnt ?? 1;
+    final distribution = route.insucessoPorBairro;
+    if (distribution.isEmpty) return '$total';
+
+    final detail = distribution.entries
+        .map((entry) => '${entry.key} ${entry.value}')
+        .join(', ');
+
+    return '$total ($detail)';
   }
 
   Widget _detailRow(IconData icon, String label, String value) {

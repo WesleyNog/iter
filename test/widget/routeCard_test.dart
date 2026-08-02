@@ -14,6 +14,9 @@ NewRouteModal buildRoute({
   List<String>? adress,
   DateTime? startAt,
   DateTime? endAt,
+  bool? isInsucesso,
+  int? insucessoQnt,
+  Map<String, int> insucessoPorBairro = const {},
 }) {
   return NewRouteModal(
     id: 'rota-1',
@@ -29,6 +32,9 @@ NewRouteModal buildRoute({
     adress: adress,
     startAt: startAt ?? DateTime(2026, 8, 1, 8),
     endAt: endAt,
+    isInsucesso: isInsucesso,
+    insucessoQnt: insucessoQnt,
+    insucessoPorBairro: insucessoPorBairro,
     createdAt: '2026-08-01T09:00:00.000',
   );
 }
@@ -102,6 +108,53 @@ void main() {
     expect(find.text('85'), findsOneWidget);
     expect(find.text('08:00 às 17:30 (9h30)'), findsOneWidget);
     expect(find.text('Aldeota, Meireles'), findsOneWidget);
+  });
+
+  testWidgets('insucesso sem distribuição mostra só o total', (tester) async {
+    await pumpCard(
+      tester,
+      buildRoute(
+        adress: ['Aldeota', 'Centro'],
+        isInsucesso: true,
+        insucessoQnt: 3,
+      ),
+      isExpanded: true,
+    );
+
+    expect(find.text('3'), findsOneWidget);
+  });
+
+  testWidgets('insucesso distribuído mostra em quais bairros foi', (
+    tester,
+  ) async {
+    await pumpCard(
+      tester,
+      buildRoute(
+        adress: ['Aldeota', 'Centro'],
+        isInsucesso: true,
+        insucessoQnt: 3,
+        insucessoPorBairro: const {'Aldeota': 2, 'Centro': 1},
+      ),
+      isExpanded: true,
+    );
+
+    expect(find.text('3 (Aldeota 2, Centro 1)'), findsOneWidget);
+  });
+
+  testWidgets('distribuição parcial deixa a diferença visível', (tester) async {
+    await pumpCard(
+      tester,
+      buildRoute(
+        adress: ['Aldeota', 'Centro'],
+        isInsucesso: true,
+        insucessoQnt: 5,
+        insucessoPorBairro: const {'Aldeota': 2},
+      ),
+      isExpanded: true,
+    );
+
+    // 5 no total, 2 com bairro: os outros 3 são os que o gráfico rateia.
+    expect(find.text('5 (Aldeota 2)'), findsOneWidget);
   });
 
   testWidgets('sem hora de fim mostra só o início', (tester) async {

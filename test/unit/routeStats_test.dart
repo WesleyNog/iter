@@ -15,6 +15,7 @@ NewRouteModal _route({
   List<String>? adress,
   bool? isInsucesso,
   int? insucessoQnt,
+  Map<String, int> insucessoPorBairro = const {},
   int? packages,
 }) {
   final start = startAt ?? DateTime(2026, 8, 10, 8);
@@ -33,6 +34,7 @@ NewRouteModal _route({
     startAt: start,
     isInsucesso: isInsucesso,
     insucessoQnt: insucessoQnt,
+    insucessoPorBairro: insucessoPorBairro,
     createdAt: start.toIso8601String(),
   );
 }
@@ -445,6 +447,103 @@ void main() {
       ]);
 
       expect(ranking.map((e) => e.label), ['Aldeota']);
+    });
+
+    test('distribuição exata substitui o rateio', () {
+      final ranking = failuresPerBairro([
+        _route(
+          adress: ['Aldeota', 'Centro', 'Cocó'],
+          isInsucesso: true,
+          insucessoQnt: 3,
+          insucessoPorBairro: {'Aldeota': 3},
+        ),
+      ]);
+
+      // Sem distribuição isso daria 1,0 em cada um dos três.
+      expect(ranking.map((e) => e.label), ['Aldeota']);
+      expect(_valueOf(ranking, 'Aldeota'), 3);
+    });
+
+    test('distribuição parcial rateia só o restante', () {
+      final ranking = failuresPerBairro([
+        _route(
+          adress: ['Aldeota', 'Centro'],
+          isInsucesso: true,
+          insucessoQnt: 5,
+          // "2 foram na Aldeota, o resto não lembro."
+          insucessoPorBairro: {'Aldeota': 2},
+        ),
+      ]);
+
+      // Os 3 restantes se dividem entre os dois bairros: 1,5 para cada.
+      expect(_valueOf(ranking, 'Aldeota'), 3.5);
+      expect(_valueOf(ranking, 'Centro'), 1.5);
+    });
+
+    test('a soma continua batendo com o total, distribuído ou não', () {
+      final routes = [
+        _route(
+          adress: ['Aldeota', 'Centro'],
+          isInsucesso: true,
+          insucessoQnt: 5,
+          insucessoPorBairro: {'Aldeota': 2},
+        ),
+        _route(
+          adress: ['Cocó'],
+          isInsucesso: true,
+          insucessoQnt: 4,
+        ),
+      ];
+
+      final total = failuresPerBairro(
+        routes,
+      ).fold<double>(0, (sum, entry) => sum + entry.value);
+
+      expect(total, closeTo(9, 0.0001));
+    });
+
+    test('documento antigo, sem o campo, continua rateado', () {
+      final ranking = failuresPerBairro([
+        _route(
+          adress: ['Aldeota', 'Centro'],
+          isInsucesso: true,
+          insucessoQnt: 2,
+        ),
+      ]);
+
+      expect(_valueOf(ranking, 'Aldeota'), 1);
+      expect(_valueOf(ranking, 'Centro'), 1);
+    });
+
+    test('distribuição citando bairro fora da rota é ignorada', () {
+      final ranking = failuresPerBairro([
+        _route(
+          adress: ['Centro'],
+          isInsucesso: true,
+          insucessoQnt: 2,
+          // A Aldeota saiu de "Bairros" depois da distribuição.
+          insucessoPorBairro: {'Aldeota': 2},
+        ),
+      ]);
+
+      // Os 2 voltam a ser rateados, e o ranking não cita bairro que a rota
+      // não tem.
+      expect(ranking.map((e) => e.label), ['Centro']);
+      expect(_valueOf(ranking, 'Centro'), 2);
+    });
+
+    test('distribuição acima do total não infla o ranking', () {
+      final ranking = failuresPerBairro([
+        _route(
+          adress: ['Aldeota', 'Centro'],
+          isInsucesso: true,
+          insucessoQnt: 2,
+          insucessoPorBairro: {'Aldeota': 5, 'Centro': 5},
+        ),
+      ]);
+
+      final total = ranking.fold<double>(0, (sum, e) => sum + e.value);
+      expect(total, 2);
     });
 
     test('insucesso em rota sem bairro não vira ranking', () {

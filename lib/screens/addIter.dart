@@ -5,6 +5,7 @@ import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:iter/Utils/calendar.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:iter/Utils/currencyFormat.dart';
+import 'package:iter/Utils/insucessoBairro.dart';
 import 'package:iter/Utils/routeTime.dart';
 import 'package:iter/Utils/bairros.dart';
 import 'package:iter/controller/routeController.dart';
@@ -15,6 +16,7 @@ import 'package:iter/Utils/weather.dart';
 import 'package:iter/widget/dataPicker.dart';
 import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/selectAdress.dart';
+import 'package:iter/widget/selectInsucessoBairro.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:math' as math;
 
@@ -44,6 +46,10 @@ class _AddIterState extends State<AddIter> {
   String weatherIcon = 'assets/images/SOL.png';
   int insucessoQnt = 1;
 
+  /// Em quais bairros os insucessos aconteceram. Pode cobrir só parte deles —
+  /// o que sobra é rateado pelo gráfico.
+  Map<String, int> insucessoPorBairro = {};
+
   final firestore = FirestoreService.instance;
 
   TextEditingController valueController = TextEditingController();
@@ -69,6 +75,7 @@ class _AddIterState extends State<AddIter> {
     selectedBairros = [...?route.adress];
     isInsucessoSelected = route.isInsucesso ?? false;
     insucessoQnt = route.insucessoQnt ?? 1;
+    insucessoPorBairro = {...route.insucessoPorBairro};
 
     // O campo espera o texto já formatado, igual ao que o formatador produz.
     valueController.text = CurrencyFormatterHelper.formatDoubleToMoney(
@@ -82,6 +89,38 @@ class _AddIterState extends State<AddIter> {
     hrFimController.text = route.endAt == null
         ? ''
         : RouteTime.formatTime(route.endAt!);
+  }
+
+  /// Mantém a distribuição coerente com o que a rota tem **agora**.
+  ///
+  /// Ela fica inválida sem o usuário tocar nela: basta remover um bairro de
+  /// "Bairros" ou baixar a quantidade de insucessos depois de distribuir. Por
+  /// isso roda a cada mudança nos dois, e não só ao salvar.
+  void _syncInsucessoPorBairro() {
+    insucessoPorBairro = reconcileDistribution(
+      distribution: insucessoPorBairro,
+      bairros: selectedBairros,
+      total: isInsucessoSelected ? insucessoQnt : 0,
+    );
+  }
+
+  /// O que vai para o banco.
+  ///
+  /// Com um bairro só não há escolha a fazer: todos os insucessos são dele.
+  /// Gravar isso dá atribuição exata sem custar um toque ao usuário — é por
+  /// isso que o campo nem aparece nesse caso.
+  Map<String, int> _distributionToSave() {
+    if (!isInsucessoSelected) return const {};
+
+    if (selectedBairros.length == 1) {
+      return {selectedBairros.first: insucessoQnt};
+    }
+
+    return reconcileDistribution(
+      distribution: insucessoPorBairro,
+      bairros: selectedBairros,
+      total: insucessoQnt,
+    );
   }
 
   void _loadWeatherIcon() async {
@@ -573,7 +612,12 @@ class _AddIterState extends State<AddIter> {
                               bairros,
                               selectedBairros,
                               searchBairroController,
-                              setState,
+                              // Bairro retirado da rota não pode continuar com
+                              // insucesso atribuído a ele.
+                              (fn) => setState(() {
+                                fn();
+                                _syncInsucessoPorBairro();
+                              }),
                             ),
                             borderRadius: BorderRadius.circular(10),
                             child: Container(
@@ -628,6 +672,7 @@ class _AddIterState extends State<AddIter> {
                           onChanged: (bool value) {
                             setState(() {
                               isInsucessoSelected = value;
+                              _syncInsucessoPorBairro();
                             });
                           },
                         ),
@@ -652,7 +697,12 @@ class _AddIterState extends State<AddIter> {
                                     onPressed:
                                         (isInsucessoSelected &&
                                             insucessoQnt > 1)
-                                        ? () => setState(() => insucessoQnt--)
+                                        // Baixar o total corta o excesso já
+                                        // distribuído, a partir do fim.
+                                        ? () => setState(() {
+                                            insucessoQnt--;
+                                            _syncInsucessoPorBairro();
+                                          })
                                         : null,
                                     child: const Icon(
                                       CupertinoIcons.minus,
@@ -716,6 +766,13 @@ class _AddIterState extends State<AddIter> {
                         ),
                       ],
                     ),
+                    // Com 0 ou 1 bairro não há distribuição a fazer: sem
+                    // bairro não há onde atribuir, e com um só o save já
+                    // atribui tudo a ele.
+                    if (isInsucessoSelected && selectedBairros.length > 1) ...[
+                      SizedBox(height: 10),
+                      _insucessoBairroField(),
+                    ],
                   ],
                 ),
               ),
@@ -742,6 +799,58 @@ class _AddIterState extends State<AddIter> {
                     : Colors.grey,
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Campo que abre a distribuição dos insucessos entre os bairros da rota.
+  ///
+  /// Fechado, ele já diz o andamento — distribuir tudo é opcional, e o que
+  /// sobrar continua sendo rateado pelo gráfico.
+  Widget _insucessoBairroField() {
+    final left = remainingFailures(insucessoQnt, insucessoPorBairro);
+    final distributed = insucessoQnt - left;
+
+    return InkWell(
+      onTap: () => showInsucessoBairroSelect(
+        context,
+        selectedBairros,
+        insucessoPorBairro,
+        insucessoQnt,
+        setState,
+      ),
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        height: 50,
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey, width: 1.0),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Icon(
+              Icons.wrong_location_outlined,
+              color: Colors.orange.shade200,
+            ),
+            Expanded(
+              child: Text(
+                distributed == 0
+                    ? 'Onde foram os insucessos?'
+                    : '$distributed de $insucessoQnt distribuídos',
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: distributed == 0 ? Colors.grey[600] : Colors.black,
+                ),
+              ),
+            ),
+            const Icon(Icons.arrow_drop_down, color: Colors.grey),
           ],
         ),
       ),
@@ -795,6 +904,7 @@ class _AddIterState extends State<AddIter> {
         ),
         isInsucesso: isInsucessoSelected,
         insucessoQnt: isInsucessoSelected ? insucessoQnt : null,
+        insucessoPorBairro: _distributionToSave(),
         createdAt: widget.route?.createdAt ?? now,
       );
 

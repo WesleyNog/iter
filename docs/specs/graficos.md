@@ -167,9 +167,12 @@ informados".
 **5. Bairros mais rodados.** Cada bairro de `adress` conta 1 por rota em que
 aparece. Rota sem bairro não entra.
 
-**6. Bairros com mais insucesso.** Os insucessos da rota são **rateados** entre
-os bairros dela: 3 insucessos numa rota de 3 bairros dá 1,0 para cada. O total
-do ranking bate com o total real de insucessos do período. Valores fracionados
+**6. Bairros com mais insucesso.** Usa a distribuição que o usuário informou no
+`addIter` e rateia só o restante entre os bairros da rota (ver
+`docs/specs/insucesso-por-bairro.md`). Rota sem distribuição — todas as
+gravadas antes daquela entrega — continua inteiramente rateada: 3 insucessos
+numa rota de 3 bairros dá 1,0 para cada. Em qualquer combinação o total do
+ranking bate com o total real de insucessos do período. Valores fracionados
 aparecem com uma casa decimal.
 
 **4a. Por dia da semana.** `Σ value` agrupado por `startAt.weekday`, sempre com
@@ -313,11 +316,14 @@ justo no dia em que o usuário mais olha (começo do mês, agenda cheia). O mesm
 recorte vale para os gráficos operacionais, para os números baterem entre os
 cards — bairro "rodado" numa rota que ainda não aconteceu também não é verdade.
 
-**2. Insucesso por bairro é rateado.** Uma rota tem vários bairros e um único
-`insucessoQnt`: o dado de qual bairro falhou não existe. Ratear mantém o total
-correto e não premia rota com muitos bairros, ao custo de números fracionados.
-Dívida assumida: precisão real exige registrar insucesso por bairro no
-`addIter`, o que muda modelo e formulário e não recupera as rotas já salvas.
+**2. Insucesso por bairro é rateado.** ~~Uma rota tem vários bairros e um único
+`insucessoQnt`: o dado de qual bairro falhou não existe.~~ **Superada por
+`docs/specs/insucesso-por-bairro.md`**: o `addIter` passou a coletar em qual
+bairro cada insucesso aconteceu, e o rateio virou o **fallback** — vale para os
+documentos gravados antes disso e para a parte que o usuário não quis detalhar.
+A dívida que estava registrada aqui ("precisão real exige registrar insucesso
+por bairro no `addIter`") foi paga; o que fica é que as rotas antigas seguem
+rateadas para sempre, por não haver de onde tirar a informação.
 
 **3. Índice de insucesso é sobre pacotes, não sobre rotas.** "1 insucesso em 120
 pacotes" e "1 insucesso em 8 pacotes" não são o mesmo problema. O preço é
