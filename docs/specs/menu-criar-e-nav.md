@@ -1,6 +1,6 @@
 # Spec: Menu de criação e barra de navegação flutuante
 
-Status: **proposta** · Criada em 2026-08-02 · Aguardando aprovação
+Status: **implementada** · Criada e implementada em 2026-08-02
 
 Duas mudanças na `HomeScreen`, independentes entre si:
 
@@ -183,18 +183,38 @@ de um `User` do Firebase e não sobe em teste de widget.
 
 ## Critérios de sucesso
 
-- [ ] Tocar no "+" abre o sheet com Nova rota, Abastecimento e Manutenção.
-- [ ] "Nova rota" fecha o sheet e abre o `AddIter`; salvar/voltar cai na Home com
-      o `AuthGate` intacto (sair do app pelo botão de logout ainda funciona).
-- [ ] Abastecimento e Manutenção mostram "Em breve" e não respondem ao toque.
+Verificado no simulador (iPhone 16 Plus, iOS 18.6):
+
+- [x] Tocar no "+" abre o sheet com Nova rota, Abastecimento e Manutenção.
+- [x] Abastecimento e Manutenção aparecem apagadas, com o selo "Em breve"; só a
+      linha pronta tem a seta `›`.
+- [x] O conteúdo aparece borrado atrás da barra — prova de que o `extendBody`
+      está valendo, e que a barra flutua em vez de reservar espaço.
+- [x] "Nova rota" fecha o sheet e abre o `AddIter`.
+
+Verificado por teste automatizado:
+
+- [x] `createActionSheet_test.dart`: as três linhas aparecem; a ação pronta
+      fecha o sheet e roda **uma** vez (ordem pop → `onTap`); a ação em
+      desenvolvimento não fecha o sheet e não chama nada; o selo só aparece nas
+      duas de "em breve".
+- [x] `glassNavBar_test.dart`: com `extendBody: true` o body recebe no
+      `MediaQuery` exatamente a altura da barra — a conta de onde sai o respiro.
+      O segundo caso reproduz o estado antigo (sem `extendBody`, o body recebe
+      `0`) e explica o corte.
+- [x] `flutter analyze lib/ test/` sem error/warning novo — só os `info`
+      `file_names` da convenção camelCase do repo.
+- [x] `flutter test test/widget/ test/unit/`: 156 passando.
+
+Falta conferir na mão (a automação de toque do simulador não é confiável neste
+ambiente; o respiro está coberto pelo `glassNavBar_test`, mas o olho é melhor):
+
+- [ ] Salvar/voltar do `AddIter` cai na Home com o `AuthGate` intacto (o botão
+      de logout ainda funciona).
 - [ ] Na aba Gráfico, rolar até o fim mostra o último carrossel inteiro acima da
       barra, e dá para tocar nele.
 - [ ] Na aba Lista, rolar até o fim mostra o último card inteiro e o *slide* de
       editar/excluir funciona nele.
-- [ ] Com a lista rolando, o conteúdo aparece borrado atrás da barra (prova de
-      que o `extendBody` está valendo).
-- [ ] `flutter analyze lib/ test/` sem error/warning novo.
-- [ ] `flutter test test/widget/` passa.
 
 ## Limites
 

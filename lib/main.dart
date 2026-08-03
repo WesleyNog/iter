@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:iter/firebase_options.dart';
 import 'package:iter/screens/addIter.dart';
@@ -19,6 +20,16 @@ void configLoading() {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // A chave da OpenWeather vem daqui. O `.env` é asset declarado no pubspec,
+  // mas fica fora do git: quem clonar o projeto sem ele sobe o app do mesmo
+  // jeito — só o clima é que fica "sem dado", em vez de derrubar a inicialização.
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (e) {
+    debugPrint('Não foi possível carregar o .env: $e');
+  }
+
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   configLoading();
   runApp(const MyApp());

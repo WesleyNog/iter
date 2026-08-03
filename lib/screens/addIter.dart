@@ -17,6 +17,7 @@ import 'package:iter/widget/dataPicker.dart';
 import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/selectAdress.dart';
 import 'package:iter/widget/selectInsucessoBairro.dart';
+import 'package:iter/widget/weatherPicker.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:math' as math;
 
@@ -42,8 +43,16 @@ class _AddIterState extends State<AddIter> {
   String status = 'agendado';
   DateTime selectedDate = DateTime.now();
   bool isInsucessoSelected = false;
-  WeatherType currentWeatherType = WeatherType.clear;
-  String weatherIcon = 'assets/images/SOL.png';
+
+  /// `null` = ainda não sei (carregando, sem rede, sem chave). Só o tempo de
+  /// verdade preenche isto — antes o valor nascia como `clear` e o sol aparecia
+  /// mesmo quando a consulta falhava.
+  WeatherType? currentWeather;
+
+  /// Escolha manual manda. Sem isto, a consulta de rede — que pode voltar
+  /// depois de o usuário já ter escolhido — desfaria a escolha dele.
+  bool _weatherChosenByUser = false;
+
   int insucessoQnt = 1;
 
   /// Em quais bairros os insucessos aconteceram. Pode cobrir só parte deles —
@@ -63,12 +72,23 @@ class _AddIterState extends State<AddIter> {
 
   initState() {
     super.initState();
-    _loadWeatherIcon();
-    if (widget.isEditing) _fillFromRoute(widget.route!);
+    // Só busca o tempo em rota nova. Editando, vale o que ficou gravado: a
+    // consulta só sabe o céu de agora, e sobrescrever com ele a rota de semana
+    // passada seria trocar um dado certo por um errado.
+    if (widget.isEditing) {
+      _fillFromRoute(widget.route!);
+    } else {
+      _loadWeather();
+    }
   }
 
   /// Reidrata o formulário com a rota que está sendo editada.
   void _fillFromRoute(NewRouteModal route) {
+    final weather = route.weather;
+    currentWeather = weather == null || weather.isEmpty
+        ? null
+        : WeatherType.fromString(weather);
+
     selectedCompanyIndex = Company.values.indexOf(route.company);
     status = route.status.name;
     selectedDate = route.startAt;
@@ -123,14 +143,32 @@ class _AddIterState extends State<AddIter> {
     );
   }
 
-  void _loadWeatherIcon() async {
+  void _loadWeather() async {
     double lat = -3.71722;
     double lon = -38.5434;
 
-    WeatherType weatherType = await getWeather(lat, lon);
+    final weather = await getWeather(lat, lon);
+
+    // A consulta é de rede: a tela pode ter saído — ou o usuário já ter
+    // escolhido o tempo na mão — antes de ela voltar.
+    if (!mounted || _weatherChosenByUser) return;
 
     setState(() {
-      currentWeatherType = weatherType;
+      currentWeather = weather;
+    });
+  }
+
+  /// Deixa o usuário corrigir o tempo.
+  ///
+  /// A rota agendada para amanhã guarda o céu de hoje, e a busca automática não
+  /// tem como saber o de amanhã: no dia, quem ajusta é ele.
+  Future<void> _pickWeather() async {
+    final choice = await showWeatherPicker(context, selected: currentWeather);
+    if (choice == null || !mounted) return; // Fechou sem escolher.
+
+    setState(() {
+      currentWeather = choice.value;
+      _weatherChosenByUser = true;
     });
   }
 
@@ -752,16 +790,29 @@ class _AddIterState extends State<AddIter> {
 
                         const SizedBox(width: 12),
 
-                        Container(
-                          height: 44,
-                          width: 44,
-                          decoration: BoxDecoration(
+                        Tooltip(
+                          message: currentWeather == null
+                              ? 'Escolher o tempo'
+                              : '${weatherLabel(currentWeather!)} — tocar para alterar',
+                          child: Material(
                             color: CupertinoColors.tertiarySystemFill,
-                            shape: BoxShape.circle,
-                          ),
-                          padding: const EdgeInsets.all(6.0),
-                          child: Image.asset(
-                            getWeatherIcon(currentWeatherType),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: InkWell(
+                              customBorder: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              onTap: _pickWeather,
+                              child: SizedBox(
+                                height: 44,
+                                width: 44,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(6.0),
+                                  child: weatherImage(currentWeather),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -898,6 +949,9 @@ class _AddIterState extends State<AddIter> {
             selectedDate,
         hrFimController.text,
       ),
+      // Sem isto o campo nunca era gravado: o modelo tem `weather` e o card da
+      // lista sabe desenhá-lo, mas nenhuma rota chegava a guardar um.
+      weather: currentWeather?.name,
       isInsucesso: isInsucessoSelected,
       insucessoQnt: isInsucessoSelected ? insucessoQnt : null,
       insucessoPorBairro: _distributionToSave(),

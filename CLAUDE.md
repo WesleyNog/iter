@@ -90,9 +90,15 @@ Nicknames are app-generated and there is deliberately no UI to change one — `N
 
 ## Weather
 
-`lib/services/openWeather.dart` calls OpenWeather and maps `weather[0].main` onto the `WeatherType` enum, which `lib/Utils/weather.dart` turns into an asset path. Unknown values fall back to `WeatherType.clear`.
+`lib/services/openWeather.dart` calls OpenWeather's **free** `/data/2.5/weather` and maps `weather[0].main` — which sits at the **root** of that response — onto the `WeatherType` enum. `lib/Utils/weather.dart` turns it into an asset path (`getWeatherIcon`) or into the widget (`weatherImage`).
 
-Note the current state: the API key is hardcoded in that file and coordinates are hardcoded to Fortaleza in `addIter.dart`. `flutter_dotenv` is a dependency and `.env` (gitignored, holds `OPEN-WEATHER`) is declared as an asset, but `dotenv.load()` is never called — wiring that up is pending work, not a pattern to copy.
+`getWeather` returns `WeatherType?` and `null` means *could not find out* (no key, no network, unexpected body). Never collapse that back into `WeatherType.clear`: doing so is what hid a broken call for months, because "it failed" and "the sky is clear" both drew the same sun. `weatherImage(null)` draws a neutral icon instead.
+
+One Call 3.0 — the only endpoint that would give the weather of a **past** date, for routes logged days later — answers 401 with the current key: it needs the paid "One Call by Call" plan. `/2.5/weather` (now) and `/2.5/forecast` (5 days) are what the key can reach.
+
+The key comes from `.env` (gitignored, holds `OPEN-WEATHER`, declared as an asset) via `dotenv.load()` in `main()`, wrapped in try/catch: a clone without the file still boots, the weather just reads "unknown". Coordinates are still hardcoded to Fortaleza in `addIter.dart`.
+
+`NewRouteModal.weather` is written **only when creating** a route. Editing keeps whatever is stored (`_fillFromRoute` restores it) — the API only knows the sky of *now*, so refetching would stamp today's weather onto a route from last week.
 
 ## Known incomplete work
 
