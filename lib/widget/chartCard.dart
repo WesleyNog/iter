@@ -133,6 +133,45 @@ class ChartCard extends StatelessWidget {
   }
 }
 
+/// Barra horizontal de preenchimento sobre o fundo azul do card.
+///
+/// Mora aqui, e não no card que a usa, porque dois cards a desenham: a taxa de
+/// entrega do resumo e o índice de insucesso.
+class ChartProgressBar extends StatelessWidget {
+  const ChartProgressBar({
+    super.key,
+    required this.fraction,
+    required this.colors,
+  });
+
+  /// De 0 a 1. Quem chama decide a escala — não é necessariamente a
+  /// porcentagem exibida ao lado.
+  final double fraction;
+
+  final List<Color> colors;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 8,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(50),
+      ),
+      child: FractionallySizedBox(
+        alignment: Alignment.centerLeft,
+        widthFactor: fraction.clamp(0.0, 1.0),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(50),
+            gradient: LinearGradient(colors: colors),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Mensagem de vazio padrão de dentro de um [ChartCard].
 class ChartEmpty extends StatelessWidget {
   const ChartEmpty(this.message, {super.key});

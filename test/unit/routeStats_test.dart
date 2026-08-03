@@ -17,6 +17,7 @@ NewRouteModal _route({
   int? insucessoQnt,
   Map<String, int> insucessoPorBairro = const {},
   int? packages,
+  String? weather,
 }) {
   final start = startAt ?? DateTime(2026, 8, 10, 8);
 
@@ -27,6 +28,7 @@ NewRouteModal _route({
         '${start.day.toString().padLeft(2, '0')}/'
         '${start.month.toString().padLeft(2, '0')}/${start.year}',
     weekday: start.weekday,
+    weather: weather,
     status: status,
     value: value,
     packages: packages,
@@ -49,6 +51,13 @@ double _valueOf(List<RankEntry> ranking, String label) =>
 
 bool _has(List<RankEntry> ranking, String label) =>
     ranking.any((entry) => entry.label == label);
+
+/// Os mesmos atalhos para os índices, que carregam a conta além da taxa.
+FailureRate _rateOf(List<FailureRate> rates, String label) =>
+    rates.firstWhere((rate) => rate.label == label);
+
+bool _hasRate(List<FailureRate> rates, String label) =>
+    rates.any((rate) => rate.label == label);
 
 void main() {
   group('realizedInPeriod', () {
@@ -307,10 +316,7 @@ void main() {
         _route(company: Company.amazon, value: 80),
       ]);
 
-      expect(grouped.map((e) => e.company), [
-        Company.amazon,
-        Company.shopee,
-      ]);
+      expect(grouped.map((e) => e.company), [Company.amazon, Company.shopee]);
       expect(grouped.map((e) => e.value), [80, 30]);
     });
 
@@ -372,8 +378,12 @@ void main() {
 
       // 10% da Shopee dói mais que 5% da Amazon, mesmo sendo o mesmo número.
       expect(ranking.map((e) => e.label), ['Shopee', 'Amazon']);
-      expect(_valueOf(ranking, 'Amazon'), 5);
-      expect(_valueOf(ranking, 'Shopee'), 10);
+      expect(_rateOf(ranking, 'Amazon').rate, 5);
+      expect(_rateOf(ranking, 'Shopee').rate, 10);
+
+      // A conta vem junto: é ela que o card mostra entre parênteses.
+      expect(_rateOf(ranking, 'Amazon').failures, 5);
+      expect(_rateOf(ranking, 'Amazon').packages, 100);
     });
 
     test('empresa sem pacotes informados fica fora do índice', () {
@@ -384,9 +394,9 @@ void main() {
       ]);
 
       // Fora do ranking, e não 0% — que seria afirmar um dado que não existe.
-      expect(_has(ranking, 'Shopee'), isFalse);
-      expect(_has(ranking, 'Mercado Livre'), isFalse);
-      expect(_has(ranking, 'Amazon'), isTrue);
+      expect(_hasRate(ranking, 'Shopee'), isFalse);
+      expect(_hasRate(ranking, 'Mercado Livre'), isFalse);
+      expect(_hasRate(ranking, 'Amazon'), isTrue);
     });
   });
 
@@ -428,8 +438,11 @@ void main() {
 
     test('a soma do rateio bate com o total de insucessos', () {
       final routes = [
-        _route(adress: ['Aldeota', 'Centro'], isInsucesso: true,
-            insucessoQnt: 5),
+        _route(
+          adress: ['Aldeota', 'Centro'],
+          isInsucesso: true,
+          insucessoQnt: 5,
+        ),
         _route(adress: ['Cocó'], isInsucesso: true, insucessoQnt: 2),
       ];
 
@@ -488,11 +501,7 @@ void main() {
           insucessoQnt: 5,
           insucessoPorBairro: {'Aldeota': 2},
         ),
-        _route(
-          adress: ['Cocó'],
-          isInsucesso: true,
-          insucessoQnt: 4,
-        ),
+        _route(adress: ['Cocó'], isInsucesso: true, insucessoQnt: 4),
       ];
 
       final total = failuresPerBairro(
@@ -552,6 +561,176 @@ void main() {
       ]);
 
       expect(ranking, isEmpty);
+    });
+  });
+
+  group('índice por bairro', () {
+    test('os pacotes da rota são divididos por igual entre os bairros', () {
+      final ranking = failureRatePerBairro([
+        _route(
+          adress: ['Aeroporto', 'Vila União'],
+          packages: 48,
+          isInsucesso: true,
+          insucessoQnt: 3,
+          // Todos os 3 insucessos foram no Aeroporto.
+          insucessoPorBairro: {'Aeroporto': 3},
+        ),
+      ]);
+
+      // 24 pacotes para cada: é estimativa, e o card avisa disso.
+      expect(_rateOf(ranking, 'Aeroporto').packages, 24);
+      expect(_rateOf(ranking, 'Vila União').packages, 24);
+
+      // O numerador respeita a distribuição informada, sem ratear.
+      expect(_rateOf(ranking, 'Aeroporto').failures, 3);
+      expect(_rateOf(ranking, 'Aeroporto').rate, 12.5);
+      expect(_rateOf(ranking, 'Vila União').rate, 0);
+    });
+
+    test(
+      'sem distribuição informada, o insucesso é rateado como no ranking',
+      () {
+        final ranking = failureRatePerBairro([
+          _route(
+            adress: ['Aeroporto', 'Vila União'],
+            packages: 40,
+            isInsucesso: true,
+            insucessoQnt: 4,
+          ),
+        ]);
+
+        // 2 insucessos e 20 pacotes de cada lado.
+        expect(_rateOf(ranking, 'Aeroporto').rate, 10);
+        expect(_rateOf(ranking, 'Vila União').rate, 10);
+      },
+    );
+
+    test('bairro com pacotes e sem insucesso aparece zerado', () {
+      final ranking = failureRatePerBairro([
+        _route(adress: ['Centro'], packages: 30),
+      ]);
+
+      // Diferente de bairro sem pacotes: aqui o dado foi coletado.
+      expect(_rateOf(ranking, 'Centro').rate, 0);
+    });
+
+    test('rota sem pacotes ou sem bairro fica fora', () {
+      final ranking = failureRatePerBairro([
+        _route(adress: ['Centro'], packages: null, isInsucesso: true),
+        _route(adress: null, packages: 30, isInsucesso: true),
+      ]);
+
+      expect(ranking, isEmpty);
+    });
+
+    test('a soma dos insucessos rateados bate com o total da rota', () {
+      final ranking = failureRatePerBairro([
+        _route(
+          adress: ['A', 'B', 'C'],
+          packages: 30,
+          isInsucesso: true,
+          insucessoQnt: 5,
+        ),
+      ]);
+
+      final total = ranking.fold<double>(0, (sum, r) => sum + r.failures);
+      expect(total, closeTo(5, 0.0001));
+    });
+  });
+
+  group('rankings por clima', () {
+    test('o insucesso da rota é inteiro do clima dela, sem rateio', () {
+      final ranking = failuresPerWeather([
+        _route(weather: 'rain', isInsucesso: true, insucessoQnt: 3),
+        _route(weather: 'rain', isInsucesso: true, insucessoQnt: 2),
+        _route(weather: 'clear', isInsucesso: true, insucessoQnt: 1),
+      ]);
+
+      expect(_valueOf(ranking, 'Chuva'), 5);
+      expect(_valueOf(ranking, 'Sol'), 1);
+    });
+
+    test('clima que rodou sem insucesso aparece zerado', () {
+      final ranking = failuresPerWeather([
+        _route(weather: 'rain', isInsucesso: true, insucessoQnt: 2),
+        _route(weather: 'clear'),
+      ]);
+
+      // Diferente de bairro: "no sol não deu problema nenhum" é resposta.
+      expect(_valueOf(ranking, 'Sol'), 0);
+    });
+
+    test('rota sem clima informado não entra', () {
+      final ranking = failuresPerWeather([
+        _route(isInsucesso: true, insucessoQnt: 5),
+        _route(weather: '', isInsucesso: true, insucessoQnt: 5),
+      ]);
+
+      expect(ranking, isEmpty);
+    });
+
+    test('o rótulo é o nome em pt-BR, não o valor gravado', () {
+      final ranking = failuresPerWeather([
+        _route(weather: 'heavyRain', isInsucesso: true, insucessoQnt: 1),
+      ]);
+
+      expect(_has(ranking, 'Chuva forte'), isTrue);
+      expect(_has(ranking, 'heavyRain'), isFalse);
+    });
+
+    test('climas de mesmo nome viram uma barra só', () {
+      // `mist` e `fog` são os dois "Neblina": por enum virariam duas barras
+      // com o mesmo rótulo no gráfico.
+      final ranking = failuresPerWeather([
+        _route(weather: 'mist', isInsucesso: true, insucessoQnt: 2),
+        _route(weather: 'fog', isInsucesso: true, insucessoQnt: 3),
+      ]);
+
+      expect(ranking, hasLength(1));
+      expect(_valueOf(ranking, 'Neblina'), 5);
+    });
+
+    test('índice é percentual sobre os pacotes daquele clima', () {
+      final ranking = failureRatePerWeather([
+        _route(
+          weather: 'rain',
+          packages: 100,
+          isInsucesso: true,
+          insucessoQnt: 8,
+        ),
+        _route(
+          weather: 'clear',
+          packages: 50,
+          isInsucesso: true,
+          insucessoQnt: 1,
+        ),
+      ]);
+
+      expect(_rateOf(ranking, 'Chuva').rate, 8);
+      expect(_rateOf(ranking, 'Sol').rate, 2);
+      // Chuva pior que sol: é para isso que o índice existe.
+      expect(ranking.first.label, 'Chuva');
+    });
+
+    test('clima sem pacotes informados fica fora do índice', () {
+      final ranking = failureRatePerWeather([
+        _route(
+          weather: 'rain',
+          packages: 20,
+          isInsucesso: true,
+          insucessoQnt: 1,
+        ),
+        _route(weather: 'clear', isInsucesso: true, insucessoQnt: 4),
+      ]);
+
+      // Sol não vira 0%: seria afirmar um dado que não foi coletado.
+      expect(_hasRate(ranking, 'Sol'), isFalse);
+      expect(ranking, hasLength(1));
+    });
+
+    test('lista vazia não divide por zero', () {
+      expect(failuresPerWeather([]), isEmpty);
+      expect(failureRatePerWeather([]), isEmpty);
     });
   });
 

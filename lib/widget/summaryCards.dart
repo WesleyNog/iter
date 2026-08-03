@@ -174,7 +174,7 @@ class DeliveryRateBar extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: _ProgressBar(
+                child: ChartProgressBar(
                   fraction: rate,
                   colors: const [Color(0xFF69F0AE), Color(0xFF00C853)],
                 ),
@@ -197,34 +197,6 @@ class DeliveryRateBar extends StatelessWidget {
             ],
           ),
       ],
-    );
-  }
-}
-
-class _ProgressBar extends StatelessWidget {
-  const _ProgressBar({required this.fraction, required this.colors});
-
-  final double fraction;
-  final List<Color> colors;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 8,
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(50),
-      ),
-      child: FractionallySizedBox(
-        alignment: Alignment.centerLeft,
-        widthFactor: fraction,
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(colors: colors),
-            borderRadius: BorderRadius.circular(50),
-          ),
-        ),
-      ),
     );
   }
 }

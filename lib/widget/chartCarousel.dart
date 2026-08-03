@@ -40,14 +40,17 @@ class _ChartCarouselState extends State<ChartCarousel> {
             children: widget.pages,
           ),
         ),
-        const SizedBox(height: 10),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            for (var index = 0; index < widget.pages.length; index++)
-              _dot(isActive: index == _current),
-          ],
-        ),
+        // Uma bolinha sozinha promete uma página que não existe.
+        if (widget.pages.length > 1) ...[
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (var index = 0; index < widget.pages.length; index++)
+                _dot(isActive: index == _current),
+            ],
+          ),
+        ],
       ],
     );
   }

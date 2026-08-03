@@ -1,6 +1,8 @@
 import 'package:iter/Utils/insucessoBairro.dart';
 import 'package:iter/Utils/routeStyle.dart';
+import 'package:iter/Utils/weather.dart';
 import 'package:iter/model/newRouteModal.dart';
+import 'package:iter/services/openWeather.dart';
 
 /// Agregações da tela de gráficos.
 ///
@@ -295,6 +297,27 @@ List<RankEntry> countPerCompany(List<NewRouteModal> routes) =>
 List<RankEntry> failuresPerCompany(List<NewRouteModal> routes) =>
     _rankCompanies(routes, (route) => failuresOf(route).toDouble());
 
+/// Um índice de insucesso com os dois números que o formam.
+///
+/// Carrega [failures] e [packages] além da [rate] porque o card mostra a conta
+/// junto ("6,3% — 3 de 48 pacotes"): a taxa sozinha não distingue 1 em 8 de
+/// 125 em 1000, e é essa diferença que decide se vale agir.
+///
+/// São `double` por causa do bairro, cujos dois lados são rateados.
+class FailureRate {
+  const FailureRate({
+    required this.label,
+    required this.failures,
+    required this.packages,
+  });
+
+  final String label;
+  final double failures;
+  final double packages;
+
+  double get rate => packages <= 0 ? 0 : failures / packages * 100;
+}
+
 /// Índice de insucesso por empresa, em porcentagem sobre os pacotes.
 ///
 /// "1 insucesso em 120 pacotes" e "1 em 8" não são o mesmo problema — daí a
@@ -303,33 +326,62 @@ List<RankEntry> failuresPerCompany(List<NewRouteModal> routes) =>
 /// Só entram rotas com `packages` preenchido. Empresa sem nenhuma rota
 /// elegível fica **fora** do ranking em vez de aparecer como 0%, que afirmaria
 /// um dado que não foi coletado.
-List<RankEntry> failureRatePerCompany(List<NewRouteModal> routes) {
-  final packages = <Company, int>{};
-  final failures = <Company, int>{};
+List<FailureRate> failureRatePerCompany(List<NewRouteModal> routes) {
+  final packages = <String, double>{};
+  final failures = <String, double>{};
 
   for (final route in routes) {
-    final routePackages = route.packages ?? 0;
+    final routePackages = (route.packages ?? 0).toDouble();
     if (routePackages <= 0) continue;
 
-    packages.update(
-      route.company,
-      (value) => value + routePackages,
-      ifAbsent: () => routePackages,
-    );
-    failures.update(
-      route.company,
-      (value) => value + failuresOf(route),
-      ifAbsent: () => failuresOf(route),
+    final label = companyLabel(route.company);
+    _add(packages, label, routePackages);
+    _add(failures, label, failuresOf(route).toDouble());
+  }
+
+  return _rates(packages, failures);
+}
+
+/// Índice de insucesso por bairro.
+///
+/// **É estimativa, não medição**, e o card diz isso: `packages` é da rota
+/// inteira, não existe "pacotes do Aeroporto". Os pacotes são divididos por
+/// igual entre os bairros da rota, então uma rota de 48 pacotes em 2 bairros
+/// vira 24 para cada, mesmo que na prática tenham sido 40 e 8.
+///
+/// O numerador é melhor que o denominador: usa a distribuição de insucesso que
+/// o usuário informou, e rateia só o resto — a mesma regra de
+/// [failuresPerBairro].
+///
+/// Bairro com pacotes e sem insucesso aparece com 0%, como as outras duas
+/// funções de índice: aqui o dado **foi** coletado, e "esse bairro não deu
+/// problema" é resposta.
+List<FailureRate> failureRatePerBairro(List<NewRouteModal> routes) {
+  final packages = <String, double>{};
+  final failures = <String, double>{};
+
+  for (final route in routes) {
+    final routePackages = (route.packages ?? 0).toDouble();
+    if (routePackages <= 0) continue;
+
+    final bairros = route.adress ?? const <String>[];
+    if (bairros.isEmpty) continue;
+
+    final share = routePackages / bairros.length;
+    for (final bairro in bairros) {
+      _add(packages, bairro, share);
+      // Garante o bairro no mapa de insucesso, para 0 insucesso virar 0% em
+      // vez de sumir do ranking.
+      _add(failures, bairro, 0);
+    }
+
+    _attributeFailures(
+      route,
+      (bairro, amount) => _add(failures, bairro, amount),
     );
   }
 
-  return _sorted([
-    for (final entry in packages.entries)
-      RankEntry(
-        companyLabel(entry.key),
-        (failures[entry.key] ?? 0) / entry.value * 100,
-      ),
-  ]);
+  return _rates(packages, failures);
 }
 
 /// Quantas rotas passaram por cada bairro. Rota sem bairro não entra.
@@ -361,42 +413,138 @@ List<RankEntry> routesPerBairro(List<NewRouteModal> routes) =>
 List<RankEntry> failuresPerBairro(List<NewRouteModal> routes) {
   final totals = <String, double>{};
 
-  void add(String bairro, double amount) {
-    totals.update(bairro, (value) => value + amount, ifAbsent: () => amount);
-  }
-
   for (final route in routes) {
-    final failures = failuresOf(route);
-    if (failures == 0) continue;
-
-    final bairros = route.adress ?? const <String>[];
-    if (bairros.isEmpty) continue;
-
-    final exact = reconcileDistribution(
-      distribution: route.insucessoPorBairro,
-      bairros: bairros,
-      total: failures,
-    );
-
-    var attributed = 0;
-    exact.forEach((bairro, qnt) {
-      add(bairro, qnt.toDouble());
-      attributed += qnt;
+    _attributeFailures(route, (bairro, amount) {
+      totals.update(bairro, (value) => value + amount, ifAbsent: () => amount);
     });
-
-    final leftover = failures - attributed;
-    if (leftover > 0) {
-      final share = leftover / bairros.length;
-      for (final bairro in bairros) {
-        add(bairro, share);
-      }
-    }
   }
 
   return _sorted([
     for (final entry in totals.entries)
       if (entry.value > 0) RankEntry(entry.key, entry.value),
   ]);
+}
+
+/// Distribui os insucessos de [route] pelos bairros dela, chamando [add] para
+/// cada pedaço. Ver [failuresPerBairro] para a regra.
+///
+/// Está separado porque o índice por bairro precisa exatamente da mesma
+/// atribuição — duas cópias divergiriam no primeiro ajuste do rateio.
+void _attributeFailures(
+  NewRouteModal route,
+  void Function(String bairro, double amount) add,
+) {
+  final failures = failuresOf(route);
+  if (failures == 0) return;
+
+  final bairros = route.adress ?? const <String>[];
+  if (bairros.isEmpty) return;
+
+  final exact = reconcileDistribution(
+    distribution: route.insucessoPorBairro,
+    bairros: bairros,
+    total: failures,
+  );
+
+  var attributed = 0;
+  exact.forEach((bairro, qnt) {
+    add(bairro, qnt.toDouble());
+    attributed += qnt;
+  });
+
+  final leftover = failures - attributed;
+  if (leftover > 0) {
+    final share = leftover / bairros.length;
+    for (final bairro in bairros) {
+      add(bairro, share);
+    }
+  }
+}
+
+/// Insucessos por clima, em quantidade absoluta.
+///
+/// Sem rateio, ao contrário de [failuresPerBairro]: uma rota tem **um** clima,
+/// então o insucesso dela é inteiro daquele tempo — não existe ambiguidade a
+/// dividir. Rota sem clima informado fica de fora; atribuir a algum seria
+/// inventar o dado.
+///
+/// Clima que rodou no período sem insucesso vem zerado, como em
+/// [failuresPerCompany]: são poucos, e "no sol não deu problema nenhum" é
+/// informação. Bairro é que fica de fora quando zerado — são mais de cem.
+List<RankEntry> failuresPerWeather(List<NewRouteModal> routes) {
+  final totals = <String, double>{};
+
+  for (final route in routes) {
+    final label = _weatherLabelOf(route);
+    if (label == null) continue;
+
+    final failures = failuresOf(route).toDouble();
+    totals.update(label, (value) => value + failures, ifAbsent: () => failures);
+  }
+
+  return _sorted([
+    for (final entry in totals.entries) RankEntry(entry.key, entry.value),
+  ]);
+}
+
+/// Índice de insucesso por clima, em porcentagem sobre os pacotes.
+///
+/// Mesma régua de [failureRatePerCompany]: só entra rota com `packages`
+/// preenchido, e clima sem nenhuma rota elegível fica **fora** em vez de
+/// aparecer como 0% — que afirmaria um dado que não foi coletado.
+List<FailureRate> failureRatePerWeather(List<NewRouteModal> routes) {
+  final packages = <String, double>{};
+  final failures = <String, double>{};
+
+  for (final route in routes) {
+    final label = _weatherLabelOf(route);
+    if (label == null) continue;
+
+    final routePackages = (route.packages ?? 0).toDouble();
+    if (routePackages <= 0) continue;
+
+    _add(packages, label, routePackages);
+    _add(failures, label, failuresOf(route).toDouble());
+  }
+
+  return _rates(packages, failures);
+}
+
+void _add(Map<String, double> totals, String key, double amount) {
+  totals.update(key, (value) => value + amount, ifAbsent: () => amount);
+}
+
+/// Monta os índices na ordem do pior para o melhor. Empate resolve pelo rótulo,
+/// para a ordem não dançar entre dois rebuilds com os mesmos dados.
+List<FailureRate> _rates(
+  Map<String, double> packages,
+  Map<String, double> failures,
+) {
+  final rates = [
+    for (final entry in packages.entries)
+      FailureRate(
+        label: entry.key,
+        failures: failures[entry.key] ?? 0,
+        packages: entry.value,
+      ),
+  ];
+
+  return rates..sort((a, b) {
+    final byRate = b.rate.compareTo(a.rate);
+    return byRate != 0 ? byRate : a.label.compareTo(b.label);
+  });
+}
+
+/// Rótulo do clima da rota, ou `null` quando ela não informou.
+///
+/// Agrupa pelo **rótulo**, e não pelo valor do enum, de propósito: `mist` e
+/// `fog` são os dois "Neblina", e por enum virariam duas barras com o mesmo
+/// nome no gráfico.
+String? _weatherLabelOf(NewRouteModal route) {
+  final weather = route.weather;
+  if (weather == null || weather.isEmpty) return null;
+
+  return weatherLabel(WeatherType.fromString(weather));
 }
 
 /// Soma de `value` por dia da semana, sempre com os 7 dias.
@@ -464,13 +612,12 @@ List<({Company company, double value})> _groupByCompany(
       (company: entry.key, value: entry.value),
   ];
 
-  return grouped
-    ..sort((a, b) {
-      final byValue = b.value.compareTo(a.value);
-      return byValue != 0
-          ? byValue
-          : companyLabel(a.company).compareTo(companyLabel(b.company));
-    });
+  return grouped..sort((a, b) {
+    final byValue = b.value.compareTo(a.value);
+    return byValue != 0
+        ? byValue
+        : companyLabel(a.company).compareTo(companyLabel(b.company));
+  });
 }
 
 List<RankEntry> _rankCompanies(

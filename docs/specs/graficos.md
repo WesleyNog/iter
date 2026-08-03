@@ -206,14 +206,20 @@ Padrão ao abrir: Manhã.
 │ │  Taxa de entrega: ▓▓▓▓▓▓▓▓▓░ 97%                │   │
 │ └────────────────────────────────────────────────┘   │
 │                                                       │
-│ ┌─ EMPRESAS ─────────────────────────────────────┐   │
-│ │  (barras top-4)                                 │   │  ← PageView, 4 págs
+│ ── Insucessos das rotas concluídas e pagas ──────     │
+│ ┌─ INSUCESSOS ───────────────────────────────────┐   │
+│ │  (barras top-4)                                 │   │  ← PageView, 5 págs
 │ └────────────────────────────────────────────────┘   │
-│                  ● ○ ○ ○                              │
-│ ┌─ BAIRROS ──────────────────────────────────────┐   │
+│                  ● ○ ○ ○ ○                            │
+│ ── Análise das rotas concluídas e pagas ─────────     │
+│ ┌─ EMPRESAS ─────────────────────────────────────┐   │
 │ │  (barras top-4)                                 │   │  ← PageView, 2 págs
 │ └────────────────────────────────────────────────┘   │
 │                    ● ○                                │
+│ ┌─ BAIRROS ──────────────────────────────────────┐   │
+│ │  (barras top-4)                                 │   │  ← página única
+│ └────────────────────────────────────────────────┘   │
+│                   (sem bolinha)                       │
 │ ┌─ TEMPO ────────────────────────────[Manhã ▾]───┐   │
 │ │  (linha fl_chart)                               │   │  ← PageView, 2 págs
 │ └────────────────────────────────────────────────┘   │
@@ -221,9 +227,20 @@ Padrão ao abrir: Manhã.
 └───────────────────────────────────────────────────────┘
 ```
 
-Três carrosséis em vez de um de seis páginas: seis bolinhas viram um ponto onde
-o usuário perde a conta de onde está, e o agrupamento (empresas / bairros /
-tempo) já diz o que esperar antes de arrastar.
+Carrosséis separados em vez de um único gigante: uma fileira longa de bolinhas
+vira um ponto onde o usuário perde a conta de onde está, e o agrupamento já diz
+o que esperar antes de arrastar.
+
+O carrossel de **Insucessos** é a exceção deliberada a esse agrupamento por eixo
+(empresa / bairro / tempo): ele agrupa por **assunto**, juntando os recortes de
+insucesso que antes moravam dentro de Empresas e de Bairros. Quem roda as rotas
+acompanha insucesso como um tema só, e comparar "onde" com "em que tempo" exigia
+arrastar dois carrosséis e decorar o número do primeiro. Ver
+`docs/specs/insucessos-carrossel.md`.
+
+`ChartCarousel` esconde as bolinhas quando há uma página só — é o caso de
+Bairros depois que o insucesso saiu dele, e uma bolinha sozinha promete uma
+página que não existe.
 
 Cada carrossel tem altura fixa e seu próprio `PageController` (`dispose` em
 todos). Cores das barras: a mesma paleta de quatro tons da referência
