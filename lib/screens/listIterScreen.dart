@@ -32,6 +32,11 @@ class _ListIterScreenState extends State<ListIterScreen> {
   /// `null` = todas as empresas.
   Company? _companyFilter;
 
+  /// Respiro do fim da lista. A `GlassNavBar` flutua por cima do conteúdo
+  /// (`extendBody: true` na Home), e é o próprio `Scaffold` quem informa quanto
+  /// ela ocupa — assim nenhum número da barra fica duplicado aqui.
+  double get _bottomGap => 24 + MediaQuery.paddingOf(context).bottom;
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -94,7 +99,7 @@ class _ListIterScreenState extends State<ListIterScreen> {
         }
 
         return ListView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          padding: EdgeInsets.fromLTRB(16, 16, 16, _bottomGap),
           itemCount: routes.length,
           itemBuilder: (context, index) {
             final route = routes[index];
@@ -208,7 +213,7 @@ class _ListIterScreenState extends State<ListIterScreen> {
   }) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
+        padding: EdgeInsets.fromLTRB(32, 0, 32, _bottomGap),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

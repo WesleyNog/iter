@@ -9,6 +9,7 @@ import 'package:iter/screens/graficsScreen.dart';
 import 'package:iter/screens/listIterScreen.dart';
 import 'package:iter/screens/socialScreen.dart';
 import 'package:iter/services/authService.dart';
+import 'package:iter/widget/createActionSheet.dart';
 import 'package:iter/widget/glassNavBar.dart';
 import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/profileDialog.dart';
@@ -72,6 +73,39 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Menu do "+": hoje só a rota está pronta; abastecimento e manutenção entram
+  /// sem `onTap` e aparecem com o selo "Em breve" até ganharem tela.
+  void _showCreateMenu() {
+    showCreateActionSheet(
+      context,
+      actions: [
+        CreateAction(
+          icon: Icons.local_shipping_outlined,
+          color: Colors.green,
+          title: 'Nova rota',
+          subtitle: 'Cadastrar uma rota',
+          // Rota nomeada, e não `push`: o AddIter volta com
+          // `popUntil((route) => route.isFirst)` e o AuthGate segue de pé.
+          onTap: () => Navigator.of(
+            context,
+          ).pushNamed('/addIter', arguments: widget.user),
+        ),
+        const CreateAction(
+          icon: Icons.local_gas_station_outlined,
+          color: Colors.orange,
+          title: 'Abastecimento',
+          subtitle: 'Registrar combustível',
+        ),
+        const CreateAction(
+          icon: Icons.build_outlined,
+          color: Colors.blueGrey,
+          title: 'Manutenção',
+          subtitle: 'Registrar manutenção',
+        ),
+      ],
+    );
+  }
+
   Future<void> _handleSignOut() async {
     setState(() => _isSigningOut = true);
 
@@ -97,6 +131,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final List<Widget> screens = [_grafics, _listIter, _friends, _social];
     final current = _currentIndex.clamp(0, screens.length - 1);
     return Scaffold(
+      // A GlassNavBar é uma pílula flutuante: sem isto ela reservaria a própria
+      // altura no layout, encostando na última linha de conteúdo, e o blur não
+      // teria nada atrás para borrar. As telas roláveis compensam com o respiro
+      // que o Scaffold anuncia em `MediaQuery.paddingOf(context).bottom`.
+      extendBody: true,
       appBar: AppBar(
         titleSpacing: 16,
         // Um StreamBuilder para a linha inteira: o avatar precisa do mesmo
@@ -198,9 +237,7 @@ class _HomeScreenState extends State<HomeScreen> {
           icon: Icons.add_rounded,
           iconColor: Colors.green,
           tooltip: "Criar",
-          onTap: () => Navigator.of(
-            context,
-          ).pushNamed('/addIter', arguments: widget.user),
+          onTap: _showCreateMenu,
         ),
         items: [
           const GlassNavItem(icon: Icons.bar_chart, label: "Gráfico"),

@@ -832,10 +832,7 @@ class _AddIterState extends State<AddIter> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Icon(
-              Icons.wrong_location_outlined,
-              color: Colors.orange.shade200,
-            ),
+            Icon(Icons.wrong_location_outlined, color: Colors.orange.shade200),
             Expanded(
               child: Text(
                 distributed == 0
@@ -871,42 +868,41 @@ class _AddIterState extends State<AddIter> {
     final String now = DateTime.now().toIso8601String();
 
     final newRoute = NewRouteModal(
-        // Mesmo id = o `set` substitui o documento em vez de criar outro.
-        id: widget.route?.id ?? Uuid().v4(),
-        company: Company.values[selectedCompanyIndex],
-        dateRoute:
-            '${selectedDate.day.toString().padLeft(2, '0')}/${selectedDate.month.toString().padLeft(2, '0')}/${selectedDate.year}',
-        weekday: selectedDate.weekday,
-        status: StatusRoute.values.firstWhere(
-          (e) => e.toString() == 'StatusRoute.$status',
-        ),
-        // O campo é formatado como moeda ("R$ 1.234,56"), então precisa do
-        // parse que remove o símbolo e o separador de milhar.
-        value: CurrencyFormatterHelper.parseMoneyToDouble(valueController.text),
-        kmInitial:
-            double.tryParse(kmInicialController.text.replaceAll(',', '.')) ??
-            0.0,
-        kmFinal:
-            double.tryParse(kmFinalController.text.replaceAll(',', '.')) ?? 0.0,
-        packages: int.tryParse(pctInicialController.text),
-        stops: int.tryParse(pctFinalController.text),
-        adress: selectedBairros,
-        // O validator já garante a hora de início; o `??` só existe porque o
-        // tipo é nullable.
-        startAt:
-            RouteTime.combine(selectedDate, hrInicioController.text) ??
-            selectedDate,
-        // Fim antes do início significa rota que virou o dia.
-        endAt: RouteTime.resolveEnd(
+      // Mesmo id = o `set` substitui o documento em vez de criar outro.
+      id: widget.route?.id ?? Uuid().v4(),
+      company: Company.values[selectedCompanyIndex],
+      dateRoute:
+          '${selectedDate.day.toString().padLeft(2, '0')}/${selectedDate.month.toString().padLeft(2, '0')}/${selectedDate.year}',
+      weekday: selectedDate.weekday,
+      status: StatusRoute.values.firstWhere(
+        (e) => e.toString() == 'StatusRoute.$status',
+      ),
+      // O campo é formatado como moeda ("R$ 1.234,56"), então precisa do
+      // parse que remove o símbolo e o separador de milhar.
+      value: CurrencyFormatterHelper.parseMoneyToDouble(valueController.text),
+      kmInitial:
+          double.tryParse(kmInicialController.text.replaceAll(',', '.')) ?? 0.0,
+      kmFinal:
+          double.tryParse(kmFinalController.text.replaceAll(',', '.')) ?? 0.0,
+      packages: int.tryParse(pctInicialController.text),
+      stops: int.tryParse(pctFinalController.text),
+      adress: selectedBairros,
+      // O validator já garante a hora de início; o `??` só existe porque o
+      // tipo é nullable.
+      startAt:
           RouteTime.combine(selectedDate, hrInicioController.text) ??
-              selectedDate,
-          hrFimController.text,
-        ),
-        isInsucesso: isInsucessoSelected,
-        insucessoQnt: isInsucessoSelected ? insucessoQnt : null,
-        insucessoPorBairro: _distributionToSave(),
-        createdAt: widget.route?.createdAt ?? now,
-      );
+          selectedDate,
+      // Fim antes do início significa rota que virou o dia.
+      endAt: RouteTime.resolveEnd(
+        RouteTime.combine(selectedDate, hrInicioController.text) ??
+            selectedDate,
+        hrFimController.text,
+      ),
+      isInsucesso: isInsucessoSelected,
+      insucessoQnt: isInsucessoSelected ? insucessoQnt : null,
+      insucessoPorBairro: _distributionToSave(),
+      createdAt: widget.route?.createdAt ?? now,
+    );
 
     EasyLoading.show(status: 'Salvando rota...').ignore();
 

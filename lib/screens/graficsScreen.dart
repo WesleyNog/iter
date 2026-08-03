@@ -46,6 +46,11 @@ class _GraficsScreenState extends State<GraficsScreen> {
     _end = period.end;
   }
 
+  /// Respiro do fim da tela. A `GlassNavBar` flutua por cima do conteúdo
+  /// (`extendBody: true` na Home), e é o próprio `Scaffold` quem informa quanto
+  /// ela ocupa — assim nenhum número da barra fica duplicado aqui.
+  double get _bottomGap => 24 + MediaQuery.paddingOf(context).bottom;
+
   String _money(double value) => CurrencyFormatterHelper.formatMoney(value);
 
   /// Eixo vertical do gráfico de linha: tem 56px para caber.
@@ -141,7 +146,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
     final doneSummary = summarize(done);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      padding: EdgeInsets.fromLTRB(16, 16, 16, _bottomGap),
       child: Column(
         children: [
           ChartCarousel(height: 290, pages: _moneyPages(periodSummary, routes)),
@@ -446,7 +451,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
   }) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
+        padding: EdgeInsets.fromLTRB(32, 0, 32, _bottomGap),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
