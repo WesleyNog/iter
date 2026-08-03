@@ -1,6 +1,6 @@
 # Spec: Carrossel de Insucessos
 
-Status: **proposta** · Criada em 2026-08-02 · Aguardando aprovação
+Status: **implementada** · Criada em 2026-08-02 · Card único de índice acrescentado em 2026-08-03
 
 Complementa `docs/specs/graficos.md`, que passa a ter a seção **Layout**
 desatualizada e precisa ser corrigida junto.
@@ -39,13 +39,28 @@ flutter run -d <simulador>                    # conferir no aparelho
 ## Estrutura
 
 ```
-lib/Utils/routeStats.dart        → failuresPerWeather + failureRatePerWeather (novos)
+lib/Utils/routeStats.dart        → FailureRate + failuresPerWeather +
+                                   failureRatePerWeather/Bairro (novos);
+                                   failureRatePerCompany passa a devolver FailureRate
+lib/widget/failureRateCard.dart  → o card de índice dos três eixos (novo)
+lib/widget/chartCard.dart        → ChartProgressBar (era privado do summaryCards)
+lib/widget/summaryCards.dart     → usa o ChartProgressBar compartilhado
 lib/screens/graficsScreen.dart   → _insucessoPages (novo); _companyPages e _bairroPages encolhem
 lib/widget/chartCarousel.dart    → esconde as bolinhas quando há uma página só
-test/unit/routeStats_test.dart   → grupo "rankings por clima"
-test/widget/chartCarousel_test.dart → novo
+test/unit/routeStats_test.dart   → grupos "rankings por clima" e "índice por bairro"
+test/widget/failureRateCard_test.dart → novo
+test/widget/chartCarousel_test.dart   → novo
 docs/specs/graficos.md           → seção Layout atualizada
 ```
+
+`failureRatePerCompany` mudou de `List<RankEntry>` para `List<FailureRate>`
+porque o card mostra a conta junto da taxa ("6,3% — 3 de 48 pacotes"): a
+porcentagem sozinha não distingue 1 em 8 de 125 em 1000, e é essa diferença que
+decide se vale agir. Os três eixos usam o mesmo tipo.
+
+`ChartProgressBar` saiu de dentro do `summaryCards.dart` para o `chartCard.dart`,
+que já é a casa do vocabulário compartilhado (`ChartStat`, `ChartEmpty`): agora
+dois cards desenham a mesma barra.
 
 ## Layout
 
@@ -162,23 +177,23 @@ Textos novos em pt-BR. `withValues(alpha:)` se precisar de cor.
 | Página | Mensagem |
 |---|---|
 | Insucessos por clima | "Nenhuma rota do período informou o tempo." + "O clima passou a ser gravado nas rotas novas." |
-| Índice por clima | "Nenhuma rota do período tem tempo **e** pacotes informados." + "Sem pacotes não há como calcular o índice." |
-| As três que mudaram de lugar | mantêm as mensagens que já têm |
+| Índice — linha sem dado | cada eixo explica o próprio motivo, no lugar da barra: "Sem pacotes informados no período." / "Sem rota com bairro e pacotes informados." / "Sem rota com tempo e pacotes informados." |
+| As duas que mudaram de lugar | mantêm as mensagens que já têm |
+
+O card de índice **nunca fica inteiro vazio**: cada linha some sozinha. Se só o
+clima falta, empresa e bairro continuam respondendo.
 
 ## Estatísticas de cada página
 
 | Página | Barras | Stats |
 |---|---|---|
 | Insucessos por empresa | quantidade | TOTAL · MAIOR · MENOR |
-| Índice por empresa | % | GERAL · MAIOR · MENOR |
 | Bairros com insucesso | quantidade (rateada) | BAIRROS · TOTAL · MAIOR |
 | Insucessos por clima | quantidade | TOTAL · CLIMAS · MAIOR |
-| Índice por clima | % | GERAL · MAIOR · MENOR |
+| Índice de insucesso | 3 barras horizontais | GERAL |
 
-`GERAL` nas duas páginas de índice é o mesmo número — o índice do período
-inteiro. É a régua: serve para ler cada barra como "acima ou abaixo da minha
-média", e ter duas réguas diferentes na mesma pilha de páginas confundiria mais
-do que ajudaria.
+`GERAL` é o índice do período inteiro — a régua para ler cada linha como "acima
+ou abaixo da minha média".
 
 ## Estratégia de teste
 
@@ -192,6 +207,24 @@ puras, sem Firebase, como o resto do arquivo:
 - [ ] índice é percentual sobre os pacotes daquele clima
 - [ ] clima sem pacotes informados fica fora do índice
 - [ ] lista vazia não divide por zero
+
+Grupo "índice por bairro", onde mora o rateio dos dois lados:
+
+- [ ] os pacotes da rota são divididos por igual entre os bairros
+- [ ] o numerador respeita a distribuição informada, sem ratear
+- [ ] sem distribuição, o insucesso é rateado como no ranking
+- [ ] bairro com pacotes e sem insucesso aparece zerado
+- [ ] rota sem pacotes ou sem bairro fica fora
+- [ ] a soma dos insucessos rateados bate com o total da rota
+
+`test/widget/failureRateCard_test.dart` (novo):
+
+- [ ] mostra o pior de cada eixo, com a conta ao lado
+- [ ] a barra é relativa ao pior índice, não a 0–100
+- [ ] sem insucesso nenhum, nenhuma barra enche
+- [ ] eixo sem dado explica o motivo em vez de mostrar 0%
+- [ ] sem pacotes no período, o GERAL vira travessão
+- [ ] número rateado do bairro não vira dízima na tela
 
 `test/widget/chartCarousel_test.dart` (novo):
 
@@ -214,17 +247,28 @@ A composição da tela (ordem dos carrosséis) é verificada no simulador: a
 
 ## Critérios de sucesso
 
-- [ ] Existe um carrossel "Insucessos" com 5 páginas, logo após os cards de
+Verificado no simulador (iPhone 16 Plus, iOS 18.6):
+
+- [x] Existe um carrossel "Insucessos" com 4 páginas, logo após os cards de
       dinheiro.
-- [ ] Empresas ficou com 2 páginas (valor, rotas) e Bairros com 1 (mais
-      rodados) — nenhuma métrica de insucesso sobrou neles.
-- [ ] Bairros, com uma página só, não mostra bolinha.
-- [ ] As páginas de clima mostram a mensagem de vazio explicando que o clima
-      passou a ser gravado agora.
-- [ ] Cadastrando uma rota concluída com clima e insucesso, ela aparece nas duas
-      páginas de clima com o rótulo em pt-BR.
-- [ ] `flutter analyze lib/ test/` sem error/warning novo.
-- [ ] `flutter test test/unit/ test/widget/` passa.
+- [x] A página de clima mostra a mensagem de vazio explicando que o clima passou
+      a ser gravado agora (antes de existir rota com tempo).
+- [x] O card de índice mostra as três linhas com o pior de cada eixo, a conta ao
+      lado e as barras em escala relativa.
+- [x] Rota concluída com clima e insucesso aparece no eixo de clima com o rótulo
+      em pt-BR ("Clima · Chuva").
+
+Verificado por teste:
+
+- [x] `flutter analyze lib/ test/` sem error/warning novo.
+- [x] `flutter test test/unit/ test/widget/`: 189 passando.
+- [x] Bairros, com uma página só, não mostra bolinha (`chartCarousel_test`).
+
+Falta conferir na mão:
+
+- [ ] Rolar até Empresas e Bairros e confirmar que nenhuma métrica de insucesso
+      sobrou neles (a rolagem sintética do simulador não funciona neste
+      ambiente).
 
 ## Questões em aberto
 

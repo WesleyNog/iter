@@ -208,9 +208,9 @@ Padrão ao abrir: Manhã.
 │                                                       │
 │ ── Insucessos das rotas concluídas e pagas ──────     │
 │ ┌─ INSUCESSOS ───────────────────────────────────┐   │
-│ │  (barras top-4)                                 │   │  ← PageView, 5 págs
+│ │  (3 págs de barras + 1 card de índice)          │   │  ← PageView, 4 págs
 │ └────────────────────────────────────────────────┘   │
-│                  ● ○ ○ ○ ○                            │
+│                  ● ○ ○ ○                              │
 │ ── Análise das rotas concluídas e pagas ─────────     │
 │ ┌─ EMPRESAS ─────────────────────────────────────┐   │
 │ │  (barras top-4)                                 │   │  ← PageView, 2 págs
