@@ -6,6 +6,7 @@ import 'package:iter/controller/vehicleController.dart';
 import 'package:iter/model/users.dart';
 import 'package:iter/model/vehicle.dart';
 import 'package:iter/screens/addVehicle.dart';
+import 'package:iter/widget/glassNavBar.dart' show GlassCircleButton;
 import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/vehicleCard.dart';
 
@@ -115,11 +116,15 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Meus veículos')),
-      floatingActionButton: FloatingActionButton(
+      // O mesmo botão do "+" da Home, e não um `FloatingActionButton`: o padrão
+      // do Material herda o lilás que o tema semeia com `deepPurple`, que não é
+      // cor de lugar nenhum do app.
+      floatingActionButton: GlassCircleButton(
         key: const Key('vehicles-add'),
-        onPressed: _openForm,
+        icon: Icons.add_rounded,
+        iconColor: Colors.green,
         tooltip: 'Cadastrar veículo',
-        child: const Icon(Icons.add),
+        onTap: _openForm,
       ),
       // Um StreamBuilder para os dois: o card precisa saber qual é o em uso, e
       // o perfil é quem guarda isso.

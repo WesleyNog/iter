@@ -1,5 +1,5 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:iter/widget/glassSurface.dart';
 
 /// Uma ação do menu do "+" (ex.: "Nova rota", "Abastecimento").
 ///
@@ -52,8 +52,11 @@ class CreateActionSheet extends StatelessWidget {
   const CreateActionSheet({super.key, required this.actions});
 
   // ---- Aparência ajustável ----
-  static const double _blur = 18;
   static const double _radius = 28;
+
+  /// Mais opaco que a barra de navegação **de propósito**: aqui há texto, e
+  /// letra sobre vidro claro precisa de mais fundo para ficar legível do que um
+  /// ícone. É diferença justificada, não deriva.
   static const double _glassOpacity = 0.75;
 
   @override
@@ -62,37 +65,18 @@ class CreateActionSheet extends StatelessWidget {
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        child: ClipRRect(
+        child: GlassSurface(
+          opacity: _glassOpacity,
           borderRadius: BorderRadius.circular(_radius),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: _blur, sigmaY: _blur),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: _glassOpacity),
-                borderRadius: BorderRadius.circular(_radius),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.6),
-                  width: 1,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.12),
-                    blurRadius: 20,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(height: 10),
-                  _handle(),
-                  const SizedBox(height: 6),
-                  ...actions.map((action) => _row(context, action)),
-                  const SizedBox(height: 8),
-                ],
-              ),
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 10),
+              _handle(),
+              const SizedBox(height: 6),
+              ...actions.map((action) => _row(context, action)),
+              const SizedBox(height: 8),
+            ],
           ),
         ),
       ),
