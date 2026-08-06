@@ -8,8 +8,11 @@ import 'package:iter/Utils/currencyFormat.dart';
 import 'package:iter/Utils/insucessoBairro.dart';
 import 'package:iter/Utils/routeTime.dart';
 import 'package:iter/Utils/bairros.dart';
+import 'package:iter/Utils/vehicleCost.dart';
 import 'package:iter/controller/routeController.dart';
+import 'package:iter/controller/vehicleController.dart';
 import 'package:iter/model/newRouteModal.dart';
+import 'package:iter/model/vehicle.dart';
 import 'package:iter/services/firebase.dart';
 import 'package:iter/services/openWeather.dart';
 import 'package:iter/Utils/weather.dart';
@@ -905,6 +908,47 @@ class _AddIterState extends State<AddIter> {
     );
   }
 
+  /// Anexa a provisão à rota que está sendo salva.
+  ///
+  /// Só busca o veículo quando a rota está concluída ou paga: rota agendada não
+  /// provisiona nada, e uma leitura no Firestore a cada rascunho salvo seria
+  /// consulta jogada fora.
+  ///
+  /// Quem decide o que fazer é `resolveProvision` — inclusive **manter** o que
+  /// já estava gravado quando o KM e o veículo não mudaram, que é o que impede
+  /// uma correção de hoje reescrever o lucro de junho.
+  Future<NewRouteModal> _withProvision(NewRouteModal draft) async {
+    final done =
+        draft.status == StatusRoute.concluido ||
+        draft.status == StatusRoute.pago;
+    if (!done) return draft.withProvision(null);
+
+    Vehicle? vehicle;
+    try {
+      vehicle = await VehicleController.fetchActive(widget.user.uid);
+    } catch (e) {
+      // Falha ao ler o veículo não pode impedir de salvar a rota: o dado da
+      // rota é do usuário, a provisão é conveniência.
+      debugPrint('Não foi possível ler o veículo em uso: $e');
+    }
+
+    if (vehicle == null && draft.provision == null && mounted) {
+      showNotification(
+        context: context,
+        type: 'info',
+        msg: 'Cadastre um veículo para o app calcular a provisão desta rota.',
+      );
+    }
+
+    return draft.withProvision(
+      resolveProvision(
+        route: draft,
+        existing: widget.route?.provision,
+        vehicle: vehicle,
+      ),
+    );
+  }
+
   Future<void> _saveRoute() async {
     // `currentState` continua podendo ser null se o Form sair da árvore.
     if (!(_formKey.currentState?.validate() ?? false)) {
@@ -918,7 +962,7 @@ class _AddIterState extends State<AddIter> {
 
     final String now = DateTime.now().toIso8601String();
 
-    final newRoute = NewRouteModal(
+    final draft = NewRouteModal(
       // Mesmo id = o `set` substitui o documento em vez de criar outro.
       id: widget.route?.id ?? Uuid().v4(),
       company: Company.values[selectedCompanyIndex],
@@ -955,8 +999,11 @@ class _AddIterState extends State<AddIter> {
       isInsucesso: isInsucessoSelected,
       insucessoQnt: isInsucessoSelected ? insucessoQnt : null,
       insucessoPorBairro: _distributionToSave(),
+      provision: widget.route?.provision,
       createdAt: widget.route?.createdAt ?? now,
     );
+
+    final newRoute = await _withProvision(draft);
 
     EasyLoading.show(status: 'Salvando rota...').ignore();
 

@@ -28,7 +28,8 @@ flutter test --plain-name "<name>"    # a single test by name
 lib/
   main.dart              MaterialApp + AuthGate; only '/addIter' is a named route
   firebase_options.dart  FlutterFire-generated (project iter-mn); Android + iOS only
-  screens/               full pages (login, home, addIter, listIter)
+  screens/               full pages (login, home, addIter, listIterScreen,
+                         graficsScreen, vehiclesScreen, addVehicle, …)
   widget/                reusable UI helpers exposed as top-level functions
   services/              Firebase + external API access
   controller/            per-collection Firestore read/write (UserController)
@@ -38,7 +39,7 @@ lib/
 
 File names are camelCase (`addIter.dart`, `newRouteModal.dart`), not Dart's usual snake_case. Follow the existing convention rather than mixing styles.
 
-Widgets in `lib/widget/` are top-level functions that show something (`showNotification`, `showCupertinoDatePicker`, `showBairrosMultiSelect`), not `StatelessWidget` subclasses. `showBairrosMultiSelect` takes the caller's `setState` so the sheet can refresh the parent screen.
+Widgets in `lib/widget/` are top-level functions when they *show* something (`showNotification`, `showCupertinoDatePicker`, `showBairrosMultiSelect`, `showFipePicker`) and `StatelessWidget`/`StatefulWidget` subclasses when they are a *piece of a screen* (`RouteCard`, `VehicleCard`, `PartsEditor`). `showBairrosMultiSelect` takes the caller's `setState` so the sheet can refresh the parent screen.
 
 State is plain `setState` in `StatefulWidget`s — there is no state-management package.
 
@@ -100,9 +101,82 @@ The key comes from `.env` (gitignored, holds `OPEN-WEATHER`, declared as an asse
 
 `NewRouteModal.weather` is written **only when creating** a route. Editing keeps whatever is stored (`_fillFromRoute` restores it) — the API only knows the sky of *now*, so refetching would stamp today's weather onto a route from last week.
 
+## Vehicles and cost per KM
+
+`iter/{uid}/vehicles/{id}` holds the driver's vehicles and the parameters that
+turn **kilometres driven into money**. The whole feature exists to reproduce the
+`Gastos` block of the owner's spreadsheet, and every field either feeds that
+calculation or identifies the vehicle in the list — there is deliberately no
+plate, colour or FIPE price. See `docs/specs/cadastro-veiculo.md`.
+
+One formula for every line, in `lib/Utils/vehicleCost.dart`: **price ÷ how many
+km it lasts**. Fuel is not a special case — its "price" is the litre and its
+"life" is the km/l. `MaintenancePart.quantity` exists because a car burns four
+tyres per change: without it, "R$ 500 a tyre" would provision a quarter of what
+it should. A rate that cannot be computed is `null`, never `0` and never
+`infinity`, and `unpricedParts()` names the parts left out so a screen can say
+which — a part dropped in silence is cost the driver thinks he provisioned.
+
+### The provision is frozen, on purpose
+
+`NewRouteModal.provision` is written when a route is saved as `concluido` or
+`pago`, and stores **values in reais** — never the rate, never a pointer to the
+vehicle. Rates get edited; frozen values do not. `RouteProvision.profitFrom()`
+derives the profit rather than storing it.
+
+Fixing this is one of the stated reasons the app exists: the spreadsheet's cost
+columns are formulas pointing at the month's parameter block, so raising the
+tyre price rewrites the profit of days that already happened. **Never make any
+money aggregate recompute the past from a current rate.**
+
+`resolveProvision()` owns the rule, and the case that matters is *same KM and
+same vehicle → keep what is stored*, even when the vehicle's rates changed since.
+Correcting a neighbourhood on a June route must not restamp it with today's
+fuel price. KM is compared with a one-metre epsilon, not `==`.
+
+Which vehicle is in use lives in `user/{uid}.activeVehicleId` — one atomic write
+to switch, where an `isActive` flag per document would need a transaction and
+could still end up with zero or two. `VehicleController.activeFrom()` is the
+**single** resolution used by the AppBar, the list and the provisioning; two
+implementations would let the screen draw one car while the maths used another.
+It falls back to the first vehicle when the stored id is orphaned.
+
+### FIPE and the car image
+
+`lib/services/fipe.dart` (no key, 500 req/day) lists brands, models and years so
+the driver picks the car instead of typing it. Two shapes to respect: `codigo` is
+a **String** in `/marcas` but an **int** in `/modelos`, and `/modelos` comes
+wrapped in `{"modelos": […]}` while the others are bare arrays. Bodies are read
+with `utf8.decode(bodyBytes)` — `response.body` assumes latin-1 and turns
+"Citroën" into "CitroÃ«n". Like `getWeather`, these return `null` for *could not
+find out*; an empty list means only what it says.
+
+The image is a **URL** built by `lib/Utils/carImage.dart` and never stored as
+bytes — imagin.studio's licence forbids downloading, caching and modifying, and
+the demo `customer=img` watermarks. Two filters, because neither is enough:
+`imaginHasImage()` drops "I don't have that vehicle", and the user's
+"É esse o seu carro?" drops "I have one, but it's the wrong car" — asking for
+`honda/cg` answers `found=true` with a Honda Pilot. Motorcycles always return
+`null`. Never store `imageUrl` before the user confirms.
+
+`image_picker` is the only dependency this feature added. Photos go to
+Firestore as base64 (`maxWidth: 800, imageQuality: 70`, refused above 700 KB),
+not to Storage, which would need the Blaze plan. Decode with
+`decodePhoto()` from `widget/vehicleThumb.dart`: bare `base64Decode` **throws**,
+and it throws before any `errorBuilder` runs, so one corrupt document would take
+down the whole list. iOS needs `NSCameraUsageDescription` and
+`NSPhotoLibraryUsageDescription` in `Info.plist` or it kills the app on open.
+
 ## Known incomplete work
 
-Several files are intentionally empty placeholders: `lib/route.dart`, `lib/screens/listIter.dart`, `lib/services/saveIter.dart`.
+Two files are intentionally empty placeholders: `lib/route.dart` and
+`lib/services/saveIter.dart`.
 
-- `AddIter._saveRoute()` is unreferenced, and its guard is inverted (`if (!validate())` builds the route); the save button only shows a dialog.
-- `test/widget_test.dart` pumps `MyApp`, which now needs an initialized Firebase, so it throws before it even reaches its (already wrong) counter assertions.
+- `test/widget_test.dart` pumps `MyApp`, which now needs an initialized Firebase, so it throws before it even reaches its (already wrong) counter assertions. Every other test passes.
+- `lib/screens/friendsScreen.dart` and `socialScreen.dart` are stubs behind their nav tabs.
+- The "+" menu offers *Abastecimento* and *Manutenção* without `onTap`, marked "Em breve".
+
+`AddIter._saveRoute()` **is** wired (`addIter.dart:838`) and its guard is correct
+(`if (!validate()) { notify; return; }`); the save button really writes to
+Firestore. An earlier version of this file claimed otherwise — do not budget for
+fixing a save path that works.

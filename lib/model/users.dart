@@ -11,6 +11,18 @@ class Users {
   final String email;
   final String? phone;
   String? photoUrl;
+
+  /// Veículo que o entregador está usando agora, de `iter/{uid}/vehicles`.
+  ///
+  /// Fica aqui, e não como um `isActive` em cada veículo, porque trocar de
+  /// carro vira **uma** escrita, atômica por natureza. Um booleano por
+  /// documento exigiria transação para garantir que só um fica ligado, e uma
+  /// falha no meio deixaria o usuário com zero ou dois ativos.
+  ///
+  /// Pode apontar para um veículo já excluído — quem resolve isso é
+  /// `VehicleController.activeFrom`, que cai no primeiro da lista.
+  String? activeVehicleId;
+
   final String createdAt;
   String? updatedAt;
 
@@ -24,6 +36,7 @@ class Users {
     this.cpf,
     this.phone,
     this.photoUrl,
+    this.activeVehicleId,
     required this.createdAt,
     this.updatedAt,
   });
@@ -39,6 +52,7 @@ class Users {
       'email': email,
       'phone': phone,
       'photoUrl': photoUrl,
+      'activeVehicleId': activeVehicleId,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
     };
@@ -55,6 +69,7 @@ class Users {
       email: map['email'] ?? '',
       phone: map['phone'],
       photoUrl: map['photoUrl'],
+      activeVehicleId: map['activeVehicleId'],
       createdAt: map['createdAt'] ?? '',
       updatedAt: map['updatedAt'],
     );

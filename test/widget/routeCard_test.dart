@@ -17,6 +17,7 @@ NewRouteModal buildRoute({
   bool? isInsucesso,
   int? insucessoQnt,
   Map<String, int> insucessoPorBairro = const {},
+  RouteProvision? provision,
 }) {
   return NewRouteModal(
     id: 'rota-1',
@@ -35,7 +36,30 @@ NewRouteModal buildRoute({
     isInsucesso: isInsucesso,
     insucessoQnt: insucessoQnt,
     insucessoPorBairro: insucessoPorBairro,
+    provision: provision,
     createdAt: '2026-08-01T09:00:00.000',
+  );
+}
+
+/// A provisão da linha 3 de JUL da planilha: 46,9 km com a Fiorino.
+RouteProvision buildProvision({
+  double km = 46.9,
+  double fuel = 32.83,
+  double totalParts = 5.596733,
+}) {
+  return RouteProvision(
+    vehicleId: 'v1',
+    km: km,
+    fuel: fuel,
+    parts: const {
+      'Óleo': 0.938,
+      'Pneu': 1.876,
+      'Bateria': 0.6253333,
+      'Freio': 0.7504,
+      'Geral': 1.407,
+    },
+    totalParts: totalParts,
+    calculatedAt: '2026-07-01T20:00:00.000',
   );
 }
 
@@ -178,4 +202,114 @@ void main() {
 
     expect(find.text('22:00 às 02:00 (4h)'), findsOneWidget);
   });
+
+  group('provisão e lucro', () {
+    testWidgets('mostra gasolina, provisão e lucro da planilha', (
+      tester,
+    ) async {
+      await pumpCard(
+        tester,
+        buildRoute(
+          status: StatusRoute.pago,
+          value: 152.50,
+          kmInitial: 1000,
+          kmFinal: 1046.9,
+          provision: buildProvision(),
+        ),
+        isExpanded: true,
+      );
+      await tester.pumpAndSettle();
+
+      // As colunas F, L e O da linha 3 de JUL.
+      expect(find.byKey(const Key('route-fuel')), findsOneWidget);
+      expect(_money(tester, 'route-fuel'), 'R\$ 32,83');
+      expect(_money(tester, 'route-provision'), 'R\$ 5,60');
+      expect(_money(tester, 'route-profit'), 'R\$ 114,07');
+    });
+
+    testWidgets('a gasolina fica fora da provisão', (tester) async {
+      await pumpCard(
+        tester,
+        buildRoute(
+          status: StatusRoute.pago,
+          value: 152.50,
+          kmInitial: 1000,
+          kmFinal: 1046.9,
+          provision: buildProvision(),
+        ),
+        isExpanded: true,
+      );
+      await tester.pumpAndSettle();
+
+      // Se a gasolina entrasse em `Total P.`, a provisão seria R$ 38,43.
+      expect(_money(tester, 'route-provision'), 'R\$ 5,60');
+    });
+
+    testWidgets('rota sem provisão não mostra a seção', (tester) async {
+      await pumpCard(
+        tester,
+        buildRoute(kmInitial: 1000, kmFinal: 1046.9),
+        isExpanded: true,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('route-fuel')), findsNothing);
+      expect(find.byKey(const Key('route-profit')), findsNothing);
+      expect(find.byKey(const Key('route-profit-hint')), findsNothing);
+    });
+
+    testWidgets('concluída sem KM pede o KM em vez de mostrar lucro zero', (
+      tester,
+    ) async {
+      await pumpCard(
+        tester,
+        buildRoute(status: StatusRoute.concluido),
+        isExpanded: true,
+      );
+      await tester.pumpAndSettle();
+
+      // "Lucro R$ 0,00" seria falso: o app não sabe o custo, e não saber é
+      // diferente de não ter custo.
+      expect(find.byKey(const Key('route-profit-hint')), findsOneWidget);
+      expect(find.byKey(const Key('route-profit')), findsNothing);
+    });
+
+    testWidgets('prejuízo aparece em vermelho', (tester) async {
+      await pumpCard(
+        tester,
+        buildRoute(
+          status: StatusRoute.pago,
+          value: 20,
+          kmInitial: 1000,
+          kmFinal: 1046.9,
+          provision: buildProvision(),
+        ),
+        isExpanded: true,
+      );
+      await tester.pumpAndSettle();
+
+      expect(_money(tester, 'route-profit'), 'R\$ -18,43');
+      final style = tester
+          .widget<Text>(find.byKey(const Key('route-profit')))
+          .style!;
+      expect(style.color, Colors.red.shade600);
+    });
+
+    testWidgets('card fechado não monta a seção', (tester) async {
+      await pumpCard(
+        tester,
+        buildRoute(
+          status: StatusRoute.pago,
+          kmInitial: 1000,
+          kmFinal: 1046.9,
+          provision: buildProvision(),
+        ),
+      );
+
+      expect(find.byKey(const Key('route-profit')), findsNothing);
+    });
+  });
 }
+
+String _money(WidgetTester tester, String key) =>
+    tester.widget<Text>(find.byKey(Key(key))).data!;

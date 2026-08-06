@@ -8,11 +8,13 @@ import 'package:iter/screens/friendsScreen.dart';
 import 'package:iter/screens/graficsScreen.dart';
 import 'package:iter/screens/listIterScreen.dart';
 import 'package:iter/screens/socialScreen.dart';
+import 'package:iter/screens/vehiclesScreen.dart';
 import 'package:iter/services/authService.dart';
 import 'package:iter/widget/createActionSheet.dart';
 import 'package:iter/widget/glassNavBar.dart';
 import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/profileDialog.dart';
+import 'package:iter/widget/vehicleAvatar.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.user});
@@ -106,6 +108,14 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// `push` normal: a tela de veículos volta com `pop` e o AuthGate, que vive
+  /// na primeira rota, segue de pé.
+  void _openVehicles() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => VehiclesScreen(uid: widget.user.uid)),
+    );
+  }
+
   Future<void> _handleSignOut() async {
     setState(() => _isSigningOut = true);
 
@@ -136,11 +146,13 @@ class _HomeScreenState extends State<HomeScreen> {
       // teria nada atrás para borrar. As telas roláveis compensam com o respiro
       // que o Scaffold anuncia em `MediaQuery.paddingOf(context).bottom`.
       extendBody: true,
-      appBar: AppBar(
-        titleSpacing: 16,
-        // Um StreamBuilder para a linha inteira: o avatar precisa do mesmo
-        // apelido que o texto, para levá-lo ao dialog de perfil.
-        title: StreamBuilder<Users?>(
+      // Um StreamBuilder para a AppBar inteira, e não só para o título: o
+      // avatar precisa do apelido para levá-lo ao dialog de perfil, e o botão
+      // de veículos precisa do `activeVehicleId`, que mora no mesmo documento.
+      // Dois StreamBuilder seriam duas escutas de `user/{uid}`.
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(kToolbarHeight),
+        child: StreamBuilder<Users?>(
           stream: _profile,
           builder: (context, snapshot) {
             if (snapshot.hasError) {
@@ -150,85 +162,93 @@ class _HomeScreenState extends State<HomeScreen> {
             final nickName = snapshot.data?.nickName;
             final hasNickName = nickName != null && nickName.isNotEmpty;
 
-            return Row(
-              children: [
-                InkWell(
-                  onTap: () => _openProfile(nickName),
-                  customBorder: const CircleBorder(),
-                  child: Tooltip(
-                    message: 'Ver perfil',
-                    child: CircleAvatar(
-                      radius: 18,
-                      backgroundColor: Colors.blue.shade100,
-                      backgroundImage: photoUrl != null && photoUrl.isNotEmpty
-                          ? NetworkImage(photoUrl)
-                          : null,
-                      child: photoUrl == null || photoUrl.isEmpty
-                          ? Text(
-                              _firstName.characters.first.toUpperCase(),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            )
-                          : null,
+            return AppBar(
+              titleSpacing: 16,
+              title: Row(
+                children: [
+                  InkWell(
+                    onTap: () => _openProfile(nickName),
+                    customBorder: const CircleBorder(),
+                    child: Tooltip(
+                      message: 'Ver perfil',
+                      child: CircleAvatar(
+                        radius: 18,
+                        backgroundColor: Colors.blue.shade100,
+                        backgroundImage: photoUrl != null && photoUrl.isNotEmpty
+                            ? NetworkImage(photoUrl)
+                            : null,
+                        child: photoUrl == null || photoUrl.isEmpty
+                            ? Text(
+                                _firstName.characters.first.toUpperCase(),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              )
+                            : null,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Olá,',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade600,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Olá,',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
                         ),
-                      ),
-                      Text.rich(
-                        TextSpan(
-                          children: [
-                            TextSpan(text: _firstName),
-                            if (hasNickName)
-                              TextSpan(
-                                text: '  |  @$nickName',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.normal,
-                                  color: Colors.grey.shade600,
+                        Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(text: _firstName),
+                              if (hasNickName)
+                                TextSpan(
+                                  text: '  |  @$nickName',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.normal,
+                                    color: Colors.grey.shade600,
+                                  ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
+                ],
+              ),
+              actions: [
+                VehicleAvatar(
+                  uid: widget.user.uid,
+                  activeVehicleId: snapshot.data?.activeVehicleId,
+                  onTap: _openVehicles,
+                ),
+                IconButton(
+                  tooltip: 'Sair',
+                  onPressed: _isSigningOut ? null : _handleSignOut,
+                  icon: _isSigningOut
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.logout),
                 ),
               ],
             );
           },
         ),
-        actions: [
-          IconButton(
-            tooltip: 'Sair',
-            onPressed: _isSigningOut ? null : _handleSignOut,
-            icon: _isSigningOut
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.logout),
-          ),
-        ],
       ),
       body: screens[current],
       bottomNavigationBar: GlassNavBar(

@@ -223,7 +223,91 @@ class RouteCard extends StatelessWidget {
             ],
           ),
         ],
+        _profitBlock(),
       ],
+    );
+  }
+
+  /// Gasolina, provisão e lucro — as colunas F, L e O da planilha.
+  ///
+  /// Só aparece quando há provisão gravada. Rota concluída sem KM ganha a dica
+  /// do que falta, em vez de um "Lucro R$ 0,00" que seria falso: sem KM o app
+  /// não sabe o custo, e não saber é diferente de não ter custo.
+  Widget _profitBlock() {
+    final provision = route.provision;
+
+    if (provision == null) {
+      final done =
+          route.status == StatusRoute.concluido ||
+          route.status == StatusRoute.pago;
+      if (!done || _totalKm != null) return const SizedBox.shrink();
+
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(
+          'Informe o KM para calcular o lucro.',
+          key: const Key('route-profit-hint'),
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ),
+      );
+    }
+
+    final profit = route.profit;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 4),
+        Divider(color: Colors.grey.shade200, height: 1),
+        const SizedBox(height: 10),
+        _moneyRow('Gasolina', provision.fuel, key: 'route-fuel'),
+        // A gasolina fica fora da provisão, como na planilha: `Total P.` é
+        // `=SUM(G3:K3)` e o lucro subtrai as duas separadamente.
+        _moneyRow('Provisão', provision.totalParts, key: 'route-provision'),
+        if (profit != null)
+          _moneyRow(
+            'Lucro',
+            profit,
+            key: 'route-profit',
+            color: profit >= 0 ? Colors.green.shade700 : Colors.red.shade600,
+            bold: true,
+          ),
+      ],
+    );
+  }
+
+  Widget _moneyRow(
+    String label,
+    double value, {
+    required String key,
+    Color? color,
+    bool bold = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                color: color ?? Colors.grey.shade600,
+                fontWeight: bold ? FontWeight.bold : null,
+              ),
+            ),
+          ),
+          Text(
+            CurrencyFormatterHelper.formatMoney(value),
+            key: Key(key),
+            style: TextStyle(
+              fontSize: bold ? 15 : 13,
+              fontWeight: bold ? FontWeight.bold : FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

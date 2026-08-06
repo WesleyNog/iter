@@ -41,6 +41,12 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Exigidas pelo image_picker (foto do veículo). Sem elas o iOS derruba o
+	     app na hora de abrir a câmera ou a galeria, sem pedir permissão. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Para tirar uma foto do seu veículo.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Para escolher uma foto do seu veículo.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
