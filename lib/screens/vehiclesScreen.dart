@@ -1,8 +1,11 @@
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:iter/Utils/fuelEconomy.dart';
+import 'package:iter/controller/supplyController.dart';
 import 'package:iter/controller/userController.dart';
 import 'package:iter/controller/vehicleController.dart';
+import 'package:iter/model/supply.dart';
 import 'package:iter/model/users.dart';
 import 'package:iter/model/vehicle.dart';
 import 'package:iter/screens/addVehicle.dart';
@@ -31,6 +34,14 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
     widget.uid,
   );
   late final Stream<Users?> _profile = UserController.watch(widget.uid);
+
+  /// Leitura única, e não `watchAll`: o consumo medido muda quando um
+  /// abastecimento é registrado — em outra tela, que fecha e volta para cá.
+  /// Um listener permanente numa tela que se abre para trocar de carro seria
+  /// escuta parada consumindo à toa.
+  late final Future<List<Supply>> _supplies = SupplyController.fetchAll(
+    widget.uid,
+  );
 
   Future<void> _openForm([Vehicle? vehicle]) async {
     await Navigator.of(context).push(
@@ -173,50 +184,75 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
         // isso, a tela poderia marcar um carro e a conta usar outro.
         final active = VehicleController.activeFrom(vehicles, activeId);
 
-        return ListView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
-          itemCount: vehicles.length,
-          itemBuilder: (context, index) {
-            final vehicle = vehicles[index];
+        return FutureBuilder<List<Supply>>(
+          future: _supplies,
+          builder: (context, supplySnapshot) {
+            if (supplySnapshot.hasError) {
+              debugPrint(
+                'Erro ao ler os abastecimentos: ${supplySnapshot.error}',
+              );
+            }
+            // Sem os abastecimentos a lista continua inteira; só o consumo
+            // medido não aparece.
+            final supplies = supplySnapshot.data;
 
-            // O espaçamento fica fora do Slidable, senão as ações herdam a
-            // altura do card + espaço e ficam maiores que ele.
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Slidable(
-                key: ValueKey(vehicle.id),
-                endActionPane: ActionPane(
-                  motion: const DrawerMotion(),
-                  extentRatio: 0.45,
-                  children: [
-                    SlidableAction(
-                      onPressed: (_) => _openForm(vehicle),
-                      icon: Icons.edit_outlined,
-                      label: 'Editar',
-                      backgroundColor: Colors.blue.shade400,
-                      foregroundColor: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      padding: EdgeInsets.zero,
-                    ),
-                    SlidableAction(
-                      onPressed: (_) => _confirmDelete(vehicle),
-                      icon: Icons.delete_outline,
-                      label: 'Excluir',
-                      backgroundColor: Colors.red.shade400,
-                      foregroundColor: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      padding: EdgeInsets.zero,
-                    ),
-                  ],
-                ),
-                child: VehicleCard(
-                  vehicle: vehicle,
-                  isActive: vehicle.id == active?.id,
-                  onTap: () => _setActive(vehicle, active?.id),
-                ),
-              ),
-            );
+            return _cards(vehicles, active, supplies);
           },
+        );
+      },
+    );
+  }
+
+  Widget _cards(
+    List<Vehicle> vehicles,
+    Vehicle? active,
+    List<Supply>? supplies,
+  ) {
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+      itemCount: vehicles.length,
+      itemBuilder: (context, index) {
+        final vehicle = vehicles[index];
+
+        // O espaçamento fica fora do Slidable, senão as ações herdam a
+        // altura do card + espaço e ficam maiores que ele.
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Slidable(
+            key: ValueKey(vehicle.id),
+            endActionPane: ActionPane(
+              motion: const DrawerMotion(),
+              extentRatio: 0.45,
+              children: [
+                SlidableAction(
+                  onPressed: (_) => _openForm(vehicle),
+                  icon: Icons.edit_outlined,
+                  label: 'Editar',
+                  backgroundColor: Colors.blue.shade400,
+                  foregroundColor: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  padding: EdgeInsets.zero,
+                ),
+                SlidableAction(
+                  onPressed: (_) => _confirmDelete(vehicle),
+                  icon: Icons.delete_outline,
+                  label: 'Excluir',
+                  backgroundColor: Colors.red.shade400,
+                  foregroundColor: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  padding: EdgeInsets.zero,
+                ),
+              ],
+            ),
+            child: VehicleCard(
+              vehicle: vehicle,
+              isActive: vehicle.id == active?.id,
+              onTap: () => _setActive(vehicle, active?.id),
+              economy: supplies == null
+                  ? null
+                  : measuredEconomy(supplies, vehicleId: vehicle.id),
+            ),
+          ),
         );
       },
     );

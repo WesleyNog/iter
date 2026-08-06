@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:iter/Utils/fuelEconomy.dart';
+import 'package:iter/model/supply.dart';
 import 'package:iter/model/vehicle.dart';
 import 'package:iter/widget/vehicleCard.dart';
 import 'package:iter/widget/vehicleThumb.dart';
@@ -171,5 +173,132 @@ void main() {
 
       expect(find.byIcon(Icons.directions_car_outlined), findsOneWidget);
     });
+  });
+
+  group('consumptionLine — cadastrado e medido lado a lado', () {
+    EconomyResult ok(double kmPerLiter, {int fills = 3}) => (
+      economy: (
+        fuel: SupplyFuel.gasolina,
+        kmPerLiter: kmPerLiter,
+        km: 800,
+        liters: 800 / kmPerLiter,
+        fills: fills,
+      ),
+      gap: null,
+      missing: 0,
+    );
+
+    EconomyResult gap(EconomyGap g, int missing) =>
+        (economy: null, gap: g, missing: missing);
+
+    test('os dois números aparecem juntos', () {
+      // O ponto é justamente ver a diferença: o cadastrado alimenta a provisão
+      // de toda rota, o medido é o que o carro faz.
+      expect(
+        consumptionLine(_vehicle(consumption: 10), {SupplyFuel.gasolina: ok(10.96)}),
+        '10,00 km/l no cadastro · 10,96 medido',
+      );
+    });
+
+    test('com um combustível só, não repete o nome dele', () {
+      final linha = consumptionLine(
+        _vehicle(consumption: 10),
+        {SupplyFuel.gasolina: ok(10.96)},
+      )!;
+
+      expect(linha, isNot(contains('gasolina')));
+    });
+
+    test('com dois combustíveis, cada um é nomeado', () {
+      final linha = consumptionLine(_vehicle(consumption: 10), {
+        SupplyFuel.gasolina: ok(10.96),
+        SupplyFuel.etanol: (
+          economy: (
+            fuel: SupplyFuel.etanol,
+            kmPerLiter: 8,
+            km: 400,
+            liters: 50,
+            fills: 3,
+          ),
+          gap: null,
+          missing: 0,
+        ),
+      })!;
+
+      expect(linha, contains('gasolina 10,96'));
+      expect(linha, contains('etanol 8,00'));
+    });
+
+    test('sem medição, mostra só o cadastrado', () {
+      expect(
+        consumptionLine(_vehicle(consumption: 10), null),
+        '10,00 km/l no cadastro',
+      );
+    });
+
+    test('sem cadastro e sem abastecimento, não há linha', () {
+      // Sem nada a dizer, a linha seria ruído.
+      expect(consumptionLine(_vehicle(consumption: null), null), isNull);
+      expect(consumptionLine(_vehicle(consumption: null), const {}), isNull);
+    });
+
+    test('com abastecimento mas sem medir, diz o que destrava', () {
+      expect(
+        consumptionLine(_vehicle(consumption: null), {
+          SupplyFuel.gasolina: gap(EconomyGap.semKm, 2),
+        }),
+        contains('Informe o KM'),
+      );
+    });
+
+    test('com cadastro, a dica não rouba o lugar do número', () {
+      // Ele já tem um consumo configurado; a dica viraria ruído no card.
+      expect(
+        consumptionLine(_vehicle(consumption: 10), {
+          SupplyFuel.gasolina: gap(EconomyGap.semKm, 2),
+        }),
+        '10,00 km/l no cadastro',
+      );
+    });
+  });
+
+  testWidgets('o card mostra a linha de consumo', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: VehicleCard(
+            vehicle: _vehicle(consumption: 10),
+            economy: {
+              SupplyFuel.gasolina: (
+                economy: (
+                  fuel: SupplyFuel.gasolina,
+                  kmPerLiter: 10.96,
+                  km: 800,
+                  liters: 73,
+                  fills: 3,
+                ),
+                gap: null,
+                missing: 0,
+              ),
+            },
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester.widget<Text>(find.byKey(const Key('vehicle-card-consumption'))).data,
+      '10,00 km/l no cadastro · 10,96 medido',
+    );
+  });
+
+  testWidgets('sem economia, o card não desenha a linha vazia', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: VehicleCard(vehicle: _vehicle(consumption: null))),
+      ),
+    );
+
+    expect(find.byKey(const Key('vehicle-card-consumption')), findsNothing);
   });
 }

@@ -14,6 +14,7 @@
 /// manutenção por KM — mora aqui.
 library;
 
+import 'package:iter/Utils/fuelEconomy.dart';
 import 'package:iter/Utils/text.dart';
 import 'package:iter/model/maintenance.dart';
 import 'package:iter/model/supply.dart';
@@ -150,4 +151,51 @@ Vehicle withPartPrice(
         identical(part, target) ? part.copyWith(price: unitPrice) : part,
     ],
   );
+}
+
+// -------------------------------------------------- abastecimentos → consumo
+
+/// Mínimo de abastecimentos para oferecer o consumo ao cadastro.
+///
+/// A média acumulada assume tanque no mesmo nível nas duas pontas, e o erro
+/// encolhe conforme os litros somam. Com dois registros o número já **aparece**
+/// — ver cedo ajuda —, mas mudar a provisão de toda rota futura com uma leitura
+/// só seria decidir no ruído.
+const _minimumFills = 3;
+
+/// Meio décimo de km/l: metade de um por cento num valor perto de dez. Abaixo
+/// disso a diferença não muda decisão nenhuma e a pergunta vira incômodo.
+const _consumptionEpsilon = 0.05;
+
+/// Se vale oferecer a correção do consumo do veículo.
+///
+/// Terceira e última das três: preço do litro, preço da peça e agora o
+/// consumo. Com os três medidos, o custo por km da provisão deixa de ter chute.
+///
+/// Não oferece quando:
+///
+/// - não há veículo;
+/// - menos de [_minimumFills] abastecimentos sustentam o número;
+/// - o veículo **não é flex** e o combustível medido é outro — o consumo com
+///   etanol não descreve um carro que roda a gasolina;
+/// - o valor já é praticamente o mesmo.
+///
+/// Em veículo **flex** oferece para os dois: só o motorista sabe qual dos dois
+/// o `consumption` dele representa, e a tela mostra qual foi o combustível para
+/// a escolha ser informada.
+bool shouldOfferConsumptionUpdate(Vehicle? vehicle, FuelEconomy economy) {
+  if (vehicle == null) return false;
+  if (economy.kmPerLiter <= 0) return false;
+  if (economy.fills < _minimumFills) return false;
+
+  final required = SupplyFuel.fromVehicle(vehicle.fuel);
+  if (required != null && required != economy.fuel) return false;
+
+  final current = vehicle.consumption;
+  if (current != null &&
+      (current - economy.kmPerLiter).abs() < _consumptionEpsilon) {
+    return false;
+  }
+
+  return true;
 }

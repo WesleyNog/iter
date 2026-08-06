@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:iter/Utils/currencyFormat.dart';
 import 'package:iter/Utils/expenseSummary.dart';
+import 'package:iter/Utils/fuelEconomy.dart';
+import 'package:iter/model/supply.dart';
 
 /// O card de **gastos** do período, abaixo dos cards de empresa.
 ///
@@ -13,9 +15,21 @@ import 'package:iter/Utils/expenseSummary.dart';
 /// acima de "Gastos R$ 430,50" convida a fazer a conta de cabeça — e ela estaria
 /// errada.
 class ExpenseCard extends StatelessWidget {
-  const ExpenseCard({super.key, required this.summary, this.onDetail});
+  const ExpenseCard({
+    super.key,
+    required this.summary,
+    this.onDetail,
+    this.economy,
+  });
 
   final ExpenseSummary summary;
+
+  /// Consumo medido **no período**, por combustível.
+  ///
+  /// `null` quando não dá para atribuir a um carro só — ver [periodEconomy].
+  /// Diferente do card do veículo, que mostra o de toda a vida: aqui a pergunta
+  /// é "como foi este mês", lá é "quanto meu carro faz".
+  final Map<SupplyFuel, EconomyResult>? economy;
 
   /// `null` esconde o botão — sem gasto no período não há o que detalhar.
   final VoidCallback? onDetail;
@@ -128,9 +142,27 @@ class ExpenseCard extends StatelessWidget {
         '${formatNumber(summary.liters!, decimals: 1)} L',
       if (summary.averagePricePerLiter != null)
         '${formatRate(summary.averagePricePerLiter!)}/L',
+      ..._measured(),
     ];
 
     return parts.join(' · ');
+  }
+
+  /// `10,96 km/l`, ou `gasolina 10,96 · etanol 8,00 km/l` com os dois.
+  List<String> _measured() {
+    final medidos = <String>[
+      for (final entry in (economy ?? const {}).entries)
+        if (entry.value.economy case final e?)
+          economy!.length == 1
+              ? formatEconomy(e.kmPerLiter)
+              : '${entry.key.label.toLowerCase()} '
+                    '${formatEconomy(e.kmPerLiter)}',
+    ];
+
+    // Sem medição não entra nada: a dica de "informe o KM" mora no card do
+    // veículo, que é onde ele vai resolver isso. Repetir aqui seria cobrança
+    // dobrada.
+    return medidos;
   }
 
   String _plural(int count, String singular, String plural) =>

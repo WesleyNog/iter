@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iter/Utils/expenseSummary.dart';
+import 'package:iter/Utils/fuelEconomy.dart';
+import 'package:iter/model/supply.dart';
 import 'package:iter/widget/expenseCard.dart';
 
 ExpenseSummary _summary({
@@ -25,12 +27,17 @@ Future<void> _pump(
   WidgetTester tester,
   ExpenseSummary summary, {
   VoidCallback? onDetail,
+  Map<SupplyFuel, EconomyResult>? economy,
 }) {
   return tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
         body: SingleChildScrollView(
-          child: ExpenseCard(summary: summary, onDetail: onDetail),
+          child: ExpenseCard(
+            summary: summary,
+            onDetail: onDetail,
+            economy: economy,
+          ),
         ),
       ),
     ),
@@ -190,6 +197,68 @@ void main() {
       await tester.pump();
 
       expect(toques, 1);
+    });
+  });
+
+  group('consumo do período na linha de contexto', () {
+    EconomyResult ok(SupplyFuel fuel, double kmPerLiter) => (
+      economy: (
+        fuel: fuel,
+        kmPerLiter: kmPerLiter,
+        km: 800,
+        liters: 800 / kmPerLiter,
+        fills: 3,
+      ),
+      gap: null,
+      missing: 0,
+    );
+
+    testWidgets('entra depois do preço médio', (tester) async {
+      await _pump(
+        tester,
+        _summary(),
+        economy: {SupplyFuel.gasolina: ok(SupplyFuel.gasolina, 10.96)},
+      );
+
+      expect(
+        _text(tester, 'expense-meta'),
+        '2 abastecimentos · 72,5 L · R\$ 5,9379/L · 10,96 km/l',
+      );
+    });
+
+    testWidgets('com dois combustíveis, cada um é nomeado', (tester) async {
+      await _pump(tester, _summary(), economy: {
+        SupplyFuel.gasolina: ok(SupplyFuel.gasolina, 10.96),
+        SupplyFuel.etanol: ok(SupplyFuel.etanol, 8),
+      });
+
+      final meta = _text(tester, 'expense-meta');
+      expect(meta, contains('gasolina 10,96 km/l'));
+      expect(meta, contains('etanol 8,00 km/l'));
+    });
+
+    testWidgets('sem economia, a linha fica como antes', (tester) async {
+      await _pump(tester, _summary());
+
+      expect(
+        _text(tester, 'expense-meta'),
+        '2 abastecimentos · 72,5 L · R\$ 5,9379/L',
+      );
+    });
+
+    testWidgets('sem medição possível, não cobra o KM aqui', (tester) async {
+      // A dica de "informe o KM" mora no card do veículo, que é onde ele
+      // resolve. Repetir aqui seria cobrança dobrada.
+      await _pump(tester, _summary(), economy: {
+        SupplyFuel.gasolina: (
+          economy: null,
+          gap: EconomyGap.semKm,
+          missing: 2,
+        ),
+      });
+
+      expect(_text(tester, 'expense-meta'), isNot(contains('KM')));
+      expect(_text(tester, 'expense-meta'), isNot(contains('km/l')));
     });
   });
 }

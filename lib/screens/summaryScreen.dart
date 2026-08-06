@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:iter/Utils/companySummary.dart';
 import 'package:iter/Utils/dated.dart';
 import 'package:iter/Utils/expenseSummary.dart';
+import 'package:iter/Utils/fuelEconomy.dart';
 import 'package:iter/Utils/routeStats.dart';
 import 'package:iter/Utils/routeStyle.dart';
 import 'package:iter/controller/routeController.dart';
@@ -210,6 +211,9 @@ class _SummaryScreenState extends State<SummaryScreen> {
 
             return ExpenseCard(
               summary: summary,
+              // `periodEconomy` devolve `null` quando o período mistura
+              // veículos — um km/l único não descreveria nenhum deles.
+              economy: periodEconomy(supplies),
               onDetail: summary.isEmpty
                   ? null
                   : () => Navigator.of(context).push(

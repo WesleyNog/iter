@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:iter/Utils/currencyFormat.dart';
 import 'package:iter/Utils/expenseRules.dart';
+import 'package:iter/Utils/fuelEconomy.dart';
 import 'package:iter/controller/stationController.dart';
 import 'package:iter/controller/supplyController.dart';
 import 'package:iter/controller/vehicleController.dart';
@@ -33,12 +34,16 @@ class AddSupply extends StatefulWidget {
     required this.uid,
     this.vehiclesLoader,
     this.stationsLoader,
+    this.suppliesLoader,
   });
 
   final String uid;
 
   final Future<VehiclesSnapshot> Function()? vehiclesLoader;
   final Future<StationsSnapshot> Function()? stationsLoader;
+
+  /// Abastecimentos já gravados, para medir o consumo depois de salvar.
+  final Future<List<Supply>> Function()? suppliesLoader;
 
   @override
   State<AddSupply> createState() => _AddSupplyState();
@@ -224,7 +229,7 @@ class _AddSupplyState extends State<AddSupply> {
       if (!mounted) return;
       EasyLoading.dismiss().ignore();
 
-      await _offerPriceUpdate(supply);
+      await _offerVehicleUpdate(supply);
 
       if (!mounted) return;
       showNotification(
@@ -247,26 +252,81 @@ class _AddSupplyState extends State<AddSupply> {
     }
   }
 
-  /// Pergunta — nunca decide — se o preço do veículo deve virar o da bomba.
-  Future<void> _offerPriceUpdate(Supply supply) async {
-    final vehicle = _vehicle;
-    if (!shouldOfferPriceUpdate(vehicle, supply)) return;
+  /// O consumo medido deste veículo com este combustível, depois de salvar.
+  Future<EconomyResult?> _economyFor(Vehicle vehicle, SupplyFuel fuel) async {
+    try {
+      final loader = widget.suppliesLoader ??
+          () => SupplyController.fetchAll(widget.uid);
 
-    final price = supply.pricePerLiter!;
-    final current = vehicle!.fuelPrice;
+      return measuredEconomy(await loader(), vehicleId: vehicle.id)[fuel];
+    } catch (e) {
+      debugPrint('Não foi possível medir o consumo: $e');
+      return null;
+    }
+  }
+
+  /// Pergunta — nunca decide — se o cadastro do veículo deve receber os
+  /// números medidos.
+  ///
+  /// **Um diálogo para os dois.** Preço do litro e consumo saem do mesmo
+  /// abastecimento e respondem a mesma coisa — "o cadastro está desatualizado?"
+  /// —, e dois modais empilhados depois de salvar é atrito onde deveria haver
+  /// alívio.
+  Future<void> _offerVehicleUpdate(Supply supply) async {
+    final vehicle = _vehicle;
+    if (vehicle == null) return;
+
+    final price = shouldOfferPriceUpdate(vehicle, supply)
+        ? supply.pricePerLiter
+        : null;
+
+    final result = await _economyFor(vehicle, supply.fuel);
+    final economy = result?.economy;
+    final consumption =
+        (economy != null && shouldOfferConsumptionUpdate(vehicle, economy))
+        ? economy.kmPerLiter
+        : null;
+
+    if (!mounted) return;
+
+    // Sem nada a corrigir, o consumo medido ainda é notícia boa: aparece como
+    // aviso em vez de sumir.
+    if (price == null && consumption == null) {
+      _reportEconomy(supply, result);
+      return;
+    }
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text('${formatRate(price)}/L'),
-        content: Text(
-          current == null
-              ? 'O ${vehicle.displayName} está sem preço de combustível. '
-                    'Usar este (${supply.fuel.label})?'
-              : 'O ${vehicle.displayName} está com '
-                    '${CurrencyFormatterHelper.formatMoney(current)}/L. '
-                    'Atualizar para este (${supply.fuel.label})?\n\n'
-                    'Isso muda o custo por km das próximas rotas.',
+        title: const Text('Atualizar o cadastro?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (price != null)
+              _updateLine(
+                'Preço do litro',
+                '${formatRate(price)}/L',
+                vehicle.fuelPrice == null
+                    ? null
+                    : '${CurrencyFormatterHelper.formatMoney(vehicle.fuelPrice!)}/L',
+              ),
+            if (consumption != null)
+              _updateLine(
+                'Consumo (${supply.fuel.label})',
+                formatEconomy(consumption),
+                vehicle.consumption == null
+                    ? null
+                    : formatEconomy(vehicle.consumption!),
+              ),
+            const SizedBox(height: 12),
+            Text(
+              'Isso muda o custo por km das próximas rotas. '
+              'As já concluídas não mudam.',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -287,13 +347,60 @@ class _AddSupplyState extends State<AddSupply> {
       await VehicleController.save(
         widget.uid,
         vehicle.copyWith(
-          fuelPrice: price,
+          // `??` mantém o que já estava: aceitar não pode apagar o campo que
+          // não foi oferecido.
+          fuelPrice: price ?? vehicle.fuelPrice,
+          consumption: consumption ?? vehicle.consumption,
           updatedAt: DateTime.now().toIso8601String(),
         ),
       );
     } catch (e) {
-      debugPrint('Não foi possível atualizar o preço do veículo: $e');
+      debugPrint('Não foi possível atualizar o veículo: $e');
     }
+  }
+
+  Widget _updateLine(String label, String medido, String? atual) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          Text(
+            atual == null ? medido : '$atual  →  $medido',
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Consumo medido, ou o que falta para medir.
+  ///
+  /// A dica do que falta só aparece quando ele **informou o KM** desta vez: quem
+  /// não usa o campo não precisa ser cobrado a cada abastecimento.
+  void _reportEconomy(Supply supply, EconomyResult? result) {
+    if (result == null) return;
+
+    final economy = result.economy;
+    if (economy != null) {
+      showNotification(
+        context: context,
+        type: 'info',
+        msg: 'Consumo medido: ${formatEconomy(economy.kmPerLiter)} '
+            '(${supply.fuel.label}).',
+      );
+      return;
+    }
+
+    final gap = result.gap;
+    if (gap == null || supply.odometer == null) return;
+
+    showNotification(
+      context: context,
+      type: 'info',
+      msg: economyGapMessage(gap, result.missing),
+    );
   }
 
   // ------------------------------------------------------------------ UI

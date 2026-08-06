@@ -1,7 +1,40 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iter/Utils/expenseRules.dart';
+import 'package:iter/Utils/fuelEconomy.dart';
 import 'package:iter/model/maintenance.dart';
+import 'package:iter/model/supply.dart';
 import 'package:iter/model/vehicle.dart';
+
+Vehicle _flexFit({double? consumption = 10, FuelType fuel = FuelType.flex}) {
+  return Vehicle(
+    id: 'v1',
+    type: VehicleType.carro,
+    brandCode: '25',
+    brandName: 'Honda',
+    modelCode: '1',
+    modelName: 'Fit EXL 1.5',
+    nickname: 'Fit',
+    fuel: fuel,
+    fuelPrice: 7,
+    consumption: consumption,
+    parts: Vehicle.defaultParts(VehicleType.carro),
+    createdAt: '2026-01-01T00:00:00.000',
+  );
+}
+
+FuelEconomy _economy({
+  SupplyFuel fuel = SupplyFuel.gasolina,
+  double kmPerLiter = 10.96,
+  int fills = 3,
+}) {
+  return (
+    fuel: fuel,
+    kmPerLiter: kmPerLiter,
+    km: 800,
+    liters: 800 / kmPerLiter,
+    fills: fills,
+  );
+}
 
 Vehicle _fit({List<MaintenancePart>? parts}) {
   return Vehicle(
@@ -158,6 +191,86 @@ void main() {
 
     test('valor zero não oferece', () {
       expect(shouldOfferPartUpdate(_fit(), _m(value: 0)), isFalse);
+    });
+  });
+
+  group('shouldOfferConsumptionUpdate — a terceira das três', () {
+    test('com três abastecimentos e valor diferente, oferece', () {
+      expect(shouldOfferConsumptionUpdate(_flexFit(), _economy()), isTrue);
+    });
+
+    test('com dois abastecimentos ainda não oferece', () {
+      // O número já **aparece** na tela com dois; mudar a provisão de toda
+      // rota futura com uma leitura só seria decidir no ruído.
+      expect(
+        shouldOfferConsumptionUpdate(_flexFit(), _economy(fills: 2)),
+        isFalse,
+      );
+    });
+
+    test('veículo sem consumo cadastrado, oferece', () {
+      expect(
+        shouldOfferConsumptionUpdate(_flexFit(consumption: null), _economy()),
+        isTrue,
+      );
+    });
+
+    test('valor praticamente igual não incomoda', () {
+      // O medido varia na terceira casa a cada abastecimento; sem a folga o
+      // app perguntaria sempre.
+      expect(
+        shouldOfferConsumptionUpdate(
+          _flexFit(consumption: 10.98),
+          _economy(kmPerLiter: 10.96),
+        ),
+        isFalse,
+      );
+    });
+
+    test('flex oferece para gasolina e para etanol', () {
+      // Só o motorista sabe qual dos dois o consumo do cadastro representa.
+      final flex = _flexFit();
+
+      expect(shouldOfferConsumptionUpdate(flex, _economy()), isTrue);
+      expect(
+        shouldOfferConsumptionUpdate(
+          flex,
+          _economy(fuel: SupplyFuel.etanol, kmPerLiter: 8),
+        ),
+        isTrue,
+      );
+    });
+
+    test('combustível único não aceita medição de outro líquido', () {
+      // O consumo com etanol não descreve um carro que roda a gasolina.
+      expect(
+        shouldOfferConsumptionUpdate(
+          _flexFit(fuel: FuelType.gasolina),
+          _economy(fuel: SupplyFuel.etanol, kmPerLiter: 8),
+        ),
+        isFalse,
+      );
+    });
+
+    test('combustível único aceita a medição do próprio líquido', () {
+      expect(
+        shouldOfferConsumptionUpdate(
+          _flexFit(fuel: FuelType.gasolina),
+          _economy(),
+        ),
+        isTrue,
+      );
+    });
+
+    test('sem veículo não oferece', () {
+      expect(shouldOfferConsumptionUpdate(null, _economy()), isFalse);
+    });
+
+    test('consumo zerado não oferece', () {
+      expect(
+        shouldOfferConsumptionUpdate(_flexFit(), _economy(kmPerLiter: 0)),
+        isFalse,
+      );
     });
   });
 }

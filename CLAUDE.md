@@ -188,6 +188,26 @@ for R$ 80 is not the price of a new tyre, which is what the Reparo/Substituiçã
 toggle exists to distinguish. Updating `Vehicle` changes the cost per km of
 every future route, so it is always the owner's call.
 
+## Widget tests cannot tell you whether text fits
+
+Two traps, both hit for real in this project:
+
+**Wrapping is not overflow.** `tester.takeException()` catches `RenderFlex
+overflowed`, but a label that wraps to two lines raises nothing — the test stays
+green and the broken layout ships. A `SegmentedButton` reading "Substituição"
+passed three width tests and still wrapped on the user's iPhone.
+
+**The default test font is square.** Measured: 14.25 px per character at
+`fontSize: 14`, every glyph one em wide. "Substituição" is 171 px in a widget
+test and roughly 85 px on a device. Asserting "does it fit?" therefore fails
+layouts that work, and designing to satisfy it means designing for a font that
+does not exist.
+
+So test the *cause*, not the symptom: that a control gets the full width, that
+two fields share a row, that a `DropdownButtonFormField` has `isExpanded: true`.
+Those hold regardless of font. Whether the text looks right is the device's
+call — see `test/widget/addMaintenance_test.dart` for the pattern.
+
 ## iOS device builds
 
 Installing on a physical iPhone can fail with `No code signature found` on a
