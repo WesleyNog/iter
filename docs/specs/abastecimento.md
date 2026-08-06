@@ -84,7 +84,18 @@ acertar:
    política de uso pede que a aplicação se identifique.
 
 Nem todo posto tem `name`; muitos têm só `brand` (Ipiranga, BR, Shell). O rótulo
-cai em `name → brand → "Posto sem nome"`.
+mostra **os dois quando há os dois** — `Posto Vila III | BR` — e cai em
+`brand → "Posto sem nome"` quando falta o nome.
+
+**Logo de verdade foi avaliado e recusado** (06/08/2026). O caminho existe: o
+OSM traz `brand:wikidata`, o Wikidata dá o logo em `P154` e o Commons rasteriza
+o SVG em PNG de 2 KB via `Special:FilePath?width=64` — testado, HTTP 200, sem
+precisar de `flutter_svg`. Não entra por três razões: são **dois round-trips
+extras por marca** numa tela que já espera GPS e Overpass; a **Petrobras não tem
+logo cadastrado** (`Q155171` sem `P154`), e é uma das maiores bandeiras do país;
+e posto independente — a maioria da lista real — não tem `brand` nenhum, então
+a lista sairia com uma ou duas logos e o resto vazio. A bandeira em texto vem
+**de graça na mesma resposta** e é consistente.
 
 A Overpass é serviço comunitário gratuito com política de uso: uma consulta por
 abastecimento é uso doméstico e cabe folgado. `429` e `504` acontecem e são

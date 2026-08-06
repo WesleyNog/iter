@@ -216,9 +216,21 @@ class _AddMaintenanceState extends State<AddMaintenance> {
               _vehiclePicker(),
               const SizedBox(height: 16),
             ],
-            _itemPicker(),
+            // "O que" e "quanto" na mesma linha; o toggle sozinho embaixo.
+            //
+            // A primeira versão punha o toggle ao lado do valor, e num iPhone
+            // "Substituição" **quebrou linha** — não estourou, quebrou, que é
+            // pior de detectar: nenhum overflow aparece e o teste passa. Com a
+            // largura toda, o rótulo cabe inteiro em qualquer tela.
+            Row(
+              children: [
+                Expanded(flex: 3, child: _itemPicker()),
+                const SizedBox(width: 8),
+                Expanded(flex: 2, child: _valueField()),
+              ],
+            ),
             const SizedBox(height: 16),
-            _actionAndValue(),
+            _actionToggle(),
             const SizedBox(height: 16),
             _workshopField(),
             const SizedBox(height: 8),
@@ -278,50 +290,40 @@ class _AddMaintenanceState extends State<AddMaintenance> {
     );
   }
 
-  /// Toggle e valor na mesma linha, como pedido.
+  Widget _valueField() {
+    return TextFormField(
+      key: const Key('maintenance-value'),
+      controller: _value,
+      keyboardType: TextInputType.number,
+      inputFormatters: CurrencyFormatterHelper.getCurrencyFormatter(),
+      decoration: const InputDecoration(
+        labelText: 'Valor',
+        border: OutlineInputBorder(),
+      ),
+      onChanged: (_) => setState(() {}),
+      validator: (_) => _valueOf == null ? 'Informe o valor' : null,
+    );
+  }
+
+  /// O toggle ocupa a linha inteira.
   ///
-  /// Os dois em `Expanded` para caber em tela estreita: o `SegmentedButton`
-  /// encolhe em vez de estourar, e há teste em 360 px de largura garantindo.
-  Widget _actionAndValue() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(
-          flex: 5,
-          child: SegmentedButton<MaintenanceAction>(
-            key: const Key('maintenance-action'),
-            style: const ButtonStyle(
-              visualDensity: VisualDensity.compact,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            showSelectedIcon: false,
-            segments: [
-              for (final action in MaintenanceAction.values)
-                ButtonSegment(value: action, label: Text(action.label)),
-            ],
-            selected: {_action},
-            onSelectionChanged: (selection) =>
-                setState(() => _action = selection.first),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          flex: 4,
-          child: TextFormField(
-            key: const Key('maintenance-value'),
-            controller: _value,
-            keyboardType: TextInputType.number,
-            inputFormatters: CurrencyFormatterHelper.getCurrencyFormatter(),
-            decoration: const InputDecoration(
-              isDense: true,
-              labelText: 'Valor',
-              border: OutlineInputBorder(),
-            ),
-            onChanged: (_) => setState(() {}),
-            validator: (_) => _valueOf == null ? 'Informe o valor' : null,
-          ),
-        ),
-      ],
+  /// `Reparo | Substituição` é a distinção que decide se o app pode corrigir o
+  /// preço da peça no cadastro — precisa ser lida sem esforço, e um rótulo
+  /// partido no meio ("Substituiç / ão") atrapalha justamente isso.
+  Widget _actionToggle() {
+    return SizedBox(
+      width: double.infinity,
+      child: SegmentedButton<MaintenanceAction>(
+        key: const Key('maintenance-action'),
+        showSelectedIcon: false,
+        segments: [
+          for (final action in MaintenanceAction.values)
+            ButtonSegment(value: action, label: Text(action.label)),
+        ],
+        selected: {_action},
+        onSelectionChanged: (selection) =>
+            setState(() => _action = selection.first),
+      ),
     );
   }
 

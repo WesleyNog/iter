@@ -130,12 +130,12 @@ void main() {
   });
 
   group('cabe em tela estreita', () {
-    // Um `RenderFlex overflowed` vira falha de teste. Foi num Android de 360 px
-    // que o formulário de rota estourou, e o toggle + valor na mesma linha é
-    // exatamente o arranjo que corre esse risco.
-    testWidgets('em 360 px, o toggle e o valor não estouram', (tester) async {
+    // Estes três só provam que nada **estourou**. A primeira versão do
+    // formulário passava neles e mesmo assim o rótulo "Substituição" quebrava
+    // linha no iPhone — quebra não é overflow, não vira exceção e o teste fica
+    // verde. Por isso existe o grupo seguinte.
+    testWidgets('em 360 px nada estoura', (tester) async {
       await _pump(tester, width: 360);
-
       expect(tester.takeException(), isNull);
     });
 
@@ -143,15 +143,74 @@ void main() {
       tester,
     ) async {
       await _pump(tester, width: 320);
-
       expect(tester.takeException(), isNull);
     });
 
     testWidgets('com o seletor de veículo montado também cabe', (tester) async {
       final fit = _fit();
       await _pump(tester, vehicles: [fit], active: fit, width: 320);
-
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('o toggle recebe a linha inteira', () {
+    // **O que estes testes NÃO conseguem provar:** que "Substituição" cabe sem
+    // quebrar linha. A fonte padrão do `flutter_test` é quadrada — 14,25 px por
+    // caractere em `fontSize: 14`, medido — enquanto uma fonte real gasta uns
+    // 7. "Substituição" mede 171 px no teste e ~85 no aparelho. Testar "cabe?"
+    // aqui reprovaria layouts que funcionam e me faria desenhar para uma fonte
+    // que não existe.
+    //
+    // O que dá para provar é a **causa** do defeito: o toggle estava dividindo
+    // a linha com o campo Valor e ficava com pouco mais de um terço da largura.
+    // Agora recebe a linha inteira, e cada segmento tem o dobro do espaço.
+    // Se alguém voltar a colocar algo ao lado dele, estes testes quebram.
+    Future<void> ocupaTudo(WidgetTester tester, double width) async {
+      await _pump(tester, width: width);
+
+      const padding = 32.0; // 16 de cada lado, do ListView
+      final toggle = tester
+          .getSize(find.byKey(const Key('maintenance-action')))
+          .width;
+
+      expect(toggle, closeTo(width - padding, 1));
+    }
+
+    testWidgets('em 411 px (o iPhone do usuário)', (tester) async {
+      await ocupaTudo(tester, 411);
+    });
+
+    testWidgets('em 360 px', (tester) async {
+      await ocupaTudo(tester, 360);
+    });
+
+    testWidgets('em 320 px — o menor Android em uso', (tester) async {
+      await ocupaTudo(tester, 320);
+    });
+  });
+
+  group('o valor subiu para a linha da peça', () {
+    testWidgets('os dois dividem a mesma linha', (tester) async {
+      await _pump(tester, width: 411);
+
+      final peca = tester.getRect(find.byKey(const Key('maintenance-item')));
+      final valor = tester.getRect(find.byKey(const Key('maintenance-value')));
+
+      // Mesma faixa vertical = mesma linha.
+      expect(peca.top, closeTo(valor.top, 2));
+      // E o campo do valor fica à direita da peça.
+      expect(valor.left, greaterThan(peca.right - 1));
+    });
+
+    testWidgets('a peça fica com mais espaço que o valor', (tester) async {
+      // "Pastilha de freio" é o rótulo mais longo da lista; o valor cabe em
+      // "R$ 2.400,00".
+      await _pump(tester, width: 411);
+
+      final peca = tester.getSize(find.byKey(const Key('maintenance-item')));
+      final valor = tester.getSize(find.byKey(const Key('maintenance-value')));
+
+      expect(peca.width, greaterThan(valor.width));
     });
   });
 

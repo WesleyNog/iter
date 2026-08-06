@@ -8,6 +8,7 @@ library;
 
 import 'package:iter/Utils/dated.dart';
 import 'package:iter/Utils/mapRead.dart';
+import 'package:iter/Utils/text.dart';
 import 'package:iter/model/vehicle.dart';
 
 /// O que foi para o tanque.
@@ -64,12 +65,43 @@ class FuelStation {
   final double lat;
   final double lng;
 
-  /// Muito posto no OSM não tem `name`, só `brand`.
+  /// `Posto Vila III | BR` — nome e bandeira, quando há os dois.
+  ///
+  /// A bandeira vem junto na resposta da Overpass, então mostrar não custa
+  /// requisição nenhuma. Foi por isso que ela ganhou do logo de verdade: aquele
+  /// exigiria consultar o Wikidata e depois o Commons para **cada** marca, e a
+  /// Petrobras — uma das maiores do Brasil — nem tem logo cadastrado lá.
+  ///
+  /// Muito posto no OSM não tem `name`, só `brand`; e alguns já trazem a
+  /// bandeira dentro do próprio nome, que é o caso que [_mentions] evita
+  /// duplicar.
   String get label {
-    if (name.trim().isNotEmpty) return name.trim();
-
+    final stationName = name.trim();
     final brandName = brand?.trim() ?? '';
-    return brandName.isEmpty ? 'Posto sem nome' : brandName;
+
+    if (stationName.isEmpty) {
+      return brandName.isEmpty ? 'Posto sem nome' : brandName;
+    }
+    if (brandName.isEmpty || _mentions(stationName, brandName)) {
+      return stationName;
+    }
+
+    return '$stationName | $brandName';
+  }
+
+  /// Se o nome já cita a bandeira, comparando **palavra a palavra**.
+  ///
+  /// Palavra inteira e não trecho: com `contains`, a bandeira "BR" casaria
+  /// dentro de "Posto **Br**asil" e a informação sumiria justamente onde ela
+  /// era nova.
+  static bool _mentions(String stationName, String brandName) {
+    final wanted = normalizeKey(brandName);
+    if (wanted.isEmpty) return false;
+
+    return stationName
+        .split(RegExp(r'[^\p{L}\p{N}]+', unicode: true))
+        .map(normalizeKey)
+        .contains(wanted);
   }
 
   Map<String, dynamic> toMap() => {

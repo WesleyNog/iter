@@ -157,17 +157,66 @@ void main() {
     });
   });
 
-  group('FuelStation', () {
-    test('o rótulo cai de nome para marca', () {
-      expect(_station.label, 'Posto Apiguana');
+  group('FuelStation.label — nome e bandeira', () {
+    FuelStation station({String name = '', String? brand}) =>
+        FuelStation(id: 'node-1', name: name, brand: brand, lat: 0, lng: 0);
+
+    test('com os dois, junta com barra', () {
+      // A bandeira vem de graça na resposta da Overpass — mostrar não custa
+      // requisição nenhuma, ao contrário do logo de verdade.
       expect(
-        const FuelStation(id: 'node-1', name: '', brand: 'Ipiranga', lat: 0, lng: 0).label,
-        'Ipiranga',
+        station(name: 'Posto Vila III', brand: 'BR').label,
+        'Posto Vila III | BR',
+      );
+    });
+
+    test('só nome fica só o nome', () {
+      expect(station(name: 'Posto Apiguana').label, 'Posto Apiguana');
+    });
+
+    test('só bandeira vira o rótulo', () {
+      expect(station(brand: 'Ipiranga').label, 'Ipiranga');
+    });
+
+    test('sem nada, "Posto sem nome"', () {
+      expect(station().label, 'Posto sem nome');
+    });
+
+    test('nome que já cita a bandeira não repete', () {
+      // Muito posto do OSM já vem assim da fonte.
+      expect(
+        station(name: 'Posto Cidade Jardim | Shell', brand: 'Shell').label,
+        'Posto Cidade Jardim | Shell',
+      );
+    });
+
+    test('a comparação ignora acento e caixa', () {
+      expect(
+        station(name: 'Auto Posto IPIRANGA', brand: 'Ipiranga').label,
+        'Auto Posto IPIRANGA',
+      );
+    });
+
+    test('bandeira curta não some dentro de outra palavra', () {
+      // Com `contains`, "BR" casaria dentro de "Brasil" e a bandeira sumiria
+      // justamente onde ela acrescentava informação.
+      expect(
+        station(name: 'Posto Brasil', brand: 'BR').label,
+        'Posto Brasil | BR',
       );
       expect(
-        const FuelStation(id: 'node-1', name: '', lat: 0, lng: 0).label,
-        'Posto sem nome',
+        station(name: 'Posto Alegre', brand: 'Ale').label,
+        'Posto Alegre | Ale',
       );
+    });
+
+    test('bandeira como palavra inteira é reconhecida', () {
+      expect(station(name: 'BR Aldeota', brand: 'BR').label, 'BR Aldeota');
+    });
+
+    test('espaços em branco não viram rótulo', () {
+      expect(station(name: '   ', brand: '  ').label, 'Posto sem nome');
+      expect(station(name: '  Posto X  ').label, 'Posto X');
     });
   });
 }
