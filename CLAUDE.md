@@ -188,6 +188,37 @@ for R$ 80 is not the price of a new tyre, which is what the Reparo/Substituiçã
 toggle exists to distinguish. Updating `Vehicle` changes the cost per km of
 every future route, so it is always the owner's call.
 
+## Measured km/l
+
+`Utils/fuelEconomy.dart` turns the odometer recorded at each fuel-up into the
+**third** number that used to be typed once and never revisited — litre price
+and part price were the other two. Distance between the first and last odometer
+reading, over the litres of every fill **except the first**: that one filled the
+tank that drove the distance *before* the window, and counting it makes the car
+look thirstier than it is.
+
+The failure that matters is the one that flatters. Litres are optional, so a
+fill without them puts fuel in the tank that never reaches the denominator — a
+higher km/l, a smaller fuel provision, and **overstated profit on every route**.
+So a fill without litres *inside the window* invalidates the window:
+`EconomyResult` carries a `gap` naming what is missing instead of a pretty
+wrong number, and the same guard rejects an odometer that does not advance
+(`128.800` typed as `12.880` would otherwise divide by a negative).
+
+One result **per fuel**: ethanol runs ~30% fewer km per litre, so a single
+average would describe neither tank of a flex car.
+
+The number is *shown* from 2 fills but only *offered to the cadastro* from 3
+(`_minimumFills`), because the estimate assumes the tank sat at the same level
+at both ends — an error bounded by one tankful, which shrinks as the
+denominator grows (~15% at 3 fills, ~2% at 20). Changing the provision of every
+future route on one reading is not worth it.
+
+Vehicle card shows the **lifetime** number, the summary's expense card the
+**period** one — "how much does my car do" and "how did this month go" are
+different questions. `periodEconomy()` returns `null` unless every fill in the
+period belongs to one vehicle, a missing `vehicleId` included.
+
 ## Widget tests cannot tell you whether text fits
 
 Two traps, both hit for real in this project:

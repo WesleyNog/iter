@@ -1,6 +1,7 @@
 # Spec: Consumo real em km/l
 
-Status: **proposta** · Criada em 2026-08-06 · Aguardando aprovação
+Status: **concluída** · Criada, aprovada e implementada em 2026-08-06 ·
+Verificada no iPhone do Wesley em 2026-08-06
 
 ## Objetivo
 
@@ -234,17 +235,17 @@ Os widgets ganham casos de exibição e de cada `EconomyGap`.
 
 ## Critérios de sucesso
 
-- [ ] Com 3 abastecimentos do exemplo, o app mostra **10,96 km/l**.
-- [ ] O card do veículo mostra cadastrado e medido lado a lado.
-- [ ] Gasolina e etanol aparecem separados num veículo flex.
-- [ ] Abastecimento sem litros na janela **impede** o número e diz o porquê.
-- [ ] Hodômetro que não avança não vira número.
-- [ ] Com 3 ou mais registros, salvar um abastecimento oferece atualizar o
+- [x] Com 3 abastecimentos do exemplo, o app mostra **10,96 km/l**.
+- [x] O card do veículo mostra cadastrado e medido lado a lado.
+- [x] Gasolina e etanol aparecem separados num veículo flex.
+- [x] Abastecimento sem litros na janela **impede** o número e diz o porquê.
+- [x] Hodômetro que não avança não vira número.
+- [x] Com 3 ou mais registros, salvar um abastecimento oferece atualizar o
       cadastro; com 2, não.
-- [ ] Aceitar muda o custo por km do veículo — e **não** muda o lucro de
+- [x] Aceitar muda o custo por km do veículo — e **não** muda o lucro de
       nenhuma rota já concluída.
-- [ ] `flutter analyze lib/` sem error/warning novo; os 590 testes atuais
-      continuam passando.
+- [x] `flutter analyze lib/` sem error/warning novo; 639 testes passando
+      (`widget_test.dart`, o template do contador, segue quebrado).
 
 ## Decisões
 
@@ -363,8 +364,20 @@ mostrar sem dado foram respondidos antes desta spec.
     este mês".
   - Verificar: `flutter test test/widget/expenseCard_test.dart`
 
-- [ ] **6. Verificação no aparelho**
-  - Aceite: registrar três abastecimentos com KM e ver o número; aceitar a
-    correção e ver o custo por km mudar; conferir que uma rota já concluída
-    **não** mudou de lucro.
-  - Verificar: `flutter run`
+- [x] **6. Verificação no aparelho** — feita pelo Wesley em 06/08/2026, no
+  iPhone. Confirmado item a item:
+  - O consumo medido apareceu **no terceiro** abastecimento e não antes —
+    `_minimumFills` fazendo o que devia. Com dois registros o número seria uma
+    janela só, e um dia de mão pesada viraria "o carro faz 8 km/l".
+  - O número foi **10,96 km/l**, exatamente o do exemplo da spec.
+  - O preço do litro foi oferecido em todo abastecimento, o consumo só quando
+    mudou mais que 0,05 km/l. Cadências diferentes de propósito: o preço muda
+    de posto para posto, o consumo é uma medição que só se refina.
+  - **O pilar: nenhuma rota já concluída mudou de lucro** depois de aceitar a
+    correção. A provisão continuou congelada, que é a razão de o app existir.
+
+  Fica registrado o que **não** é bug e pode incomodar um dia: o preço proposto
+  é o do **último** abastecimento, não a média. Um abastecimento caro propõe
+  aquele preço. Foi a decisão da spec do abastecimento — o app mostra e o dono
+  decide —, e trocar pela média ponderada é um ajuste pequeno, porque
+  `averagePricePerLiter` já existe.
