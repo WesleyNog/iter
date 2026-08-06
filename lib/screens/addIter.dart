@@ -360,9 +360,18 @@ class _AddIterState extends State<AddIter> {
   }
 
   Widget _buildContent() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.only(top: 10.0),
+    return SingleChildScrollView(
+      // O `Expanded` que envolve isto dá altura **fixa**; sem rolagem, o
+      // conteúdo estoura em tela pequena e o botão de salvar fica embaixo da
+      // faixa listrada. Foi o que aconteceu num Android de tela menor.
+      //
+      // O respiro embaixo é o que o teclado ocupa: sem ele, abrir o teclado no
+      // último campo esconderia o botão de novo.
+      padding: EdgeInsets.only(
+        top: 10.0,
+        bottom: MediaQuery.viewInsetsOf(context).bottom,
+      ),
+      child: Center(
         child: Column(
           children: [
             const Text(
@@ -473,6 +482,11 @@ class _AddIterState extends State<AddIter> {
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     value: status,
+                    // Sem isto o dropdown se dimensiona pelo **maior item do
+                    // menu** ("Concluído") em vez da largura que recebeu, e
+                    // estoura para a direita em tela estreita. Com `true` ele
+                    // preenche o espaço dado e corta com reticências.
+                    isExpanded: true,
                     decoration: InputDecoration(
                       labelText: 'Status',
                       border: OutlineInputBorder(
