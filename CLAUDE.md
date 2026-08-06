@@ -167,6 +167,60 @@ and it throws before any `errorBuilder` runs, so one corrupt document would take
 down the whole list. iOS needs `NSCameraUsageDescription` and
 `NSPhotoLibraryUsageDescription` in `Info.plist` or it kills the app on open.
 
+## Expenses are a statement, never a deduction
+
+`iter/{uid}/supply` (fuel-ups) and `iter/{uid}/maintenance` record **money that
+actually left the pocket**. The Summary tab shows them in an expense card below
+the company cards.
+
+**Never subtract them from route profit.** That profit already charges fuel and
+parts as a *provision* (`km × R$/km`); subtracting the real spend counts both
+twice. The card carries a line saying so, because seeing "Lucro R$ 175,60" above
+"Gastos R$ 430,50" invites the arithmetic — and the arithmetic is wrong.
+
+Comparing the two some day — "I provisioned R$ 628 of fuel and spent R$ 590" —
+is the real value this data unlocks. Adding them is not.
+
+Both feed the vehicle back, and both only ever **ask**: a fuel-up knows the real
+price per litre, a *replacement* knows the real price of a part. `Utils/
+expenseRules.dart` owns those rules. A **repair** never offers — fixing a tyre
+for R$ 80 is not the price of a new tyre, which is what the Reparo/Substituição
+toggle exists to distinguish. Updating `Vehicle` changes the cost per km of
+every future route, so it is always the owner's call.
+
+## iOS device builds
+
+Installing on a physical iPhone can fail with `No code signature found` on a
+Pods framework (`grpcpp.framework` is usually the first one iOS checks). It is
+almost never a Podfile or signing-config problem — `DEVELOPMENT_TEAM` is set and
+`CODE_SIGN_STYLE` is Automatic in the project.
+
+CocoaPods deliberately leaves pod frameworks unsigned (`CODE_SIGNING_ALLOWED =
+NO`, 75 times in `Pods.xcodeproj`); the Runner's `[CP] Embed Pods Frameworks`
+phase signs them on the way in. A corrupted DerivedData makes that phase copy
+frameworks from mismatched builds, and the `.app` ends up **partly** signed —
+that mix is the tell. A build genuinely made without signing leaves *all* of
+them unsigned, `App.framework` included.
+
+The fix is the cache, and it is safe — nothing but build artifacts:
+
+```bash
+rm -rf ~/Library/Developer/Xcode/DerivedData/Runner-*
+flutter clean && flutter pub get
+flutter build ios --debug          # ~11 min; re-signs all 29 frameworks
+```
+
+Verify before blaming anything else:
+
+```bash
+for f in build/ios/iphoneos/Runner.app/Frameworks/*.framework; do
+  codesign -dv "$f" 2>&1 | grep -q "not signed" && echo "unsigned: $f"
+done
+```
+
+A related symptom of the same corruption is
+`unable to rename temporary '…/round_robin.o.tmp'` while building gRPC-Core.
+
 ## Known incomplete work
 
 Two files are intentionally empty placeholders: `lib/route.dart` and

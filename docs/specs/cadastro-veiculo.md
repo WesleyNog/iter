@@ -1,7 +1,7 @@
 # Spec: Cadastro de Veículo e Provisão por Rota
 
-Status: **implementada** · Criada, aprovada e implementada em 2026-08-05 ·
-Falta a verificação no simulador (tarefa 13)
+Status: **concluída** · Criada, aprovada e implementada em 2026-08-05 ·
+Verificada em aparelho em 2026-08-06
 
 ## Objetivo
 
@@ -928,8 +928,8 @@ teste da tarefa.
   - Verificar: `flutter test test/widget/routeCard_test.dart`
   - Arquivos: `lib/widget/routeCard.dart`, `test/widget/routeCard_test.dart`
 
-- [ ] **13. Verificação no simulador** — só falta esta, e ela depende de login
-  com Google, que não dá para automatizar.
+- [x] **13. Verificação no aparelho** — feita pelo Wesley em 06/08/2026, em
+  Android e iPhone físicos.
   - Já verificado sem o simulador: `flutter build apk --debug` e
     `flutter build ios --simulator --debug` **compilam** (o `image_picker` traz
     código nativo nos dois lados), regras publicadas no `iter-mn`, 328 testes

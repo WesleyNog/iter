@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:iter/Utils/dated.dart';
 import 'package:iter/model/supply.dart';
 import 'package:iter/services/firebase.dart';
 
@@ -45,25 +46,9 @@ class SupplyController {
 
   /// Do mais recente para o mais antigo.
   ///
-  /// `date` é ISO 8601, que ordena como texto na mesma ordem em que ordena como
-  /// data — é por isso que o campo é gravado assim e não como `dd/MM/yyyy`, que
-  /// colocaria 02/01 antes de 31/12 (a armadilha que `RouteController` teve de
-  /// contornar em memória).
-  ///
-  /// Data vazia — documento corrompido — vai para o fim em vez de lançar.
-  static List<Supply> sortByDate(List<Supply> supplies) {
-    final sorted = [...supplies];
-
-    sorted.sort((a, b) {
-      if (a.date.isEmpty && b.date.isEmpty) return a.id.compareTo(b.id);
-      if (a.date.isEmpty) return 1;
-      if (b.date.isEmpty) return -1;
-
-      final byDate = b.date.compareTo(a.date);
-      // Empate desempata pelo id, para a ordem não dançar entre dois rebuilds.
-      return byDate != 0 ? byDate : a.id.compareTo(b.id);
-    });
-
-    return sorted;
-  }
+  /// A ordenação em si mora em `Utils/dated.dart`, compartilhada com as
+  /// manutenções: abastecimento e manutenção são coisas diferentes que o extrato
+  /// trata igual, e duas cópias da mesma ordenação uma hora divergiriam.
+  static List<Supply> sortByDate(List<Supply> supplies) =>
+      sortByDateDesc(supplies);
 }

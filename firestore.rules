@@ -24,6 +24,15 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // Manutenções: iter/{uid}/maintenance/{id}.
+    //
+    // Sem contraparte global, ao contrário do abastecimento: a oficina é texto
+    // livre e nada sai do documento do usuário. Parceria com oficina é ideia
+    // de futuro, e quando vier terá regra própria.
+    match /iter/{userId}/maintenance/{maintenanceId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Postos e preços — a ÚNICA coleção compartilhada do app.
     //
     // Existe para um dia indicar preços por perto: quem passa num posto relata

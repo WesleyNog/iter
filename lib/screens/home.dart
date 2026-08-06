@@ -6,6 +6,7 @@ import 'package:iter/controller/userController.dart';
 import 'package:iter/model/users.dart';
 import 'package:iter/screens/friendsScreen.dart';
 import 'package:iter/screens/graficsScreen.dart';
+import 'package:iter/screens/addMaintenance.dart';
 import 'package:iter/screens/addSupply.dart';
 import 'package:iter/screens/listIterScreen.dart';
 import 'package:iter/screens/summaryScreen.dart';
@@ -104,11 +105,16 @@ class _HomeScreenState extends State<HomeScreen> {
             MaterialPageRoute(builder: (_) => AddSupply(uid: widget.user.uid)),
           ),
         ),
-        const CreateAction(
+        CreateAction(
           icon: Icons.build_outlined,
           color: Colors.blueGrey,
           title: 'Manutenção',
           subtitle: 'Registrar manutenção',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => AddMaintenance(uid: widget.user.uid),
+            ),
+          ),
         ),
       ],
     );

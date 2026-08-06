@@ -7,6 +7,7 @@ ExpenseSummary _summary({
   double fuel = 430.50,
   double maintenance = 0,
   int supplies = 2,
+  int maintenances = 0,
   double? liters = 72.5,
   double? averagePricePerLiter = 5.9379,
 }) {
@@ -14,6 +15,7 @@ ExpenseSummary _summary({
     fuel: fuel,
     maintenance: maintenance,
     supplies: supplies,
+    maintenances: maintenances,
     liters: liters,
     averagePricePerLiter: averagePricePerLiter,
   );
@@ -46,16 +48,19 @@ void main() {
     expect(_text(tester, 'expense-total'), 'R\$ 430,50');
   });
 
-  testWidgets('manutenção diz "em breve", não R\$ 0,00', (tester) async {
-    // Zero pareceria afirmar que ele não gastou com peça, quando o app apenas
-    // ainda não sabe.
+  testWidgets('sem manutenção no período mostra R\$ 0,00, não "em breve"', (
+    tester,
+  ) async {
+    // Virou o contrário do que era: antes o app não sabia e dizia "em breve";
+    // agora sabe, e zero é **afirmação** — não gastou com peça no período.
     await _pump(tester, _summary());
 
-    expect(_text(tester, 'expense-maintenance'), 'em breve');
+    expect(_text(tester, 'expense-maintenance'), 'R\$ 0,00');
+    expect(find.text('em breve'), findsNothing);
   });
 
   testWidgets('com manutenção real, mostra o valor', (tester) async {
-    await _pump(tester, _summary(maintenance: 200));
+    await _pump(tester, _summary(maintenance: 200, maintenances: 1));
 
     expect(_text(tester, 'expense-maintenance'), 'R\$ 200,00');
     expect(_text(tester, 'expense-total'), 'R\$ 630,50');
@@ -72,10 +77,48 @@ void main() {
     );
   });
 
-  testWidgets('um abastecimento não vira "1 abastecimentos"', (tester) async {
-    await _pump(tester, _summary(supplies: 1));
+  testWidgets('a contagem de manutenções entra na linha', (tester) async {
+    await _pump(tester, _summary(maintenance: 2400, maintenances: 3));
 
-    expect(_text(tester, 'expense-meta'), startsWith('1 abastecimento ·'));
+    expect(
+      _text(tester, 'expense-meta'),
+      '2 abastecimentos · 3 manutenções · 72,5 L · R\$ 5,9379/L',
+    );
+  });
+
+  testWidgets('singular e plural em português', (tester) async {
+    await _pump(tester, _summary(supplies: 1, maintenance: 200, maintenances: 1));
+
+    expect(
+      _text(tester, 'expense-meta'),
+      startsWith('1 abastecimento · 1 manutenção ·'),
+    );
+  });
+
+  testWidgets('contagem zerada não vira ruído na linha', (tester) async {
+    // "0 manutenções" não acrescenta nada: a linha do valor logo acima já diz
+    // que foi zero.
+    await _pump(tester, _summary());
+
+    expect(_text(tester, 'expense-meta'), isNot(contains('manutenç')));
+  });
+
+  testWidgets('só manutenção no período não mostra "0 abastecimentos"', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _summary(
+        fuel: 0,
+        supplies: 0,
+        maintenance: 2400,
+        maintenances: 1,
+        liters: null,
+        averagePricePerLiter: null,
+      ),
+    );
+
+    expect(_text(tester, 'expense-meta'), '1 manutenção');
   });
 
   testWidgets('sem litros, a linha omite litros e preço médio', (tester) async {

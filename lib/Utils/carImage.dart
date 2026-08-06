@@ -9,6 +9,7 @@
 /// que mantém o app dentro dela. Ver `docs/specs/cadastro-veiculo.md`.
 library;
 
+import 'package:iter/Utils/text.dart';
 import 'package:iter/model/vehicle.dart';
 
 const _cdn = 'https://cdn.imagin.studio/getimage';
@@ -72,24 +73,10 @@ String? imaginModelFamily(String modelName) {
   return null;
 }
 
-const _accents = {
-  'á': 'a', 'à': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a',
-  'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
-  'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
-  'ó': 'o', 'ò': 'o', 'ô': 'o', 'õ': 'o', 'ö': 'o',
-  'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u',
-  'ç': 'c', 'ñ': 'n',
-};
-
-/// Minúsculas, sem acento e só com letra e número. `null` quando não sobra nada.
+/// Minúsculas, sem acento e só com letra e número. `null` quando não sobra
+/// nada — aqui vazio significa "não dá para montar URL", diferente do
+/// [normalizeKey], que devolve string vazia.
 String? _slug(String raw) {
-  final buffer = StringBuffer();
-
-  for (final char in raw.toLowerCase().split('')) {
-    final plain = _accents[char] ?? char;
-    if (RegExp(r'^[a-z0-9]$').hasMatch(plain)) buffer.write(plain);
-  }
-
-  final slug = buffer.toString();
+  final slug = normalizeKey(raw);
   return slug.isEmpty ? null : slug;
 }

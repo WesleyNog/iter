@@ -1,6 +1,7 @@
 # Spec: Abastecimento
 
-Status: **proposta** · Criada em 2026-08-05 · Aguardando aprovação
+Status: **implementada** · Criada e aprovada em 2026-08-05 · Verificada em
+aparelho Android e iPhone em 2026-08-06
 
 ## Objetivo
 
@@ -636,7 +637,11 @@ o caminho feliz mas não para permissão negada.
   - Verificar: `flutter analyze lib/` e `flutter build apk --debug`
   - Arquivos: `lib/screens/suppliesScreen.dart`
 
-- [ ] **11. Verificação no aparelho**
+- [x] **11. Verificação no aparelho** — feita pelo Wesley em **Android e iPhone
+  físicos**, em 06/08/2026. Localização, lista de postos por proximidade e
+  registro funcionando nos dois.
+  - Para instalar no iPhone foi preciso apagar o DerivedData corrompido — ver
+    a nota de build iOS no `CLAUDE.md`.
   - Aceite: permitir a localização e ver os postos reais ordenados; registrar;
     conferir `iter/{uid}/supply` e `gastop` no console; negar a permissão e
     confirmar que ainda dá para registrar.

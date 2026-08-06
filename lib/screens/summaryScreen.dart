@@ -2,14 +2,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:iter/Utils/companySummary.dart';
+import 'package:iter/Utils/dated.dart';
 import 'package:iter/Utils/expenseSummary.dart';
 import 'package:iter/Utils/routeStats.dart';
 import 'package:iter/Utils/routeStyle.dart';
 import 'package:iter/controller/routeController.dart';
+import 'package:iter/controller/maintenanceController.dart';
 import 'package:iter/controller/supplyController.dart';
 import 'package:iter/model/newRouteModal.dart';
+import 'package:iter/model/maintenance.dart';
 import 'package:iter/model/supply.dart';
-import 'package:iter/screens/suppliesScreen.dart';
+import 'package:iter/screens/expensesScreen.dart';
 import 'package:iter/widget/companySummaryCard.dart';
 import 'package:iter/widget/expenseCard.dart';
 import 'package:iter/widget/periodFilter.dart';
@@ -59,6 +62,8 @@ class _SummaryScreenState extends State<SummaryScreen> {
   late final Stream<List<Supply>> _supplies = SupplyController.watchAll(
     widget.user.uid,
   );
+  late final Stream<List<Maintenance>> _maintenances =
+      MaintenanceController.watchAll(widget.user.uid);
 
   late DateTime _start;
   late DateTime _end;
@@ -173,33 +178,52 @@ class _SummaryScreenState extends State<SummaryScreen> {
   Widget _expenses() {
     return StreamBuilder<List<Supply>>(
       stream: _supplies,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          debugPrint('Erro ao ler os abastecimentos: ${snapshot.error}');
-          // Falhar aqui não pode esconder os cards de empresa, que já
-          // carregaram: o card de gastos apenas não aparece.
-          return const SizedBox.shrink();
-        }
+      builder: (context, supplySnapshot) {
+        return StreamBuilder<List<Maintenance>>(
+          stream: _maintenances,
+          builder: (context, maintenanceSnapshot) {
+            // Se **qualquer** um dos dois falhar, o card some inteiro.
+            //
+            // Mostrar só a metade que carregou seria pior: o total apareceria
+            // menor do que é, com cara de número certo. Esconder é honesto;
+            // os cards de empresa acima continuam de pé.
+            if (supplySnapshot.hasError || maintenanceSnapshot.hasError) {
+              debugPrint(
+                'Erro ao ler os gastos: '
+                '${supplySnapshot.error ?? maintenanceSnapshot.error}',
+              );
+              return const SizedBox.shrink();
+            }
 
-        final period = suppliesInPeriod(
-          snapshot.data ?? const <Supply>[],
-          start: _start,
-          end: _end,
-        );
-        final summary = expenseSummary(period);
+            final supplies = inPeriodByDate(
+              supplySnapshot.data ?? const <Supply>[],
+              start: _start,
+              end: _end,
+            );
+            final maintenances = inPeriodByDate(
+              maintenanceSnapshot.data ?? const <Maintenance>[],
+              start: _start,
+              end: _end,
+            );
 
-        return ExpenseCard(
-          summary: summary,
-          onDetail: summary.isEmpty
-              ? null
-              : () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => SuppliesScreen(
-                      supplies: period,
-                      periodLabel: periodLabel(_start, _end),
+            final summary = expenseSummary(supplies, maintenances);
+
+            return ExpenseCard(
+              summary: summary,
+              onDetail: summary.isEmpty
+                  ? null
+                  : () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ExpensesScreen(
+                          // As mesmas listas que o card somou: o detalhe não
+                          // tem como discordar do total.
+                          rows: expenseRows(supplies, maintenances),
+                          periodLabel: periodLabel(_start, _end),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
+            );
+          },
         );
       },
     );

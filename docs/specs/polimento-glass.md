@@ -1,6 +1,7 @@
 # Spec: Polimento do vidro da navegação
 
-Status: **proposta** · Criada em 2026-08-05 · Aguardando aprovação
+Status: **concluída** · Criada, aprovada e implementada em 2026-08-05 ·
+Verificada em aparelho em 2026-08-06
 
 ## Objetivo
 
@@ -289,7 +290,11 @@ pode mudar de comportamento — só de aparência.
   - Arquivos: `lib/widget/glassNavBar.dart`, `lib/widget/createActionSheet.dart`,
     `test/widget/glassNavBar_test.dart`
 
-- [ ] **3. Verificação no simulador**
+- [x] **3. Verificação no aparelho** — feita pelo Wesley em 06/08/2026. No
+  caminho, a opacidade desceu de 0,55 para **0,45** e o blur subiu de 18 para
+  **24**, os dois decididos olhando a barra sobre os cards azuis dos gráficos —
+  não no papel. Os números viraram `GlassSurface.defaultOpacity` e
+  `defaultBlur`, com o porquê registrado ao lado.
   - Aceite: a barra parece ter espessura; o `+` e o sheet do "+" parecem o mesmo
     material; trocar de aba continua funcionando; o scroll das listas não
     engasga.

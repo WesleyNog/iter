@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:iter/Utils/supplyRules.dart';
+import 'package:iter/Utils/expenseRules.dart';
 import 'package:iter/model/supply.dart';
 import 'package:iter/model/vehicle.dart';
 import 'package:iter/screens/addSupply.dart';

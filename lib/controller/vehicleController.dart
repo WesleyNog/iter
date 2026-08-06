@@ -4,6 +4,13 @@ import 'package:iter/controller/userController.dart';
 import 'package:iter/model/vehicle.dart';
 import 'package:iter/services/firebase.dart';
 
+/// O que uma tela de gasto precisa saber sobre os veículos: todos, para o
+/// seletor, e qual está em uso, para o padrão.
+///
+/// Mora aqui e não numa tela porque as duas — abastecimento e manutenção —
+/// precisam do mesmo par, e uma importar a outra seria acoplamento entre telas.
+typedef VehiclesSnapshot = ({List<Vehicle> all, Vehicle? active});
+
 /// Veículos do usuário em `iter/{uid}/vehicles` — subcoleção irmã de `routes`.
 ///
 /// Qual deles está em uso mora em `user/{uid}.activeVehicleId`, não aqui: ver

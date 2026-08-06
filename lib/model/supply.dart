@@ -6,6 +6,7 @@
 /// `docs/specs/abastecimento.md`.
 library;
 
+import 'package:iter/Utils/dated.dart';
 import 'package:iter/Utils/mapRead.dart';
 import 'package:iter/model/vehicle.dart';
 
@@ -88,7 +89,7 @@ class FuelStation {
   );
 }
 
-class Supply {
+class Supply implements Dated {
   const Supply({
     required this.id,
     this.vehicleId,
@@ -103,6 +104,7 @@ class Supply {
     required this.createdAt,
   });
 
+  @override
   final String id;
 
   /// Qual veículo foi abastecido. `null` quando não havia nenhum cadastrado.
@@ -133,6 +135,7 @@ class Supply {
 
   /// Data do abastecimento — pode ser anterior a [createdAt], para quem
   /// registra depois.
+  @override
   final String date;
 
   final String createdAt;

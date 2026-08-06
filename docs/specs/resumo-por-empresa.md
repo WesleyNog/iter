@@ -1,6 +1,7 @@
 # Spec: Resumo por Empresa
 
-Status: **proposta** · Criada em 2026-08-05 · Aguardando aprovação
+Status: **concluída** · Criada, aprovada e implementada em 2026-08-05 ·
+Verificada em aparelho em 2026-08-06
 
 ## Objetivo
 
@@ -385,7 +386,7 @@ teste da tarefa.
   - Verificar: `flutter analyze lib/` e `flutter test`
   - Arquivos: `lib/screens/summaryScreen.dart`, `lib/screens/home.dart`
 
-- [ ] **4. Verificação no simulador**
+- [x] **4. Verificação no aparelho** — feita pelo Wesley em 06/08/2026.
   - Aceite: abrir a aba, conferir os números contra a lista, trocar o período e
     ver tudo recalcular.
   - Verificar: `flutter run`

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:iter/Utils/currencyFormat.dart';
-import 'package:iter/Utils/supplyRules.dart';
+import 'package:iter/Utils/expenseRules.dart';
 import 'package:iter/controller/stationController.dart';
 import 'package:iter/controller/supplyController.dart';
 import 'package:iter/controller/vehicleController.dart';
@@ -13,9 +13,6 @@ import 'package:iter/services/overpass.dart';
 import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/stationPicker.dart';
 import 'package:uuid/uuid.dart';
-
-/// O que a tela precisa saber sobre os veículos do usuário.
-typedef VehiclesSnapshot = ({List<Vehicle> all, Vehicle? active});
 
 /// Resultado da busca por postos: a lista, ou o motivo de não ter dado.
 typedef StationsSnapshot = ({
