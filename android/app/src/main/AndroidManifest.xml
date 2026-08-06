@@ -1,4 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Exigidas pelo geolocator (postos por perto no abastecimento).
+         COARSE junto com FINE de propósito: no Android 12+ o usuário pode
+         conceder só a aproximada, e ~100 m basta para achar o posto. Sem
+         declarar as duas, negar a precisa derrubaria o recurso inteiro. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <application
         android:label="iter"
         android:name="${applicationName}"

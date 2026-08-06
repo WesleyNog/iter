@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:iter/Utils/currencyFormat.dart';
 import 'package:iter/model/vehicle.dart';
 import 'package:iter/widget/partsEditor.dart';
 

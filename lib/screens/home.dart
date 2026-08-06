@@ -6,6 +6,7 @@ import 'package:iter/controller/userController.dart';
 import 'package:iter/model/users.dart';
 import 'package:iter/screens/friendsScreen.dart';
 import 'package:iter/screens/graficsScreen.dart';
+import 'package:iter/screens/addSupply.dart';
 import 'package:iter/screens/listIterScreen.dart';
 import 'package:iter/screens/summaryScreen.dart';
 import 'package:iter/screens/vehiclesScreen.dart';
@@ -92,11 +93,16 @@ class _HomeScreenState extends State<HomeScreen> {
             context,
           ).pushNamed('/addIter', arguments: widget.user),
         ),
-        const CreateAction(
+        CreateAction(
           icon: Icons.local_gas_station_outlined,
           color: Colors.orange,
           title: 'Abastecimento',
           subtitle: 'Registrar combustível',
+          // `push` normal: a tela volta com `pop` e o AuthGate, que vive na
+          // primeira rota, segue de pé.
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => AddSupply(uid: widget.user.uid)),
+          ),
         ),
         const CreateAction(
           icon: Icons.build_outlined,

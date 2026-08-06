@@ -43,6 +43,10 @@
 	<true/>
 	<!-- Exigidas pelo image_picker (foto do veículo). Sem elas o iOS derruba o
 	     app na hora de abrir a câmera ou a galeria, sem pedir permissão. -->
+	<!-- Exigida pelo geolocator: sem ela o iOS derruba o app ao pedir a
+	     localização, sem mostrar diálogo nenhum. -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Para mostrar os postos de combustível perto de você ao registrar um abastecimento.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Para tirar uma foto do seu veículo.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

@@ -2,11 +2,16 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:iter/Utils/companySummary.dart';
+import 'package:iter/Utils/expenseSummary.dart';
 import 'package:iter/Utils/routeStats.dart';
 import 'package:iter/Utils/routeStyle.dart';
 import 'package:iter/controller/routeController.dart';
+import 'package:iter/controller/supplyController.dart';
 import 'package:iter/model/newRouteModal.dart';
+import 'package:iter/model/supply.dart';
+import 'package:iter/screens/suppliesScreen.dart';
 import 'package:iter/widget/companySummaryCard.dart';
+import 'package:iter/widget/expenseCard.dart';
 import 'package:iter/widget/periodFilter.dart';
 
 /// `AGOSTO 2026` quando o filtro cobre um mês inteiro, as duas datas quando
@@ -49,6 +54,9 @@ class _SummaryScreenState extends State<SummaryScreen> {
   /// Criado uma única vez: montar o stream dentro do build reinscreveria no
   /// Firestore a cada rebuild.
   late final Stream<List<NewRouteModal>> _routes = RouteController.watchAll(
+    widget.user.uid,
+  );
+  late final Stream<List<Supply>> _supplies = SupplyController.watchAll(
     widget.user.uid,
   );
 
@@ -147,7 +155,51 @@ class _SummaryScreenState extends State<SummaryScreen> {
               ),
               const SizedBox(height: 12),
             ],
+            // Stream próprio, e não o das rotas: os gastos vêm de outra
+            // coleção, e um `StreamBuilder` só para este card mantém os cards
+            // de empresa desenhados enquanto os abastecimentos carregam.
+            _expenses(),
           ],
+        );
+      },
+    );
+  }
+
+  /// O card de gastos.
+  ///
+  /// **Nada aqui altera o lucro dos cards acima.** Aquele lucro já desconta
+  /// combustível como provisão; subtrair os abastecimentos contaria a gasolina
+  /// duas vezes. O card é extrato, e diz isso em uma linha.
+  Widget _expenses() {
+    return StreamBuilder<List<Supply>>(
+      stream: _supplies,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          debugPrint('Erro ao ler os abastecimentos: ${snapshot.error}');
+          // Falhar aqui não pode esconder os cards de empresa, que já
+          // carregaram: o card de gastos apenas não aparece.
+          return const SizedBox.shrink();
+        }
+
+        final period = suppliesInPeriod(
+          snapshot.data ?? const <Supply>[],
+          start: _start,
+          end: _end,
+        );
+        final summary = expenseSummary(period);
+
+        return ExpenseCard(
+          summary: summary,
+          onDetail: summary.isEmpty
+              ? null
+              : () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => SuppliesScreen(
+                      supplies: period,
+                      periodLabel: periodLabel(_start, _end),
+                    ),
+                  ),
+                ),
         );
       },
     );

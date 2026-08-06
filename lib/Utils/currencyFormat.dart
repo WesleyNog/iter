@@ -20,6 +20,37 @@ String formatNumber(num value, {int decimals = 0}) {
   return parts.length == 1 ? integer : '$integer,${parts[1]}';
 }
 
+/// Lê quilometragem: `50.000` e `50000` são cinquenta mil.
+///
+/// Aqui o ponto é **sempre** separador de milhar. São valores na casa dos
+/// milhares e ninguém informa vida útil com casa decimal — tratar o ponto como
+/// decimal transformaria "50.000 km" em 50 km.
+double? parseKm(String raw) {
+  final text = raw.trim();
+  if (text.isEmpty) return null; // vazio é "não preenchi", não "vale zero"
+
+  return double.tryParse(text.replaceAll('.', '').replaceAll(',', '.'));
+}
+
+/// Lê uma taxa em R$/km: aceita `0,03` **e** `0.03`.
+///
+/// Aqui o ponto é decimal, ao contrário de [parseKm]: são valores menores que
+/// um, e o teclado numérico do celular oferece ponto. Tratá-lo como separador
+/// de milhar faria `0.03` virar `3` — cem vezes a taxa, e num campo em que
+/// ninguém confere o resultado de cabeça.
+///
+/// Só quando há vírgula o ponto volta a ser milhar (`1.234,5`).
+double? parseRate(String raw) {
+  final text = raw.trim();
+  if (text.isEmpty) return null;
+
+  final normalized = text.contains(',')
+      ? text.replaceAll('.', '').replaceAll(',', '.')
+      : text;
+
+  return double.tryParse(normalized);
+}
+
 /// Helper para formatação de moeda em tempo real
 class CurrencyFormatterHelper {
   /// Retorna uma lista de formatadores para campos de moeda

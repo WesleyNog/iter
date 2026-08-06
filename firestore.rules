@@ -19,6 +19,41 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // Abastecimentos: iter/{uid}/supply/{supplyId}. Idem.
+    match /iter/{userId}/supply/{supplyId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Postos e preços — a ÚNICA coleção compartilhada do app.
+    //
+    // Existe para um dia indicar preços por perto: quem passa num posto relata
+    // quanto pagou, e todos leem. Por isso a leitura é de qualquer autenticado
+    // e a escrita não é restrita ao dono do documento — não existe dono.
+    match /gastop/{stationId} {
+      allow read: if request.auth != null;
+
+      // `updatedBy` tem de ser quem está escrevendo: não impede um preço
+      // errado, mas impede escrever em nome de outro.
+      allow create, update: if request.auth != null
+                            && request.resource.data.updatedBy == request.auth.uid;
+
+      // Ninguém apaga um posto. Se o dado ficar ruim, corrige-se relatando de
+      // novo — apagar levaria junto o histórico de todo mundo.
+      allow delete: if false;
+
+      // Relatos de preço: cria e pronto.
+      //
+      // Sem `update` e sem `delete` de propósito. Histórico que pode ser
+      // reescrito não é histórico, e é dele que sairá a mediana no dia em que
+      // um preço errado precisar ser diluído em vez de acreditado.
+      match /precos/{reportId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null
+                      && request.resource.data.uid == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+
     // Reserva de apelidos: o apelido é o ID do documento, então a unicidade
     // é garantida pelo Firestore. `create` só passa quando o documento ainda
     // não existe — é isso que impede dois usuários de pegarem o mesmo.
