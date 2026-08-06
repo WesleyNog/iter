@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:iter/Utils/currencyFormat.dart';
 import 'package:iter/Utils/vehicleCost.dart';
 import 'package:iter/model/vehicle.dart';
-import 'package:iter/widget/partsEditor.dart' show formatRate;
 import 'package:iter/widget/vehicleThumb.dart';
 
 /// Um veículo na lista: imagem, nome, ficha e quanto ele custa por quilômetro.

@@ -10,6 +10,6 @@ class FriendsScreen extends StatefulWidget {
 class _FriendsScreenState extends State<FriendsScreen> {
   @override
   Widget build(BuildContext context) {
-    return Center(child: Text('Friends'));
+    return Center(child: Text('Amigos'));
   }
 }

@@ -216,10 +216,6 @@ class _PartsEditorState extends State<PartsEditor> {
   }
 }
 
-/// Taxa em R$/km com quatro casas: `0,0133` some inteira em duas.
-String formatRate(double rate) =>
-    'R\$ ${rate.toStringAsFixed(4).replaceAll('.', ',')}';
-
 /// Lê quilometragem: `50.000` e `50000` são cinquenta mil.
 ///
 /// Aqui o ponto é **sempre** separador de milhar. São valores na casa dos

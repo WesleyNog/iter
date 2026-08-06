@@ -99,6 +99,26 @@ IconData statusIcon(StatusRoute status) {
   }
 }
 
+/// `DateTime.month` vai de 1 (janeiro) a 12 (dezembro).
+String monthLabel(int month) {
+  const labels = [
+    'Janeiro',
+    'Fevereiro',
+    'Março',
+    'Abril',
+    'Maio',
+    'Junho',
+    'Julho',
+    'Agosto',
+    'Setembro',
+    'Outubro',
+    'Novembro',
+    'Dezembro',
+  ];
+  if (month < 1 || month > labels.length) return '';
+  return labels[month - 1];
+}
+
 /// `DateTime.weekday` vai de 1 (segunda) a 7 (domingo).
 String weekdayLabel(int weekday) {
   const labels = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];

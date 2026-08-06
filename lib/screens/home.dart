@@ -7,7 +7,7 @@ import 'package:iter/model/users.dart';
 import 'package:iter/screens/friendsScreen.dart';
 import 'package:iter/screens/graficsScreen.dart';
 import 'package:iter/screens/listIterScreen.dart';
-import 'package:iter/screens/socialScreen.dart';
+import 'package:iter/screens/summaryScreen.dart';
 import 'package:iter/screens/vehiclesScreen.dart';
 import 'package:iter/services/authService.dart';
 import 'package:iter/widget/createActionSheet.dart';
@@ -33,7 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late final _grafics = GraficsScreen(user: widget.user);
   late final _listIter = ListIterScreen(user: widget.user);
   final _friends = FriendsScreen();
-  final _social = SocialScreen();
+  late final _summary = SummaryScreen(user: widget.user);
 
   /// Criado uma única vez: montar o stream dentro do build reinscreveria no
   /// Firestore a cada rebuild.
@@ -138,7 +138,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final photoUrl = widget.user.photoURL;
-    final List<Widget> screens = [_grafics, _listIter, _friends, _social];
+    final List<Widget> screens = [_grafics, _listIter, _summary, _friends];
     final current = _currentIndex.clamp(0, screens.length - 1);
     return Scaffold(
       // A GlassNavBar é uma pílula flutuante: sem isto ela reservaria a própria
@@ -262,8 +262,11 @@ class _HomeScreenState extends State<HomeScreen> {
         items: [
           const GlassNavItem(icon: Icons.bar_chart, label: "Gráfico"),
           const GlassNavItem(icon: Icons.receipt_long, label: "Lista"),
-          const GlassNavItem(icon: Icons.people, label: "Friends"),
-          const GlassNavItem(icon: Icons.comment_outlined, label: "Social"),
+          const GlassNavItem(
+            icon: Icons.data_saver_off_rounded,
+            label: "Resumo",
+          ),
+          const GlassNavItem(icon: Icons.people, label: "Amigos"),
         ],
         onTap: (index) {
           setState(() {

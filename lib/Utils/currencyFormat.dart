@@ -1,5 +1,25 @@
 import 'package:flutter/services.dart';
 
+/// Taxa em R$/km com quatro casas: `0,0133` some inteira em duas.
+///
+/// Mora aqui, e não no widget que a usa primeiro, porque três telas precisam
+/// dela — o editor de peças, o card do veículo e o resumo por empresa.
+String formatRate(double rate) =>
+    'R\$ ${rate.toStringAsFixed(4).replaceAll('.', ',')}';
+
+/// `1284.5` → `1.284,5`. Separador de milhar para números grandes de KM,
+/// pacotes e paradas, que passam da casa dos milhares em um mês de trabalho.
+String formatNumber(num value, {int decimals = 0}) {
+  final fixed = value.toStringAsFixed(decimals);
+  final parts = fixed.split('.');
+  final integer = parts[0].replaceAllMapped(
+    RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+    (match) => '${match[1]}.',
+  );
+
+  return parts.length == 1 ? integer : '$integer,${parts[1]}';
+}
+
 /// Helper para formatação de moeda em tempo real
 class CurrencyFormatterHelper {
   /// Retorna uma lista de formatadores para campos de moeda
