@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:iter/Utils/friendship.dart';
 import 'package:iter/Utils/profileStats.dart';
+import 'package:iter/Utils/ranking.dart';
 import 'package:iter/controller/friendController.dart';
 import 'package:iter/controller/profileController.dart';
 import 'package:iter/model/publicProfile.dart';
@@ -9,6 +10,7 @@ import 'package:iter/screens/addFriend.dart';
 import 'package:iter/widget/friendTile.dart';
 import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/profileDialog.dart';
+import 'package:iter/widget/rankingTab.dart';
 import 'package:iter/widget/segmentedSelector.dart';
 
 enum FriendsTab { amigos, ranking, feed }
@@ -98,12 +100,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
         Expanded(
           child: switch (_tab) {
             FriendsTab.amigos => _friendsTab(),
-            FriendsTab.ranking => const _EmBreve(
-              icon: Icons.emoji_events_outlined,
-              title: 'Ranking em breve',
-              detail: 'Quem fez mais rotas, quem termina mais rápido e quem '
-                  'tem menos insucesso.',
-            ),
+            FriendsTab.ranking => _rankingTab(),
             FriendsTab.feed => const _EmBreve(
               icon: Icons.campaign_outlined,
               title: 'Feed em breve',
@@ -112,6 +109,37 @@ class _FriendsScreenState extends State<FriendsScreen> {
           },
         ),
       ],
+    );
+  }
+
+  /// O ranking precisa da lista de amigos, então nasce dentro do mesmo stream.
+  ///
+  /// A `ValueKey` com os uids força um `State` novo quando a lista muda —
+  /// aceitar um convite tem de recarregar os baldes, não continuar mostrando
+  /// o ranking sem o amigo que acabou de entrar.
+  Widget _rankingTab() {
+    return StreamBuilder<List<String>>(
+      stream: _friends,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final friends = snapshot.data ?? const <String>[];
+
+        // A mesma lista que a `RankingTab` usa para buscar os baldes. Duas
+        // listas de participantes montadas em dois lugares foi o que deixou o
+        // dono aparecer como "Entregador" no próprio ranking.
+        _prefetch(rankingParticipants(widget.user.uid, friends));
+
+        return RankingTab(
+          key: ValueKey('ranking-${friends.length}'),
+          uid: widget.user.uid,
+          friends: friends,
+          profiles: _profiles,
+          bottomGap: _bottomGap,
+        );
+      },
     );
   }
 

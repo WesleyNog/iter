@@ -69,11 +69,23 @@ class RouteTime {
     final total = end.difference(start);
     if (total.isNegative || total == Duration.zero) return null;
 
-    final hours = total.inHours;
-    final minutes = total.inMinutes % 60;
+    return formatMinutes(total.inMinutes);
+  }
 
-    if (hours == 0) return '${minutes}min';
-    if (minutes == 0) return '${hours}h';
-    return '${hours}h${minutes.toString().padLeft(2, '0')}';
+  /// `4h22`, `45min`, `2h` — a partir dos minutos, sem inventar um par de
+  /// datas para chegar lá.
+  ///
+  /// É o primitivo que [formatDuration] sempre foi por dentro. Ganhou nome
+  /// próprio quando o ranking precisou do mesmo "4h22" que o dialog de perfil
+  /// mostra: aquele card vinha somando a média a uma data arbitrária só para
+  /// poder formatar, e uma segunda implementação do mesmo texto diverge na
+  /// primeira vez que alguém mexe numa só.
+  static String formatMinutes(int minutes) {
+    final hours = minutes ~/ 60;
+    final rest = minutes % 60;
+
+    if (hours == 0) return '${rest}min';
+    if (rest == 0) return '${hours}h';
+    return '${hours}h${rest.toString().padLeft(2, '0')}';
   }
 }

@@ -259,13 +259,10 @@ class ProfileDialog extends StatelessWidget {
     );
   }
 
-  /// Reusa o formato da lista (`9h30`, `45min`) somando a duração a uma data
-  /// qualquer — `formatDuration` trabalha com início e fim, não com `Duration`.
+  /// O mesmo formato da lista e do ranking (`9h30`, `45min`).
   String _duration(Duration? average) {
     if (average == null) return '—';
-
-    final start = DateTime(2026);
-    return RouteTime.formatDuration(start, start.add(average)) ?? '—';
+    return RouteTime.formatMinutes(average.inMinutes);
   }
 
   Widget _bigStat(String value, String label) {

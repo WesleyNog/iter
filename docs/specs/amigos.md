@@ -723,10 +723,14 @@ de rota. E `publish` recalcula os últimos 12 meses na mesma passada, senão o
 Ranking nasce zerado para todo mês anterior ao lançamento do gancho.
 
 **10. O Ranking inclui o próprio usuário, e do mesmo lugar que os amigos.**
-A linha do dono sai do balde publicado, não das rotas locais — abrir a aba
-republica o balde antes de montar a lista. Duas fontes para o mesmo número é a
-armadilha que `VehicleController.activeFrom()` existe para evitar: a tela
-desenharia um carro enquanto a conta usava outro.
+A linha do dono sai do balde publicado, não das rotas locais. Duas fontes para
+o mesmo número é a armadilha que `VehicleController.activeFrom()` existe para
+evitar: a tela desenharia um carro enquanto a conta usava outro.
+
+A aba **não** republica o balde ao abrir, ao contrário do que uma versão
+anterior desta decisão dizia. O gancho da abertura do app e o da gravação de
+rota já o mantêm, e refazer a conta aqui custaria baixar a coleção de rotas
+inteira a cada troca de mês para chegar ao mesmo número.
 
 **11. O seletor é o `CompanyFilter` generalizado, não uma cópia.** Já existe o
 precedente registrado no `polimento-glass.md`.
@@ -759,8 +763,9 @@ o selo que `CreateAction.comingSoon` desenha.
 > muda — regra continua sendo a defesa mais barata e a única que vale mesmo
 > quando há servidor.
 
-- **Ranking (aba 2)** — o balde já está modelado e `publish` já o grava; falta
-  a tela. **O defeito que era bloqueio deixou de ser:** com Cloud Functions o
+- **Ranking: o número é forjável** — a tela está entregue (ver **O Ranking**),
+  mas o agregado é escrito pelo próprio cliente. **O defeito que era bloqueio
+  deixou de ser:** com Cloud Functions o
   agregado pode ser escrito por trigger em `iter/{uid}/routes`, e aí o cliente
   perde o `write` em `profiles/{uid}/stats/*` — o número deixa de ser
   forjável. O caminho tem uma armadilha de custo que precisa entrar na conta
@@ -771,9 +776,6 @@ o selo que `CreateAction.comingSoon` desenha.
   **assinar** o resultado, ou aceitar `increment` na trigger — que é o que a
   Decisão 9 recusa, com razão, no cliente, e que no servidor volta a ser
   defensável porque a trigger vê o `before` e o `after` do documento.
-  Independente disso, o Ranking **não terá o filtro de intervalo livre** do
-  resto do app: com balde mensal, as opções são mês corrente, meses anteriores
-  e carreira.
 - **Feed (aba 3)** — tem esboço próprio logo abaixo, em **O Feed, em esboço**.
 - **Anúncios entre posts** — a monetização. Reservar o slot no builder do feed
   desde o primeiro dia (um a cada N posts) e ligar o AdMob depois.
@@ -809,6 +811,71 @@ o selo que `CreateAction.comingSoon` desenha.
   mostra `@apelido` e já tem um botão de ação livre — "Compartilhar" ali
   resolve o mínimo sem abrir a discussão de troca.
 - **Busca por nome** — fora de escopo por pedido explícito.
+
+## O Ranking
+
+Três disputas entre os amigos, **incluindo o próprio usuário**, mês a mês.
+
+| critério | número | direção |
+|---|---|---|
+| Rotas | `routes` | maior é melhor |
+| Tempo | `totalMinutes / timedRoutes` | **menor** é melhor |
+| Insucesso | `failures / packages` | **menor** é melhor |
+
+**Tempo é a média, e é o mesmo número que o app já mostra em dois lugares.** O
+card da rota diz `14:53 às 19:15 (4h22)` e o dialog de perfil diz `Tempo médio
+4h22`; o balde reproduz isso recortado no mês. Não é ritmo por pacote — o
+balde guarda `timedPackages` para essa conta caber sem migração se um dia
+mudar de ideia, mas hoje ela não é usada.
+
+O formato do texto saiu de dentro do `formatDuration` e virou
+`RouteTime.formatMinutes()`. O dialog de perfil somava a média a uma data
+arbitrária só para conseguir formatar; agora os três lugares chamam o mesmo
+primitivo, que é o que garante que `4h22` é `4h22` em todos.
+
+### A amostra mínima
+
+**Cinco rotas no mês para disputar as médias.** Sem isso, quem rodou **uma**
+rota de 8 pacotes sem insucesso fica com 0% e ganha de quem rodou 40 rotas e
+3.000 pacotes com 1,4%. É o mesmo remédio do `_minimumFills` do consumo real:
+a média de uma amostra pequena não é um número melhor, é um número que ainda
+não existe.
+
+**Não vale para a contagem de rotas** — lá a amostra é o próprio placar, e
+exigir mínimo esconderia justamente quem rodou pouco, que é a informação.
+
+Quem não alcança o mínimo, ou não tem o número (nunca preencheu hora de fim,
+nunca preencheu pacotes), vai para um rodapé **"ainda sem amostra"** com o
+valor visível e sem posição. Fora da disputa, não escondido: `null` continua
+sendo "não dá para calcular", nunca zero.
+
+Toda linha mostra a amostra ao lado do número. `1,4%` de 40 rotas e de 2 rotas
+são o mesmo texto e não são a mesma informação.
+
+### O que a escolha do balde mensal custou
+
+**O Ranking não tem o filtro de intervalo livre do resto do app.** O Resumo e
+os Gráficos abrem duas roletas e aceitam qualquer par de datas; aqui são setas
+de mês, dentro dos doze que `publish` mantém. Responder "01/08 a 12/08" exigiria
+ler as rotas do amigo, que é exatamente o que a regra proíbe — tem dinheiro
+dentro. É consequência declarada da decisão, não limitação de implementação.
+
+### Como as linhas chegam à tela
+
+Uma leitura de `profiles/{uid}/stats/{yyyy-MM}` por participante, em paralelo.
+Com vinte amigos são 21 leituras por mês visitado.
+
+**A linha do dono sai do balde publicado, igual à dos amigos**, e não das rotas
+locais. Duas fontes para o mesmo número é a armadilha que
+`VehicleController.activeFrom()` existe para evitar — a tela desenharia um
+carro enquanto a conta usava outro.
+
+A aba **não republica** o próprio balde ao abrir. Quem o mantém são a abertura
+do app e a gravação de rota; refazer a conta aqui custaria baixar a coleção de
+rotas inteira a cada troca de mês, para chegar ao mesmo número.
+
+Balde ausente é **mês parado**, não erro: quem não rodou aparece com zero em
+vez de sumir da lista.
 
 ## O Feed, em esboço
 
@@ -1083,7 +1150,7 @@ E cada um dos doze ataques desta revisão vira caso em
 testado contra o emulador, e nada aqui é mais óbvio do que aquilo parecia.
 ## Perguntas em aberto
 
-**Três, e nenhuma bloqueia a entrega 1.**
+**Uma, e é do Feed.**
 
 O mural é público de verdade? Com `list` em `posts`, quem abrir o feed colhe os
 uids e, por eles, o nome, a foto, as rotas e a taxa de insucesso de todo mundo
@@ -1092,15 +1159,10 @@ for, a saída é `stats/all` deixar de ser público e o dialog de confirmação
 mostrar só nome, foto e apelido. É decisão de produto, e precisa ser tomada
 antes do passo 1 do Feed.
 
-"Mais rápido" no Ranking é **duração média** ou **minutos por pacote**? A
-média bruta premia quem pega rota de 30 pacotes; o ritmo é a comparação justa.
-O balde já guarda `timedPackages` para as duas contas caberem sem migração.
-
-E o que fazer com o amigo sem dado suficiente — quem nunca preenche `endAt` não
-tem tempo médio, quem nunca preenche `packages` não tem taxa. Colapsar em zero
-coroaria campeão quem não entregou nada. As saídas são deixar de fora, mostrar
-com "sem dados" no rodapé, ou exigir um mínimo de rotas como o `_minimumFills`
-faz no consumo real.
+As duas do Ranking foram respondidas em 07/08/2026 e estão em **O Ranking**:
+"mais rápido" é a **duração média** — o mesmo `4h22` que o card da rota e o
+dialog de perfil já mostram — e amigo com menos de **cinco rotas no mês** fica
+num rodapé "ainda sem amostra", com o número visível e fora da disputa.
 
 ---
 
@@ -1225,6 +1287,17 @@ veículo.
     `watchIncoming`, já filtrada contra a lista de amigos.
   - Verificar: à mão; convite recebido acende o badge sem trocar de aba.
   - Arquivos: `lib/screens/home.dart`
+
+- [x] **11. Aba Ranking**
+  - Aceite: três critérios num `SegmentedSelector` (o terceiro uso do trilho
+    generalizado); navegação por mês dentro da janela de 12 que `publish`
+    mantém; o dono na lista, destacado; mínimo de 5 rotas para as médias, com
+    rodapé "ainda sem amostra"; amostra ao lado de todo número; balde ausente
+    é mês parado, não erro.
+  - Verificar: `flutter test test/unit/ranking_test.dart` (13 casos)
+  - Arquivos: `lib/Utils/ranking.dart`, `lib/widget/rankingTab.dart`,
+    `lib/Utils/routeTime.dart` (+ `formatMinutes`),
+    `lib/widget/profileDialog.dart`, `lib/screens/friendsScreen.dart`
 
 - [ ] **10. Verificação em aparelho e fechamento**
   - Aceite: os critérios de sucesso, com duas contas reais; `CLAUDE.md`
