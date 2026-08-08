@@ -45,3 +45,9 @@ app.*.map.json
 /android/app/release
 
 .env
+
+# Testes de regra do Firestore — projeto Node isolado em firestore-tests/.
+# O package-lock.json entra no git de propósito: é o que torna a rodada
+# reproduzível. O resto é artefato do emulador.
+firestore-tests/node_modules/
+*-debug.log

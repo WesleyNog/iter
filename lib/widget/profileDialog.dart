@@ -16,7 +16,7 @@ Future<void> showProfileDialog(
   String? photoUrl,
   required Future<ProfileStats> stats,
   required String actionLabel,
-  required VoidCallback onAction,
+  VoidCallback? onAction,
 }) {
   return showDialog<void>(
     context: context,
@@ -37,7 +37,7 @@ class ProfileDialog extends StatelessWidget {
     required this.name,
     required this.stats,
     required this.actionLabel,
-    required this.onAction,
+    this.onAction,
     this.nickName,
     this.photoUrl,
   });
@@ -52,7 +52,13 @@ class ProfileDialog extends StatelessWidget {
   final Future<ProfileStats> stats;
 
   final String actionLabel;
-  final VoidCallback onAction;
+
+  /// `null` desabilita o botão de verdade.
+  ///
+  /// É o que a aba Amigos precisa para o perfil do próprio usuário: um
+  /// `onPressed` vazio deixaria o botão clicável sem efeito, que é pior do que
+  /// apagado — parece que o toque não funcionou.
+  final VoidCallback? onAction;
 
   static const _bannerHeight = 116.0;
   static const _avatarRadius = 46.0;

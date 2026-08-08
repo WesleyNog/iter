@@ -219,6 +219,53 @@ Vehicle card shows the **lifetime** number, the summary's expense card the
 different questions. `periodEconomy()` returns `null` unless every fill in the
 period belongs to one vehicle, a missing `vehicleId` included.
 
+## Friends: consent lives in the rules, not in the client
+
+`profiles/{uid}` is the public projection — name, `@nickname`, photo — because
+`user/{uid}` holds CPF, e-mail and phone and can never open. It is written from
+the **`User` of FirebaseAuth**, never copied from `user/{uid}`, whose `name` and
+`photoUrl` have been frozen since the first login. The hook is
+`HomeScreen.initState`, not the sign-in: `signInWithGoogle()` never runs for a
+restored session, which is precisely why that document froze.
+
+Use `allow get`, never `allow read`, on anything world-readable. **`read` is
+`get` + `list`**, and a condition that does not inspect `resource` lets any
+authenticated client download the whole collection. `nicknames` shipped that way
+and handed out the full `@nickname → uid` map until it was closed.
+
+Friendship is two edges, `friends/{a}/list/{b}` and its mirror, and the rule
+that creates one demands the other **in the same commit** via `existsAfter()` —
+cross-document atomicity without Cloud Functions. `exists()`/`get()` see the
+state *before* the batch, which is what lets the accept read an invite marker
+the same batch deletes. Accepting clears all **four** marker paths, because a
+mutual invite writes markers on both sides. The edge body is only `at`, pinned
+to `request.time` so a guest cannot sort themselves to the top of your list.
+
+`profiles/{uid}/stats/{all|yyyy-MM}` is recomputed from the routes, never
+incremented — `increment` drifts the first time a route is edited. See
+`docs/specs/amigos.md`.
+
+The rules have tests: `cd firestore-tests && npm test` runs 30 cases against
+the Firestore emulator. It is a Node project on purpose, and deliberately
+**outside `test/`** — `flutter test` globs that directory for `*_test.dart` and
+would walk `node_modules` on every run. The emulator needs **Java 21+** while
+the Android build needs 17, so `run.sh` points `JAVA_HOME` at the JDK bundled
+with Android Studio for that command only. Never change the system java.
+
+The console's rules simulator no longer exists (Google removed it), and it
+could not test batches anyway — which is where `existsAfter` lives. Change a
+rule, run `npm test`, then deploy.
+
+## The project is on Blaze
+
+Since 2026-08-07, for Storage. Cloud Functions and Storage are therefore
+available, and several "impossible without a server" notes in older specs are
+now merely "costs money per use". Two things that did not change: rules are
+still the cheapest defence and the only one that holds when a server exists,
+and the Android `release` build still signs with the debug key. Before the
+first Function, set a billing budget and alert — the runaway risk is a trigger
+that writes the document that fires it, not the feed.
+
 ## Widget tests cannot tell you whether text fits
 
 Two traps, both hit for real in this project:
@@ -278,8 +325,9 @@ Two files are intentionally empty placeholders: `lib/route.dart` and
 `lib/services/saveIter.dart`.
 
 - `test/widget_test.dart` pumps `MyApp`, which now needs an initialized Firebase, so it throws before it even reaches its (already wrong) counter assertions. Every other test passes.
-- `lib/screens/friendsScreen.dart` and `socialScreen.dart` are stubs behind their nav tabs.
-- The "+" menu offers *Abastecimento* and *Manutenção* without `onTap`, marked "Em breve".
+- The Amigos tab ships its first sub-screen only: the friends list, invites and
+  the `@nickname` search. *Ranking* and *Feed* are the other two segments and
+  render an "Em breve" placeholder — see `docs/specs/amigos.md`.
 
 `AddIter._saveRoute()` **is** wired (`addIter.dart:838`) and its guard is correct
 (`if (!validate()) { notify; return; }`); the save button really writes to

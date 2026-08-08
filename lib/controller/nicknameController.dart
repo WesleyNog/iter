@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:iter/controller/profileController.dart';
 import 'package:iter/services/firebase.dart';
 
 /// Reserva de apelidos em `nicknames/{apelido}` → `{ uid }`.
@@ -122,6 +123,13 @@ class NicknameController {
       'nickNameChangedAt': now,
       'updatedAt': now,
     });
+
+    // A vitrine pública carrega uma cópia do apelido, e cópia que atualiza
+    // depois é cópia que discorda no meio: entre um commit e outro a busca
+    // acharia o uid pelo apelido novo e o perfil mostraria o antigo. Vai no
+    // mesmo batch — a regra usa `getAfter` justamente para enxergar a reserva
+    // criada aqui em cima.
+    ProfileController.addNicknameToBatch(batch, uid: uid, nickName: nickname);
 
     await batch.commit();
   }

@@ -1,3 +1,4 @@
+import 'package:iter/Utils/mapRead.dart';
 import 'package:iter/Utils/routeStats.dart';
 import 'package:iter/model/newRouteModal.dart';
 
@@ -42,6 +43,54 @@ class ProfileStats {
 
   /// Média de `endAt - startAt`. `null` quando nenhuma rota tem hora de fim.
   final Duration? averageDuration;
+
+  /// Vira `profiles/{uid}/stats/all`, para outro entregador poder ler.
+  ///
+  /// A travessia **não é simétrica**, e é de propósito: `topCompany` é um
+  /// record e vira dois campos, `averageDuration` vira minutos. Mexer no
+  /// construtor para espelhar o documento custaria cinco usos e um teste, e o
+  /// documento não é o modelo.
+  ///
+  /// `updatedAt` não sai daqui: quem grava é que carimba. Uma instância
+  /// calculada não tem de onde tirar a hora da escrita.
+  Map<String, dynamic> toMap() {
+    return {
+      'routes': routes,
+      'deliveredPackages': deliveredPackages,
+      'stops': stops,
+      'failureRate': failureRate,
+      'topCompanyLabel': topCompany?.label,
+      'topCompanyShare': topCompany?.share,
+      'averageMinutes': averageDuration?.inMinutes,
+    };
+  }
+
+  /// **Campo ausente volta `null`, nunca `0`.**
+  ///
+  /// É a mesma regra do construtor, e é na travessia que ela corre risco:
+  /// gravar ou ler `0` faria "taxa de insucesso zero" e "ninguém preencheu
+  /// pacotes" virarem a mesma coisa — justamente onde o número fica público e
+  /// alguém compara com o próprio.
+  ///
+  /// As contagens caem para `0` porque lá zero é resposta: conta nova rodou
+  /// zero rotas mesmo.
+  factory ProfileStats.fromMap(Map<String, dynamic> map) {
+    final label = map['topCompanyLabel'] as String?;
+    final share = readDouble(map['topCompanyShare']);
+    final minutes = readInt(map['averageMinutes']);
+
+    return ProfileStats(
+      routes: readInt(map['routes']) ?? 0,
+      deliveredPackages: readInt(map['deliveredPackages']) ?? 0,
+      stops: readInt(map['stops']) ?? 0,
+      failureRate: readDouble(map['failureRate']),
+      // Meia empresa não é empresa: sem os dois campos não há o que mostrar.
+      topCompany: label == null || share == null
+          ? null
+          : (label: label, share: share),
+      averageDuration: minutes == null ? null : Duration(minutes: minutes),
+    );
+  }
 }
 
 ProfileStats profileStats(List<NewRouteModal> all) {

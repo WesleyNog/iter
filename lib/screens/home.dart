@@ -1,9 +1,13 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:iter/Utils/profileStats.dart';
+import 'package:iter/controller/friendController.dart';
+import 'package:iter/controller/profileController.dart';
 import 'package:iter/controller/routeController.dart';
 import 'package:iter/controller/userController.dart';
+import 'package:iter/model/newRouteModal.dart';
 import 'package:iter/model/users.dart';
+import 'package:iter/screens/addFriend.dart';
 import 'package:iter/screens/friendsScreen.dart';
 import 'package:iter/screens/graficsScreen.dart';
 import 'package:iter/screens/addMaintenance.dart';
@@ -34,12 +38,68 @@ class _HomeScreenState extends State<HomeScreen> {
 
   late final _grafics = GraficsScreen(user: widget.user);
   late final _listIter = ListIterScreen(user: widget.user);
-  final _friends = FriendsScreen();
+  late final _friends = FriendsScreen(user: widget.user);
   late final _summary = SummaryScreen(user: widget.user);
+
+  /// Convites recebidos, só para o badge da navBar.
+  ///
+  /// Fica aqui e não na aba porque o badge tem de acender **sem** o usuário
+  /// estar em Amigos. É a coleção mais barata do app — um documento por
+  /// convite pendente.
+  late final Stream<List<String>> _incoming = FriendController.watchIncoming(
+    widget.user.uid,
+  );
 
   /// Criado uma única vez: montar o stream dentro do build reinscreveria no
   /// Firestore a cada rebuild.
   late final Stream<Users?> _profile = UserController.watch(widget.user.uid);
+
+  @override
+  void initState() {
+    super.initState();
+    _publishPublicProfile();
+  }
+
+  /// Publica `profiles/{uid}` na abertura do app.
+  ///
+  /// **Aqui e não no login.** `signInWithGoogle()` só roda quando a
+  /// `LoginScreen` o chama, e quem já tem sessão cai direto aqui pelo
+  /// `AuthGate` — é exatamente por isso que `user/{uid}` está congelado desde
+  /// o primeiro dia, e repetir o erro deixaria a busca por apelido sem
+  /// encontrar ninguém que já usava o app.
+  ///
+  /// Fora do `build` porque é escrita: o `StreamBuilder` da AppBar reconstrói
+  /// a cada mudança do perfil, e publicar de lá viraria laço.
+  ///
+  /// Silencioso de propósito. A projeção é conveniência para os outros; o app
+  /// do dono funciona inteiro sem ela, e um toast de erro na abertura seria
+  /// ruído sobre algo que ele não pode resolver.
+  Future<void> _publishPublicProfile() async {
+    try {
+      // O `User` em memória é cache: sem `reload`, trocar a foto no Google não
+      // chega aqui, e a projeção nasceria velha de novo.
+      await widget.user.reload();
+      final user = FirebaseAuth.instance.currentUser ?? widget.user;
+
+      final results = await Future.wait([
+        UserController.fetch(user.uid),
+        RouteController.fetchAll(user.uid),
+      ]);
+
+      final profile = results[0] as Users?;
+      final routes = results[1] as List<NewRouteModal>;
+
+      await ProfileController.publish(
+        user: user,
+        routes: routes,
+        // Sem apelido ninguém acha esse perfil na busca — mas publicar o resto
+        // ainda vale: nome e foto sustentam a lista de quem já é amigo.
+        nickName: profile?.nickName,
+      );
+    } catch (e) {
+      debugPrint('profiles: não foi possível publicar na abertura: $e');
+    }
+  }
 
   String get _firstName {
     final name = widget.user.displayName?.trim() ?? '';
@@ -77,8 +137,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Menu do "+": hoje só a rota está pronta; abastecimento e manutenção entram
-  /// sem `onTap` e aparecem com o selo "Em breve" até ganharem tela.
+  /// Menu do "+".
+  ///
+  /// As três primeiras são o que o app **registra**, na ordem em que registra.
+  /// "Adicionar amigo" fecha a lista porque não é registro: é a única entrada
+  /// que não grava nada do dia de trabalho.
   void _showCreateMenu() {
     showCreateActionSheet(
       context,
@@ -114,6 +177,15 @@ class _HomeScreenState extends State<HomeScreen> {
             MaterialPageRoute(
               builder: (_) => AddMaintenance(uid: widget.user.uid),
             ),
+          ),
+        ),
+        CreateAction(
+          icon: Icons.person_add_alt_outlined,
+          color: Colors.indigo,
+          title: 'Adicionar amigo',
+          subtitle: 'Buscar pelo @apelido',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => AddFriend(uid: widget.user.uid)),
           ),
         ),
       ],
@@ -263,29 +335,42 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       body: screens[current],
-      bottomNavigationBar: GlassNavBar(
-        currentIndex: current,
-        trailing: GlassCircleButton(
-          icon: Icons.add_rounded,
-          iconColor: Colors.green,
-          tooltip: "Criar",
-          onTap: _showCreateMenu,
+      bottomNavigationBar: StreamBuilder<List<String>>(
+        stream: _incoming,
+        builder: (context, snapshot) => _navBar(
+          current,
+          pending: snapshot.data?.length ?? 0,
         ),
-        items: [
-          const GlassNavItem(icon: Icons.bar_chart, label: "Gráfico"),
-          const GlassNavItem(icon: Icons.receipt_long, label: "Lista"),
-          const GlassNavItem(
-            icon: Icons.data_saver_off_rounded,
-            label: "Resumo",
-          ),
-          const GlassNavItem(icon: Icons.people, label: "Amigos"),
-        ],
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
       ),
+    );
+  }
+
+  /// O gancho do badge já existia na `GlassNavBar` e nunca tinha sido usado.
+  Widget _navBar(int current, {required int pending}) {
+    return GlassNavBar(
+      currentIndex: current,
+      pendingIndex: 3,
+      pendingCount: pending,
+      trailing: GlassCircleButton(
+        icon: Icons.add_rounded,
+        iconColor: Colors.green,
+        tooltip: "Criar",
+        onTap: _showCreateMenu,
+      ),
+      items: [
+        const GlassNavItem(icon: Icons.bar_chart, label: "Gráfico"),
+        const GlassNavItem(icon: Icons.receipt_long, label: "Lista"),
+        const GlassNavItem(
+          icon: Icons.data_saver_off_rounded,
+          label: "Resumo",
+        ),
+        const GlassNavItem(icon: Icons.people, label: "Amigos"),
+      ],
+      onTap: (index) {
+        setState(() {
+          _currentIndex = index;
+        });
+      },
     );
   }
 }

@@ -1,0 +1,13 @@
+{
+  "name": "iter-firestore-tests",
+  "private": true,
+  "type": "module",
+  "description": "Testes das regras de seguranca do Firestore. Fica fora de test/ de proposito: o flutter test varre aquele diretorio atras de *_test.dart e passaria por dentro do node_modules a cada rodada.",
+  "scripts": {
+    "test": "sh ./run.sh"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.0.0"
+  }
+}

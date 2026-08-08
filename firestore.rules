@@ -67,9 +67,15 @@ service cloud.firestore {
     // é garantida pelo Firestore. `create` só passa quando o documento ainda
     // não existe — é isso que impede dois usuários de pegarem o mesmo.
     match /nicknames/{nickname} {
-      // Leitura liberada para autenticados: checar disponibilidade e resolver
-      // @apelido -> uid sem expor os documentos de perfil.
-      allow read: if request.auth != null;
+      // `get` e não `read`: `read` é `get` + `list`, e uma condição que não
+      // olha `resource` autoriza baixar a coleção inteira — ou seja, o mapa
+      // apelido -> uid de toda a base numa chamada só.
+      //
+      // Ninguém precisa disso: `resolveUid` e `isAvailable` fazem
+      // `docFor(x).get()`, leitura por id. Fechar `list` não quebra consumidor
+      // nenhum e tira o dump de graça de quem quiser enumerar os perfis.
+      allow get: if request.auth != null;
+      allow list: if false;
 
       allow create: if request.auth != null
                     && request.resource.data.uid == request.auth.uid
@@ -85,5 +91,165 @@ service cloud.firestore {
                     && (resource == null
                         || resource.data.uid == request.auth.uid);
     }
+
+    // ── Amigos ────────────────────────────────────────────────────────────
+    //
+    // Primeira feature em que um usuário vê nome e rosto de outro, e primeira
+    // regra que autoriza escrever no documento de um terceiro. Ver
+    // `docs/specs/amigos.md`.
+
+    // A vitrine pública do perfil.
+    //
+    // Existe porque `user/{uid}` guarda CPF, e-mail, telefone e data de
+    // nascimento — aquele documento nunca abre. Aqui só entra o que o dialog
+    // de perfil mostra, e o `hasOnly` é o que garante isso: sem ele, "nunca
+    // gravar CPF em profiles" seria convenção, e bastaria um `publish()`
+    // futuro copiar um mapa a mais para vazar sem ninguém mexer na regra.
+    match /profiles/{userId} {
+      // `get`, não `read`: mesma razão de `nicknames` acima. Todo o fluxo é
+      // por id conhecido (apelido -> uid -> perfil), então `list` não tem
+      // consumidor e listar a coleção seria o cadastro inteiro do app.
+      allow get: if request.auth != null;
+      allow list: if false;
+
+      // O `get` no apelido impede aparecer como @outrapessoa na lista alheia:
+      // a reserva é a fonte da verdade, o perfil é só a cópia de exibição.
+      // `hasAll` obriga o mínimo, `hasOnly` fecha o teto. O par importa:
+      // `hasOnly` sozinho aceitaria documento sem `name`, e aí
+      // `request.resource.data.name` erraria — e erro em regra é negação, o
+      // que viraria "não consigo publicar" em vez de "faltou campo".
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.data.keys().hasAll(
+                        ['uid', 'name', 'updatedAt'])
+                   && request.resource.data.keys().hasOnly(
+                        ['uid', 'name', 'nickName', 'photoUrl', 'updatedAt'])
+                   && request.resource.data.uid == userId
+                   && request.resource.data.name is string
+                   && request.resource.data.name.size() <= 80
+                   // `getAfter` e não `get`: a troca de apelido cria a reserva
+                   // nova e atualiza a projeção **no mesmo batch**, e `get`
+                   // enxerga só o estado anterior ao commit — a reserva ainda
+                   // não existiria e a regra negaria sempre. Com `getAfter`,
+                   // reserva intocada devolve o que já está lá e reserva
+                   // criada no batch devolve a nova. Os dois casos passam, e
+                   // reivindicar apelido alheio continua negado.
+                   && (!('nickName' in request.resource.data)
+                       || request.resource.data.nickName == null
+                       || getAfter(/databases/$(database)/documents/nicknames/$(request.resource.data.nickName)).data.uid == userId);
+
+      // Os números que o dialog mostra: `all` é a carreira, `2026-08` é o
+      // balde do mês que o ranking lê. O `matches` fecha o wildcard — sem
+      // ele, a subcoleção é depósito livre na cota do projeto.
+      match /stats/{bucket} {
+        allow get: if request.auth != null;
+        allow list: if false;
+        allow write: if request.auth != null
+                     && request.auth.uid == userId
+                     && (bucket == 'all'
+                         || bucket.matches('^[0-9]{4}-[0-9]{2}$'));
+      }
+    }
+
+    // Convites. O id do documento carrega a identidade do outro lado, então a
+    // regra decide sem precisar ler o corpo — mesma técnica de
+    // `nicknames/{apelido}`: corpo é dado, caminho é fato.
+    //
+    // `read` aqui inclui `list` de propósito: a coleção já está sob o uid do
+    // dono, então listar só devolve a própria caixa.
+    match /friendRequests/{userId}/incoming/{otherId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+
+      // Só quem envia cria o próprio convite na caixa alheia. Ninguém forja um
+      // convite "de" outra pessoa — e é essa impossibilidade que sustenta a
+      // regra de `friends` lá embaixo.
+      // Os **dois** perfis têm de existir. O de quem recebe impede convidar
+      // um uid inventado; o de quem envia é o que garante que dá para saber
+      // quem convidou — sem ele o convite chega como "Entregador", e aceitar
+      // ou recusar sem saber de quem é não é decisão, é chute.
+      allow create: if request.auth != null
+                    && request.auth.uid == otherId
+                    && otherId != userId
+                    && exists(/databases/$(database)/documents/profiles/$(userId))
+                    && exists(/databases/$(database)/documents/profiles/$(otherId))
+                    && request.resource.data.keys().hasOnly(['at'])
+                    && request.resource.data.at == request.time;
+
+      // Os dois lados apagam: o dono recusa, quem enviou retira. A condição
+      // não toca em `resource`, então apagar marcador inexistente passa — é o
+      // que deixa o aceite apagar os quatro caminhos do convite mútuo sem
+      // precisar saber quais existem.
+      allow delete: if request.auth != null
+                    && (request.auth.uid == userId
+                        || request.auth.uid == otherId);
+
+      allow update: if false;
+    }
+
+    match /friendRequests/{userId}/outgoing/{otherId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+
+      allow create: if request.auth != null
+                    && request.auth.uid == userId
+                    && otherId != userId
+                    && exists(/databases/$(database)/documents/profiles/$(userId))
+                    && exists(/databases/$(database)/documents/profiles/$(otherId))
+                    && request.resource.data.keys().hasOnly(['at'])
+                    && request.resource.data.at == request.time;
+
+      allow delete: if request.auth != null
+                    && (request.auth.uid == userId
+                        || request.auth.uid == otherId);
+
+      allow update: if false;
+    }
+
+    // A aresta de amizade.
+    //
+    // A propriedade que esta regra garante: uma aresta X -> Y só nasce se o
+    // par trocou um convite na direção que a justifica, e nunca sozinha.
+    match /friends/{userId}/list/{friendId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+
+      // `create, update` com a MESMA condição, de propósito: a escrita é
+      // idempotente. `set` sobre documento existente é `update`, e um
+      // `update: if false` transformaria qualquer reparo — ou um segundo
+      // toque em "Aceitar" — em permission-denied permanente.
+      allow create, update: if request.auth != null
+        && friendId != userId
+        && request.resource.data.keys().hasOnly(['at'])
+        && request.resource.data.at == request.time
+
+        // As duas arestas nascem no mesmo commit, ou nenhuma nasce.
+        // `existsAfter` enxerga o estado depois do batch e antes do commit, e
+        // é o que dispensa Cloud Functions para ter atomicidade entre
+        // documentos. `exists`, logo abaixo, enxerga o estado *anterior* — é
+        // por isso que o aceite consulta um marcador que ele mesmo apaga no
+        // mesmo batch.
+        && existsAfter(/databases/$(database)/documents/friends/$(friendId)/list/$(userId))
+
+        && (
+             // aceito o que me mandaram: escrevo na minha lista
+             (request.auth.uid == userId
+              && exists(/databases/$(database)/documents/friendRequests/$(userId)/incoming/$(friendId)))
+
+             // aceito o que me mandaram: me insiro na lista de quem convidou
+          || (request.auth.uid == friendId
+              && exists(/databases/$(database)/documents/friendRequests/$(userId)/outgoing/$(friendId)))
+        );
+
+      // Qualquer um dos dois desfaz, inclusive me remover da lista alheia.
+      // Sem `existsAfter` aqui: prender a remoção também acrescentaria um modo
+      // de falha a um caminho que não tem consentimento em jogo — o pior caso
+      // é o outro continuar vendo a amizade até remover por conta própria.
+      allow delete: if request.auth != null
+                    && (request.auth.uid == userId
+                        || request.auth.uid == friendId);
+    }
+
+    // `posts` (o Feed) NÃO entra aqui ainda: abrir coleção gravável antes de
+    // existir tela é superfície sem consumidor, e a regra da mídia precisa
+    // amarrar o autor com `getAfter`, o que muda o desenho do commit.
+    // Ver `docs/specs/amigos.md`, seção "Dívidas e fora de escopo".
   }
 }

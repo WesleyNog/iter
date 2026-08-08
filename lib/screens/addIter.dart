@@ -1,5 +1,7 @@
+import 'dart:async' show unawaited;
+
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:iter/Utils/calendar.dart';
@@ -9,6 +11,7 @@ import 'package:iter/Utils/insucessoBairro.dart';
 import 'package:iter/Utils/routeTime.dart';
 import 'package:iter/Utils/bairros.dart';
 import 'package:iter/Utils/vehicleCost.dart';
+import 'package:iter/controller/profileController.dart';
 import 'package:iter/controller/routeController.dart';
 import 'package:iter/controller/vehicleController.dart';
 import 'package:iter/model/newRouteModal.dart';
@@ -963,6 +966,28 @@ class _AddIterState extends State<AddIter> {
     );
   }
 
+  /// Reconta o que os amigos conseguem ver depois de gravar a rota.
+  ///
+  /// Recalculado da lista inteira, nunca incrementado: `FieldValue.increment`
+  /// derivaria na primeira rota editada, e um número público que discorda da
+  /// origem, sem ninguém poder auditar, é pior do que número nenhum.
+  ///
+  /// Editar a data manda **dois** meses: o novo e aquele de onde a rota saiu.
+  /// Sem o segundo, o mês antigo continuaria contando uma rota que não está
+  /// mais lá.
+  Future<void> _republishStats(NewRouteModal saved) async {
+    try {
+      final routes = await RouteController.fetchAll(widget.user.uid);
+      await ProfileController.refreshAfterRoute(
+        uid: widget.user.uid,
+        routes: routes,
+        months: {saved.startAt, ?widget.route?.startAt},
+      );
+    } catch (e) {
+      debugPrint('profiles: números públicos não republicados: $e');
+    }
+  }
+
   Future<void> _saveRoute() async {
     // `currentState` continua podendo ser null se o Form sair da árvore.
     if (!(_formKey.currentState?.validate() ?? false)) {
@@ -1023,6 +1048,11 @@ class _AddIterState extends State<AddIter> {
 
     try {
       await RouteController.save(widget.user.uid, newRoute);
+
+      // Os números públicos do dono mudaram. Sem `await`: quem está salvando
+      // espera a tela fechar, não uma escrita que é conveniência para os
+      // amigos — e `refreshAfterRoute` já engole o próprio erro.
+      unawaited(_republishStats(newRoute));
 
       if (!mounted) return;
       showNotification(
