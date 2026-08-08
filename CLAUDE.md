@@ -266,6 +266,33 @@ and the Android `release` build still signs with the debug key. Before the
 first Function, set a billing budget and alert — the runaway risk is a trigger
 that writes the document that fires it, not the feed.
 
+## The Feed: the global collection is the most validated one
+
+`posts` is world-listable, so it is the collection with the strictest `create`
+rule in the project — not the loosest. `hasAll` + `hasOnly` + a 500-char cap +
+`createdAt == request.time`, because a post dated 9999 pins itself to the top
+of everyone's mural forever and `update` is restricted to the tombstone.
+
+**Deleting a post is marking it.** Firestore does not cascade into
+subcollections: a real delete would leave the likes behind, free the id for a
+new post to inherit that thread, and make the owner's moderation `get()` error
+— which is the same as denying. Deleting would be the gesture that makes an
+offence permanent. `allow delete: if false`.
+
+The photo lives in Storage and the document stores the **path**, never the
+`getDownloadURL()` result: that URL carries a token, is served without auth,
+bypasses `storage.rules` entirely, and can only be revoked by hand in the
+console.
+
+The author is **not** denormalized into the post. Only `uid` — name, photo and
+nickname come from `profiles/{uid}`, prefetched once per page into a Map. Any
+author field inside the post would be unverifiable by the rules, which is
+impersonation for free on a global wall.
+
+`profiles/{uid}/stats/*` is friends-only (`exists()` on the owner's list),
+because a public wall hands out uids to anyone who scrolls. `fetchCareer`
+returning `null` means **"not allowed to see"**, never zero.
+
 ## Widget tests cannot tell you whether text fits
 
 Two traps, both hit for real in this project:

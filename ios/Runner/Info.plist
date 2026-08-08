@@ -48,9 +48,9 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Para mostrar os postos de combustível perto de você ao registrar um abastecimento.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Para tirar uma foto do seu veículo.</string>
+	<string>Para tirar uma foto do seu veículo ou de uma publicação no mural.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Para escolher uma foto do seu veículo.</string>
+	<string>Para escolher uma foto do seu veículo ou de uma publicação no mural.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

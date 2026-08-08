@@ -1,4 +1,6 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:iter/Utils/profileDisplay.dart';
 import 'package:iter/model/publicProfile.dart';
 
 /// Uma linha da lista de amigos ou da caixa de convites.
@@ -27,19 +29,14 @@ class FriendTile extends StatelessWidget {
   final VoidCallback? onTap;
   final Widget? trailing;
 
-  String get _name {
-    final name = profile?.name.trim() ?? '';
-    if (name.isNotEmpty) return name;
+  String get _name => displayName(profile, nickNameFallback: nickNameFallback);
 
-    final nick = profile?.nickName ?? nickNameFallback;
-    return nick == null ? 'Entregador' : '@$nick';
-  }
-
+  /// O `@apelido` embaixo do nome. `null` quando o apelido **é** o título —
+  /// repetir seria ruído.
   String? get _handle {
-    final nick = profile?.nickName ?? nickNameFallback;
-    if (nick == null) return null;
-    // Sem nome, o apelido já é o título: repetir embaixo seria ruído.
-    return (profile?.name.trim().isEmpty ?? true) ? null : '@$nick';
+    final nick = (profile?.nickName ?? nickNameFallback)?.trim() ?? '';
+    if (nick.isEmpty) return null;
+    return _name.startsWith('@') ? null : '@$nick';
   }
 
   @override
@@ -53,13 +50,13 @@ class FriendTile extends StatelessWidget {
       leading: CircleAvatar(
         radius: 22,
         backgroundColor: Colors.blue.shade50,
-        backgroundImage: photo == null ? null : NetworkImage(photo),
-        child: photo != null
+        backgroundImage: hasPhoto(photo)
+            ? CachedNetworkImageProvider(photo!)
+            : null,
+        child: hasPhoto(photo)
             ? null
             : Text(
-                _name.replaceAll('@', '').characters.firstOrNull
-                        ?.toUpperCase() ??
-                    '?',
+                displayInitial(_name),
                 style: TextStyle(
                   color: Colors.blue.shade700,
                   fontWeight: FontWeight.bold,

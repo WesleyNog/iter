@@ -304,7 +304,7 @@ class _AddIterState extends State<AddIter> {
                     border: Border.all(color: Colors.grey.shade300),
                     borderRadius: BorderRadius.circular(5.0),
                   ),
-                  child: Image.asset('assets/logo/ML.jpg', height: 40.0),
+                  child: Image.asset('assets/logo/ML.jpg'),
                 ),
               ),
             ),

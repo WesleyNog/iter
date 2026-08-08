@@ -1,0 +1,41 @@
+rules_version = '2';
+
+// Imagens do Feed. Primeiro arquivo de regras do Storage do projeto.
+//
+// O post guarda o **caminho** (`posts/{uid}/{postId}.jpg`), não a URL do
+// `getDownloadURL()`. Aquela URL carrega um token, é servida sem autenticação
+// e **não passa por estas regras** — seria um link público e permanente,
+// revogável só à mão no console. Guardando o caminho, quem decide quem vê é
+// este arquivo. Ver `docs/specs/amigos.md`.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    match /posts/{userId}/{fileName} {
+      // Mural global: qualquer autenticado vê. É a mesma decisão do `list` em
+      // `posts`, e está registrada como risco assumido na spec.
+      allow read: if request.auth != null;
+
+      // Só o dono escreve no próprio caminho — é isto que impede um post
+      // carregar a imagem de outra pessoa.
+      //
+      // O teto de 2 MiB e o `contentType` são a guarda que o cliente Dart não
+      // consegue dar: quem ataca não usa o cliente Dart. O `image_picker`
+      // entrega ~150 KB com `maxWidth: 1080, imageQuality: 70`, então 2 MiB é
+      // folga de mais de dez vezes e ainda barra o upload de um vídeo.
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.size <= 2 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+
+      // Apagar o próprio, para o post que vira tombstone poder levar a foto
+      // junto. Não há cascata: o Storage não sabe que o documento sumiu.
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Nada mais no bucket. Sem esta negação explícita, um caminho novo
+    // nasceria fechado por padrão — mas o silêncio não diz que foi escolha.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

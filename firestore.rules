@@ -141,8 +141,20 @@ service cloud.firestore {
       // Os números que o dialog mostra: `all` é a carreira, `2026-08` é o
       // balde do mês que o ranking lê. O `matches` fecha o wildcard — sem
       // ele, a subcoleção é depósito livre na cota do projeto.
+      // Os números são de amigo, não de qualquer um.
+      //
+      // A vitrine acima (nome, foto, apelido) continua pública, porque é o
+      // que responde "é essa a pessoa?" antes de existir amizade. Rotas,
+      // insucesso e tempo médio não respondem a isso e vazariam a
+      // produtividade de todo entregador para quem descobrisse o uid — e o
+      // Feed, sendo mural global, entrega uid a quem rolar a tela.
+      //
+      // `exists` na lista do dono: só quem ele aceitou lê. Custa uma leitura
+      // cobrada por documento de estatística.
       match /stats/{bucket} {
-        allow get: if request.auth != null;
+        allow get: if request.auth != null
+                   && (request.auth.uid == userId
+                       || exists(/databases/$(database)/documents/friends/$(userId)/list/$(request.auth.uid)));
         allow list: if false;
         allow write: if request.auth != null
                      && request.auth.uid == userId
@@ -247,9 +259,87 @@ service cloud.firestore {
                         || request.auth.uid == friendId);
     }
 
-    // `posts` (o Feed) NÃO entra aqui ainda: abrir coleção gravável antes de
-    // existir tela é superfície sem consumidor, e a regra da mídia precisa
-    // amarrar o autor com `getAfter`, o que muda o desenho do commit.
-    // Ver `docs/specs/amigos.md`, seção "Dívidas e fora de escopo".
+    // ── Feed ──────────────────────────────────────────────────────────────
+    //
+    // O mural. É a coleção global mais exposta do app, e por isso a mais
+    // validada — não o contrário, que foi o erro do primeiro esboço.
+
+    match /posts/{postId} {
+      allow get, list: if request.auth != null;
+
+      // Sem `hasOnly` o cliente inventa campo; sem teto de tamanho grava
+      // 1 MiB numa coleção que todo mundo lista; sem
+      // `createdAt == request.time` um post com data de 9999 fica em primeiro
+      // lugar no feed de todo mundo para sempre.
+      //
+      // O último é o mesmo ataque que a regra de `friends` já fecha no `at`:
+      // ordenar por dado do adversário. Lá a lista é de um usuário; aqui é de
+      // todos.
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.keys().hasAll(
+                         ['uid', 'text', 'createdAt', 'deleted'])
+                    && request.resource.data.keys().hasOnly(
+                         ['uid', 'text', 'company', 'imagePath',
+                          'createdAt', 'deleted'])
+                    && request.resource.data.text is string
+                    && request.resource.data.text.size() <= 500
+                    && request.resource.data.createdAt == request.time
+                    && request.resource.data.deleted == false
+                    // `in` antes de comparar: `data.company` numa chave
+                    // ausente **erra**, e erro em regra nega. Post sem
+                    // empresa e sem foto é o caso comum, não a exceção.
+                    && (!('company' in request.resource.data)
+                        || request.resource.data.company == null
+                        || request.resource.data.company in
+                             ['mercadolivre', 'amazon', 'shopee'])
+                    // Sem isto, o post carrega a imagem de outra pessoa.
+                    && (!('imagePath' in request.resource.data)
+                        || request.resource.data.imagePath == null
+                        || request.resource.data.imagePath.matches(
+                             '^posts/' + request.auth.uid + '/.*'));
+
+      // **Apagar é marcar.** O Firestore não apaga subcoleções em cascata:
+      // com `delete` de verdade, as curtidas sobreviveriam ao post, o id
+      // voltaria a ficar livre — um post novo herdaria a thread do anterior —
+      // e o `get()` da moderação passaria a errar, que é o mesmo que negar.
+      // Apagar o post seria o gesto que torna a ofensa permanente.
+      allow update: if request.auth != null
+                    && resource.data.uid == request.auth.uid
+                    && request.resource.data.diff(resource.data)
+                         .affectedKeys()
+                         .hasOnly(['deleted', 'text', 'imagePath'])
+                    && request.resource.data.deleted == true;
+
+      allow delete: if false;
+
+      // Uma curtida = um documento, o id é quem curtiu. A unicidade sai de
+      // graça: ninguém curte duas vezes, e não há contador para conciliar.
+      //
+      // O `uid` no corpo é redundante com o id de propósito: sem ele,
+      // `collectionGroup('likes').where('uid','==',eu)` é impossível e saber
+      // quais dos 20 posts da tela eu já curti vira 20 leituras. A regra
+      // confere os dois, então não abre personificação.
+      match /likes/{likerId} {
+        allow get, list: if request.auth != null;
+
+        allow create: if request.auth != null
+                      && request.auth.uid == likerId
+                      && request.resource.data.keys().hasOnly(['uid', 'at'])
+                      && request.resource.data.uid == likerId
+                      && request.resource.data.at == request.time
+                      && exists(/databases/$(database)/documents/posts/$(postId));
+
+        allow update: if false;
+        allow delete: if request.auth != null && request.auth.uid == likerId;
+      }
+    }
+
+    // O espelho do dono: `iter/{uid}/posts/{id}`, mesmo id do global, gravado
+    // no mesmo batch. É o par que `gastop` + `supply` já fazem, e é o que
+    // resolve "minhas postagens" sem query nem índice na coleção global.
+    match /iter/{userId}/posts/{postId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
   }
 }

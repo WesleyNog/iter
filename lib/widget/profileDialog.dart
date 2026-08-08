@@ -14,7 +14,7 @@ Future<void> showProfileDialog(
   required String name,
   String? nickName,
   String? photoUrl,
-  required Future<ProfileStats> stats,
+  required Future<ProfileStats?> stats,
   required String actionLabel,
   VoidCallback? onAction,
 }) {
@@ -49,7 +49,11 @@ class ProfileDialog extends StatelessWidget {
   /// Nome e foto já vêm da AppBar e aparecem na hora; só os números esperam o
   /// Firestore. Segurar o dialog fechado por meio segundo faz o toque parecer
   /// que não funcionou.
-  final Future<ProfileStats> stats;
+  ///
+  /// Resolver em `null` significa **"não posso ver"**, não "zero": os números
+  /// de carreira são legíveis só por amigos, e mostrar zeros para um
+  /// desconhecido seria dizer que ele nunca rodou.
+  final Future<ProfileStats?> stats;
 
   final String actionLabel;
 
@@ -198,7 +202,7 @@ class ProfileDialog extends StatelessWidget {
   }
 
   Widget _stats() {
-    return FutureBuilder<ProfileStats>(
+    return FutureBuilder<ProfileStats?>(
       future: stats,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
@@ -210,8 +214,17 @@ class ProfileDialog extends StatelessWidget {
           );
         }
 
+        // "Ainda não chegou" e "não posso ver" são estados diferentes, e o
+        // `data == null` sozinho os confundiria — o shimmer ficaria para
+        // sempre em quem não é amigo.
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const _StatsPlaceholder();
+        }
+
         final data = snapshot.data;
-        if (data == null) return const _StatsPlaceholder();
+        if (data == null) {
+          return _note('Os números aparecem depois que vocês forem amigos.');
+        }
 
         return Column(
           children: [

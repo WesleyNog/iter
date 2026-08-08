@@ -1,8 +1,9 @@
 # Spec: Amigos
 
 Status: **implementada** · Criada, aprovada e implementada em 2026-08-07 ·
-Convidar e aceitar verificados em aparelho no mesmo dia · Faltam os fluxos de
-recusa, cancelamento, remoção e convite mútuo
+As três abas verificadas em aparelho no mesmo dia · Faltam os fluxos de recusa,
+cancelamento, remoção e convite mútuo, e o App Check antes de abrir para
+desconhecidos
 
 ## Objetivo
 
@@ -665,7 +666,10 @@ e por isso a dívida "teste de regras" saiu da lista: virou `npm test`.
 - [ ] Recusar some com o convite nos dois lados.
 - [ ] Cancelar um convite enviado some com ele na caixa do outro.
 - [ ] Remover um amigo tira a aresta dos dois lados.
-- [ ] Tocar em Ranking e em Feed mostra o aviso "Em breve", não tela branca.
+- [x] As três abas têm conteúdo — nenhuma é "Em breve".
+- [x] Publicar com texto funciona; publicar com foto funciona.
+- [x] O mural mostra autor, foto, empresa, tempo relativo e curtida.
+- [x] O ranking mostra o dono com nome e foto, destacado, e o mês navega.
 - [x] No iPhone, "Amigos", "Ranking" e "Feed" cabem em uma linha cada.
 - [x] Os quatro ataques dão `permission-denied` — verificado no emulador,
       `firestore-tests`, junto com outros 26 casos.
@@ -877,11 +881,11 @@ rotas inteira a cada troca de mês, para chegar ao mesmo número.
 Balde ausente é **mês parado**, não erro: quem não rodou aparece com zero em
 vez de sumir da lista.
 
-## O Feed, em esboço
+## O Feed
 
-Não é esta entrega. Está aqui para a modelagem de `posts` não nascer sem lugar
-para curtida e comentário — acrescentar subcoleção depois é barato, mudar o
-documento que já tem mil linhas gravadas não é.
+Entregue em 07/08/2026: publicar (texto, foto, empresa), o mural paginado, o
+espelho do dono, tombstone e curtida. **Comentário não entra** — a ordem no fim
+desta seção diz por quê.
 
 ```
 posts/{postId}                       ← global
@@ -1113,22 +1117,41 @@ feature**, não refinamento — `Image.network` só guarda em memória, e fechar
 app rebaixa tudo de novo. E `text` e `imagePath` pedem *exemption* de índice de
 campo único: são ~1 KB por post de índice que nenhuma query usa.
 
-### O `list` de posts reabre a enumeração de perfis
+### O `list` de posts reabria a enumeração — e foi fechado
 
-Registrar antes de construir, porque é a mesma porta que esta entrega fechou em
-`nicknames`, reaberta pelo lado.
-
+Era a mesma porta que esta entrega fechou em `nicknames`, reaberta pelo lado.
 Com `list` em `posts`, uma conta qualquer roda `collection('posts').get()`,
-colhe o `uid` de todo mundo que já publicou e percorre `profiles/{uid}` um a um
-— nome, foto, apelido, rotas e taxa de insucesso. **Não adianta ter tirado o
-`nickName` do post: o vetor é o `uid`.** E paginar não ajuda; `list` é `list`.
+colhe o `uid` de todo mundo que publicou e percorre `profiles/{uid}` um a um.
+**Não adiantava ter tirado o `nickName` do post: o vetor é o `uid`.** E paginar
+não ajuda; `list` é `list`.
 
-Isso muda o "Risco assumido, registrado" desta spec, que hoje diz que o custo de
-entrada é saber o apelido exato. Passa a ser: *abrir o feed*. É decisão de
-produto, não de engenharia, e tem de ser tomada com o número na mesa antes do
-passo 1 — mural público é mural público, e talvez seja exatamente o que você
-quer. A alternativa, se não for, é `stats/all` deixar de ser público e o dialog
-de confirmação mostrar só nome, foto e apelido.
+**A decisão, tomada em 07/08/2026: os números passaram a ser de amigo.**
+`profiles/{uid}/stats/*` exige agora `exists()` na lista do dono — só quem ele
+aceitou lê. A vitrine (nome, foto, apelido) continua pública, porque é o que
+responde "é essa a pessoa?" antes de existir amizade; rotas, insucesso e tempo
+médio não respondem a isso.
+
+Custa uma coisa, e vale escrever: **o dialog de confirmação antes de adicionar
+não mostra mais os números.** Ele desenha "os números aparecem depois que vocês
+forem amigos", e `ProfileController.fetchCareer` devolve `null` — que é "não
+posso ver", nunca zero. Mostrar zeros ali seria dizer que o colega nunca rodou.
+
+### O que ficou de fora, e o que entrou no lugar
+
+**`collectionGroup('likes')` não entrou.** Ele diria em *uma* leitura quais dos
+20 posts da tela eu já curti, e é para essa porta que a curtida guarda o `uid`
+redundante no corpo. Mas exigiria uma regra nova em `/{path=**}/likes/` e um
+índice de collection group versionado. Vinte leituras por página contra 50 mil
+por dia de cota não pagam esse aparato agora; o campo fica, e a troca é de uma
+função só (`PostController.likedAmong`).
+
+**Publicar mora dentro do mural, não no menu `+`.** Um botão flutuante cairia
+no mesmo canto do `+` da navBar, que o `extendBody` da Home deixa por cima do
+conteúdo — e, pelo menu, a tela voltaria publicada com o mural ainda mostrando
+a página antiga. O compositor no topo da lista resolve os dois.
+
+**O anúncio já tem o lugar reservado** no `itemBuilder`, entre os posts. Falta
+o AdMob, que é dependência nova e "perguntar antes".
 
 ### A ordem em que isso pode ser construído
 
@@ -1136,14 +1159,15 @@ de confirmação mostrar só nome, foto e apelido.
 uma pessoa aparecendo embaixo do post de outra.** Quem publica assume o que
 escreve; quem é comentado não escolheu.
 
-1. **App Check, orçamento e alerta de faturamento.** Deixou de ser dívida
-   futura: uma coleção global gravável no Blaze sem App Check é um script de
-   dez linhas fazendo você pagar. Não é Function, não tem cold start.
-2. `posts` + espelho + imagem no Storage + tombstone;
-3. curtida;
-4. **bloqueio e denúncia**, mais a Function que limpa subcoleção e objeto;
-5. comentário;
-6. abrir o feed para quem você não conhece.
+- [ ] **App Check, orçamento e alerta de faturamento.** Ficou pendente, e é o
+  único item desta lista que o código não resolve: uma coleção global gravável
+  no Blaze sem App Check é um script de dez linhas fazendo você pagar. Não é
+  Function, não tem cold start. **Fazer antes de o app sair do seu celular.**
+- [x] `posts` + espelho + imagem no Storage + tombstone
+- [x] curtida
+- [ ] **bloqueio e denúncia**, mais a Function que limpa subcoleção e objeto
+- [ ] comentário
+- [ ] abrir o feed para quem você não conhece
 
 E cada um dos doze ataques desta revisão vira caso em
 `firestore-tests/rules.test.mjs`. O `existsAfter` só foi confiável porque foi
@@ -1298,6 +1322,19 @@ veículo.
   - Arquivos: `lib/Utils/ranking.dart`, `lib/widget/rankingTab.dart`,
     `lib/Utils/routeTime.dart` (+ `formatMinutes`),
     `lib/widget/profileDialog.dart`, `lib/screens/friendsScreen.dart`
+
+- [x] **12. Aba Feed — posts e curtida**
+  - Aceite: publicar com texto, foto no Storage e empresa; mural paginado de
+    20 com puxar-para-baixo; espelho em `iter/{uid}/posts`; apagar é tombstone;
+    curtir com atualização otimista; `stats/*` passou a exigir amizade.
+  - Verificar: `cd firestore-tests && npm test` (47 casos, 14 do mural);
+    `flutter test test/unit/post_test.dart test/widget/postCard_test.dart`
+  - Arquivos: `firestore.rules`, `storage.rules` (novo), `firebase.json`,
+    `lib/model/post.dart`, `lib/controller/postController.dart`,
+    `lib/services/postImage.dart`, `lib/screens/addPost.dart`,
+    `lib/widget/postCard.dart`, `lib/widget/feedTab.dart`,
+    `lib/widget/profileDialog.dart`, `lib/screens/friendsScreen.dart`,
+    `pubspec.yaml`, `ios/Runner/Info.plist`
 
 - [ ] **10. Verificação em aparelho e fechamento**
   - Aceite: os critérios de sucesso, com duas contas reais; `CLAUDE.md`

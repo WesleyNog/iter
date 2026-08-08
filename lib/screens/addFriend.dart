@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:iter/Utils/friendship.dart';
-import 'package:iter/Utils/profileStats.dart';
 import 'package:iter/controller/friendController.dart';
 import 'package:iter/controller/nicknameController.dart';
 import 'package:iter/controller/profileController.dart';
@@ -134,14 +133,10 @@ class _AddFriendState extends State<AddFriend> {
       name: profile.name,
       nickName: profile.nickName,
       photoUrl: profile.photoUrl,
-      stats:
-          ProfileController.fetchCareer(profile.uid).then(
-            (stats) => stats ?? const ProfileStats(
-              routes: 0,
-              deliveredPackages: 0,
-              stops: 0,
-            ),
-          ),
+      // Antes de virar amigo, a regra recusa a leitura e isto resolve em
+      // `null` — que o dialog desenha como "os números aparecem depois que
+      // vocês forem amigos", em vez de mentir zeros.
+      stats: ProfileController.fetchCareer(profile.uid),
       // Sem ação possível o botão nasce desabilitado — `null` no `onPressed`,
       // não um callback vazio que pareceria não funcionar.
       actionLabel: label ?? 'Você',

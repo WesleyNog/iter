@@ -1,12 +1,12 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:iter/Utils/friendship.dart';
-import 'package:iter/Utils/profileStats.dart';
 import 'package:iter/Utils/ranking.dart';
 import 'package:iter/controller/friendController.dart';
 import 'package:iter/controller/profileController.dart';
 import 'package:iter/model/publicProfile.dart';
 import 'package:iter/screens/addFriend.dart';
+import 'package:iter/widget/feedTab.dart';
 import 'package:iter/widget/friendTile.dart';
 import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/profileDialog.dart';
@@ -101,10 +101,13 @@ class _FriendsScreenState extends State<FriendsScreen> {
           child: switch (_tab) {
             FriendsTab.amigos => _friendsTab(),
             FriendsTab.ranking => _rankingTab(),
-            FriendsTab.feed => const _EmBreve(
-              icon: Icons.campaign_outlined,
-              title: 'Feed em breve',
-              detail: 'O que os entregadores estão publicando.',
+            FriendsTab.feed => FeedTab(
+              uid: widget.user.uid,
+              // O mesmo mapa da lista e do ranking. Um cache próprio no feed
+              // morreria a cada troca de aba e releria perfis que este já tem.
+              profiles: _profiles,
+              onNeedProfiles: _prefetch,
+              bottomGap: _bottomGap,
             ),
           },
         ),
@@ -114,9 +117,10 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
   /// O ranking precisa da lista de amigos, então nasce dentro do mesmo stream.
   ///
-  /// A `ValueKey` com os uids força um `State` novo quando a lista muda —
-  /// aceitar um convite tem de recarregar os baldes, não continuar mostrando
-  /// o ranking sem o amigo que acabou de entrar.
+  /// **Sem `ValueKey`.** Uma key derivada da lista destruiria o `State` a cada
+  /// mudança, e com ele o mês e o critério que o usuário escolheu: aceitar um
+  /// convite jogaria a tela de volta para Agosto/Rotas sem ele ter tocado em
+  /// nada. Quem recarrega é o `didUpdateWidget` da própria aba.
   Widget _rankingTab() {
     return StreamBuilder<List<String>>(
       stream: _friends,
@@ -133,7 +137,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
         _prefetch(rankingParticipants(widget.user.uid, friends));
 
         return RankingTab(
-          key: ValueKey('ranking-${friends.length}'),
           uid: widget.user.uid,
           friends: friends,
           profiles: _profiles,
@@ -267,11 +270,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
       name: profile?.name.isNotEmpty == true ? profile!.name : 'Entregador',
       nickName: profile?.nickName,
       photoUrl: profile?.photoUrl,
-      stats: ProfileController.fetchCareer(uid).then(
-        (stats) =>
-            stats ??
-            const ProfileStats(routes: 0, deliveredPackages: 0, stops: 0),
-      ),
+      // Sem fabricar zeros: `null` chega ao dialog como "não posso ver".
+      stats: ProfileController.fetchCareer(uid),
       actionLabel: status.actionLabel ?? 'Fechar',
       onAction: () {
         Navigator.of(context).pop();
@@ -346,44 +346,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
               ),
               icon: const Icon(Icons.person_add_alt_outlined),
               label: const Text('Adicionar amigo'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EmBreve extends StatelessWidget {
-  const _EmBreve({
-    required this.icon,
-    required this.title,
-    required this.detail,
-  });
-
-  final IconData icon;
-  final String title;
-  final String detail;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 56, color: Colors.grey.shade400),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              detail,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey.shade600),
             ),
           ],
         ),

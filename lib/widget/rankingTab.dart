@@ -1,5 +1,8 @@
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:iter/Utils/monthStats.dart';
+import 'package:iter/Utils/profileDisplay.dart';
 import 'package:iter/Utils/ranking.dart';
 import 'package:iter/Utils/routeStyle.dart';
 import 'package:iter/Utils/routeTime.dart';
@@ -51,8 +54,9 @@ class _RankingTabState extends State<RankingTab> {
   @override
   void didUpdateWidget(RankingTab old) {
     super.didUpdateWidget(old);
-    // A lista de amigos mudou embaixo (aceitou alguém, removeu alguém).
-    if (old.friends.length != widget.friends.length) _load();
+    // Compara o **conjunto**, não o tamanho: remover a ana e aceitar a carla
+    // no mesmo instante mantém o tamanho e troca quem disputa.
+    if (!setEquals(old.friends.toSet(), widget.friends.toSet())) _load();
   }
 
   /// Um balde por participante. Não republica o próprio antes: quem mantém o
@@ -232,9 +236,7 @@ class _RankingTabState extends State<RankingTab> {
   Widget _linha(RankRow row, int? position) {
     final isMe = row.uid == widget.uid;
     final profile = widget.profiles[row.uid];
-    final name = profile?.name.trim().isNotEmpty == true
-        ? profile!.name
-        : (profile?.nickName == null ? 'Entregador' : '@${profile!.nickName}');
+    final name = displayName(profile);
 
     return Container(
       key: ValueKey('rank-${row.uid}'),
@@ -250,30 +252,39 @@ class _RankingTabState extends State<RankingTab> {
         children: [
           SizedBox(
             width: 26,
-            child: Text(
-              position == null ? '—' : '$position',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                color: position == null
-                    ? Colors.grey.shade400
-                    : Colors.grey.shade700,
-              ),
-            ),
+            child: position != null && position <= 3
+                ? Image.asset(
+                    position == 1
+                        ? 'assets/images/OURO-MEDAL.png'
+                        : position == 2
+                        ? 'assets/images/PRATA-MEDAL.png'
+                        : 'assets/images/BRONZE-MEDAL.png',
+                    width: 25,
+                    height: 25,
+                  )
+                : Text(
+                    position == null ? '—' : '$position',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: position == null
+                          ? Colors.grey.shade400
+                          : Colors.grey.shade700,
+                    ),
+                  ),
           ),
           const SizedBox(width: 4),
           CircleAvatar(
             radius: 16,
             backgroundColor: Colors.blue.shade50,
-            backgroundImage: profile?.photoUrl == null
-                ? null
-                : NetworkImage(profile!.photoUrl!),
-            child: profile?.photoUrl != null
+            // Cacheado em disco: os mesmos avatares reaparecem a cada visita.
+            backgroundImage: hasPhoto(profile?.photoUrl)
+                ? CachedNetworkImageProvider(profile!.photoUrl!)
+                : null,
+            child: hasPhoto(profile?.photoUrl)
                 ? null
                 : Text(
-                    name.replaceAll('@', '').characters.firstOrNull
-                            ?.toUpperCase() ??
-                        '?',
+                    displayInitial(name),
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.blue.shade700,

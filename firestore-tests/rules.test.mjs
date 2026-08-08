@@ -23,6 +23,7 @@ import {
   setDoc,
   deleteDoc,
   writeBatch,
+  updateDoc,
   serverTimestamp,
 } from 'firebase/firestore'
 
@@ -98,8 +99,29 @@ describe('leitura pública — o que qualquer autenticado alcança', () => {
     await assertSucceeds(getDoc(doc(bia, 'profiles', ANA)))
   })
 
-  it('lê os números de carreira de alguém', async () => {
+  it('lê os PRÓPRIOS números de carreira', async () => {
+    await assertSucceeds(getDoc(doc(ana, 'profiles', ANA, 'stats', 'all')))
+  })
+
+  it('NÃO lê os números de quem não é amigo', async () => {
+    // A vitrine é pública porque responde "é essa a pessoa?". Rotas,
+    // insucesso e tempo médio não respondem a isso — e o Feed, sendo mural
+    // global, entrega uid a quem rolar a tela.
+    await assertFails(getDoc(doc(bia, 'profiles', ANA, 'stats', 'all')))
+    await assertFails(getDoc(doc(bia, 'profiles', ANA, 'stats', '2026-08')))
+  })
+
+  it('lê os números de quem é amigo', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'friends', ANA, 'list', BIA), { at: new Date() })
+      await setDoc(doc(db, 'friends', BIA, 'list', ANA), { at: new Date() })
+    })
+
     await assertSucceeds(getDoc(doc(bia, 'profiles', ANA, 'stats', 'all')))
+    await assertSucceeds(getDoc(doc(bia, 'profiles', ANA, 'stats', '2026-08')))
+    // E continua fechado para quem está de fora da amizade dos dois.
+    await assertFails(getDoc(doc(zeca, 'profiles', ANA, 'stats', 'all')))
   })
 
   it('NÃO lista a coleção de perfis', async () => {
@@ -289,6 +311,136 @@ describe('ataques que têm de falhar', () => {
 
   it('NÃO viro amigo de mim mesmo', async () => {
     await assertFails(setDoc(doc(ana, 'friends', ANA, 'list', ANA), stamp()))
+  })
+})
+
+describe('feed — o mural é a coleção mais exposta, e a mais validada', () => {
+  const post = (uid, extra = {}) => ({
+    uid,
+    text: 'Dia puxado no galpão',
+    createdAt: serverTimestamp(),
+    deleted: false,
+    ...extra,
+  })
+
+  before(seed)
+
+  it('publico um post meu', async () => {
+    await assertSucceeds(setDoc(doc(ana, 'posts', 'p1'), post(ANA)))
+  })
+
+  it('qualquer autenticado lê o mural', async () => {
+    await assertSucceeds(getDocs(collection(zeca, 'posts')))
+  })
+
+  it('NÃO publico assinando como outro', async () => {
+    await assertFails(setDoc(doc(bia, 'posts', 'p2'), post(ANA)))
+  })
+
+  it('NÃO carimbo o post com data futura', async () => {
+    // O ataque que a regra de `friends.at` já fechava: ordenar por dado do
+    // adversário. Num mural global, um post de 9999 lidera para sempre.
+    await assertFails(
+      setDoc(doc(ana, 'posts', 'p3'), {
+        ...post(ANA),
+        createdAt: new Date('9999-12-31'),
+      }),
+    )
+  })
+
+  it('NÃO invento campo no post', async () => {
+    await assertFails(
+      setDoc(doc(ana, 'posts', 'p4'), { ...post(ANA), nickName: 'bia.b2' }),
+    )
+  })
+
+  it('NÃO gravo texto acima do teto', async () => {
+    await assertFails(
+      setDoc(doc(ana, 'posts', 'p5'), { ...post(ANA), text: 'x'.repeat(501) }),
+    )
+  })
+
+  it('NÃO aponto para a imagem de outra pessoa', async () => {
+    await assertFails(
+      setDoc(doc(ana, 'posts', 'p6'), {
+        ...post(ANA, { imagePath: `posts/${BIA}/foto.jpg` }),
+      }),
+    )
+    await assertSucceeds(
+      setDoc(doc(ana, 'posts', 'p7'), {
+        ...post(ANA, { imagePath: `posts/${ANA}/foto.jpg` }),
+      }),
+    )
+  })
+
+  it('NÃO invento empresa fora do enum', async () => {
+    await assertFails(
+      setDoc(doc(ana, 'posts', 'p8'), { ...post(ANA), company: 'ifood' }),
+    )
+    await assertSucceeds(
+      setDoc(doc(ana, 'posts', 'p9'), { ...post(ANA), company: 'shopee' }),
+    )
+  })
+
+  it('apagar é marcar, e delete de verdade é negado', async () => {
+    await assertFails(deleteDoc(doc(ana, 'posts', 'p1')))
+    await assertSucceeds(
+      updateDoc(doc(ana, 'posts', 'p1'), {
+        deleted: true,
+        text: '',
+        imagePath: null,
+      }),
+    )
+  })
+
+  it('NÃO edito o texto sem apagar, nem o post do outro', async () => {
+    await assertFails(updateDoc(doc(ana, 'posts', 'p9'), { text: 'outro' }))
+    await assertFails(updateDoc(doc(bia, 'posts', 'p9'), { deleted: true }))
+  })
+
+  it('curtir e descurtir o post de alguém', async () => {
+    await assertSucceeds(
+      setDoc(doc(bia, 'posts', 'p9', 'likes', BIA), {
+        uid: BIA,
+        at: serverTimestamp(),
+      }),
+    )
+    await assertSucceeds(deleteDoc(doc(bia, 'posts', 'p9', 'likes', BIA)))
+  })
+
+  it('NÃO curto em nome de outro nem descurto a curtida alheia', async () => {
+    await assertFails(
+      setDoc(doc(bia, 'posts', 'p9', 'likes', ANA), {
+        uid: ANA,
+        at: serverTimestamp(),
+      }),
+    )
+
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'posts', 'p9', 'likes', ANA), {
+        uid: ANA,
+        at: new Date(),
+      })
+    })
+    await assertFails(deleteDoc(doc(bia, 'posts', 'p9', 'likes', ANA)))
+  })
+
+  it('NÃO curto um post que não existe', async () => {
+    // Sem o `exists` no pai, `posts/<id-inventado>/likes/*` vira depósito
+    // permanente e cobrado que nenhum delete alcança.
+    await assertFails(
+      setDoc(doc(bia, 'posts', 'nao-existe', 'likes', BIA), {
+        uid: BIA,
+        at: serverTimestamp(),
+      }),
+    )
+  })
+
+  it('o espelho é só do dono', async () => {
+    await assertSucceeds(
+      setDoc(doc(ana, 'iter', ANA, 'posts', 'p1'), post(ANA)),
+    )
+    await assertFails(getDoc(doc(bia, 'iter', ANA, 'posts', 'p1')))
   })
 })
 
