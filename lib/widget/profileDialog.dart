@@ -17,6 +17,7 @@ Future<void> showProfileDialog(
   required Future<ProfileStats?> stats,
   required String actionLabel,
   VoidCallback? onAction,
+  VoidCallback? onBlock,
 }) {
   return showDialog<void>(
     context: context,
@@ -27,6 +28,7 @@ Future<void> showProfileDialog(
       stats: stats,
       actionLabel: actionLabel,
       onAction: onAction,
+      onBlock: onBlock,
     ),
   );
 }
@@ -38,6 +40,7 @@ class ProfileDialog extends StatelessWidget {
     required this.stats,
     required this.actionLabel,
     this.onAction,
+    this.onBlock,
     this.nickName,
     this.photoUrl,
   });
@@ -63,6 +66,15 @@ class ProfileDialog extends StatelessWidget {
   /// `onPressed` vazio deixaria o botão clicável sem efeito, que é pior do que
   /// apagado — parece que o toque não funcionou.
   final VoidCallback? onAction;
+
+  /// Bloquear, discreto, embaixo da ação principal. `null` esconde a linha —
+  /// é o que o próprio perfil do usuário e a tela de busca usam.
+  ///
+  /// Aqui e não num menu porque este dialog **é** a tela de "quem é essa
+  /// pessoa?": é olhando para o nome e a foto de quem insiste em te convidar
+  /// que a decisão de bloquear é tomada. Recusar sozinho não resolve — quem é
+  /// recusado reconvida, e o badge acende de novo.
+  final VoidCallback? onBlock;
 
   static const _bannerHeight = 116.0;
   static const _avatarRadius = 46.0;
@@ -101,7 +113,7 @@ class ProfileDialog extends StatelessWidget {
             ),
             const SizedBox(height: 22),
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+              padding: EdgeInsets.fromLTRB(24, 0, 24, onBlock == null ? 24 : 4),
               child: SizedBox(
                 width: double.infinity,
                 child: FilledButton(
@@ -123,6 +135,23 @@ class ProfileDialog extends StatelessWidget {
                 ),
               ),
             ),
+            if (onBlock != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: TextButton.icon(
+                  key: const ValueKey('bloquear-perfil'),
+                  onPressed: onBlock,
+                  icon: Icon(
+                    Icons.block,
+                    size: 17,
+                    color: Colors.grey.shade600,
+                  ),
+                  label: Text(
+                    'Bloquear',
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                  ),
+                ),
+              ),
           ],
         ),
       ),

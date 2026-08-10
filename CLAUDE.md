@@ -279,6 +279,21 @@ new post to inherit that thread, and make the owner's moderation `get()` error
 — which is the same as denying. Deleting would be the gesture that makes an
 offence permanent. `allow delete: if false`.
 
+The tombstone `update` is pinned to the **exact shape** `PostController.erase`
+writes (`deleted == true && text == '' && imagePath == null`), not to a set of
+keys. `diff().affectedKeys().hasOnly([...])` says *which* keys changed and never
+*what they changed to*, so on its own the update was a back door around every
+`create` guard: a 10-character post became 1 MiB of permanent, undeletable text
+in a world-listable collection, and `imagePath` escaped the `^posts/{my uid}/`
+prefix that only `create` enforced, repointing at someone else's Storage object.
+And because `exists()` is true for a tombstone, `likes` and `comments` check
+`get(...).data.get('deleted', false) == false` instead — otherwise the gesture of
+the person who was offended, deleting their own post, left the thread alive,
+still accepting text, still readable by anyone holding the id, and invisible to
+the owner, who moderates blind. `.get('deleted', false)` and not `.deleted`: a
+missing key **errors**, and error means deny, which would silently break the
+posts published before the field was required.
+
 The photo lives in Storage and the document stores the **path**, never the
 `getDownloadURL()` result: that URL carries a token, is served without auth,
 bypasses `storage.rules` entirely, and can only be revoked by hand in the
@@ -292,6 +307,81 @@ impersonation for free on a global wall.
 `profiles/{uid}/stats/*` is friends-only (`exists()` on the owner's list),
 because a public wall hands out uids to anyone who scrolls. `fetchCareer`
 returning `null` means **"not allowed to see"**, never zero.
+
+## Blocking, reporting, commenting: the order was the design
+
+Comments shipped **after** blocking and reporting, and that ordering is the
+whole argument: a like is a button and cannot offend anyone; a comment is free
+text from one person appearing under another person's post. Whoever publishes
+owns what they wrote — whoever gets commented on did not choose it.
+
+`blocks/{uid}/list/{otherUid}` is owner-read-only. **That hides the list, not the
+fact** — `permission-denied` is distinguishable from "no signal" (an offline
+write stays pending in the SDK; a denied one comes back immediately), and a
+prober eliminates the other conditions first, since profiles are readable and
+their own block list is readable. Blocking stops contact; it does not conceal
+that it happened. Do not write a comment claiming otherwise — the first version
+of these rules did, and a false security claim is the sentence that stops the
+next person from looking.
+
+What *is* achievable without a server is making the probe **noisy**, and that is
+why `!bloqueioEntre(...)` lives only on the `incoming` match. The invite is one
+atomic `WriteBatch` over both documents, so denying `incoming` denies the whole
+invite; repeating the check on `outgoing` — a document in the prober's *own*
+subtree — protected nothing and handed out a silent, repeatable, traceless
+oracle ("denied, therefore she blocked me"), which combined with the `uid`s that
+`list` on `posts` hands out is a map of who blocked you across the whole base.
+The probe that remains has to write into the victim's inbox, which lights up her
+badge. A stray `outgoing` marker never becomes a friendship: the edge still
+needs the victim's `incoming`, which only she can create.
+
+Blocking removes the two friendship edges and all four invite markers in the
+same commit (`FriendController.severTies`, shared with `remove()`): a live
+marker keeps authorizing the edge, so the friendship would come back on the
+next accept. Unblocking does **not** restore the friendship.
+
+Filtering the wall is client-side and cannot be anything else — `posts` is a
+global listable collection and rules do not filter queries. What the rule
+guarantees is the other direction: a blocked person cannot comment on your
+post, which is what stops the harassment everyone *else* would still see.
+
+`reports/p_{postId}__{uid}` (or `c_{postId}_{commentId}__{uid}`) is the report,
+and **the document is the channel**: there is no server, so the queue is read in
+the Firebase console and hiding a post is an admin write. `get` and `list` are
+`false` for everyone, reporter included — a readable report collection is the
+list of who denounced whom. The id gives one report per person per target by
+*shape*, the reason is a closed list (never free text — that field would be the
+first place someone writes another person's phone number), and the absence of
+`commentId` is what says the target is the post, so `toCreateMap()` omits the
+key instead of writing `null`.
+
+Three things that look like detail and are not. The `p_`/`c_` prefixes exist
+because post ids and comment ids are both **chosen by the client**: without
+them, publishing a comment whose id equals a post id made one report silently
+overwrite the other, in a collection whose `delete: if false` promises nothing
+is ever lost. `_` is only a safe separator because `create` on `posts` and on
+`comments` now requires `^[A-Za-z0-9-]{1,64}$` — that rule also stops an author
+from picking a 1490-byte id, which would push every report id past Firestore's
+1500-byte document-id limit and make their own content **unreportable forever**.
+And the target check is `get(...).data.uid != request.auth.uid`, not `exists`:
+`exists` only forbade reporting what does not exist, it never forbade
+*fabricating* what does — publish a comment, report yourself, delete the
+comment, repeat, and every lap left an undeletable document in the one
+moderation channel the feature has.
+
+Reporting hides the post locally and does not persist that: blocking is what
+solves it for good, and storing "posts this user hid" would be another
+collection and another read per feed open.
+
+Comment threads use `snapshots()` while the wall uses `get()` — a listener on
+the wall re-delivers documents on every like by anyone, to everyone with the app
+open; a listener on a thread re-delivers one post's comments to the person
+staring at them. `parseComments` re-sorts in Dart even with `orderBy` in the
+query, because `serverTimestamp()` arrives **null** in the local snapshot and
+null sorts first: without it a just-written comment jumps to the top of the
+thread and drops back a second later. `count()` gives the card's comment
+badge and cannot discount blocked authors — the sheet reports the number it
+actually drew when it closes.
 
 ## Widget tests cannot tell you whether text fits
 
@@ -352,9 +442,15 @@ Two files are intentionally empty placeholders: `lib/route.dart` and
 `lib/services/saveIter.dart`.
 
 - `test/widget_test.dart` pumps `MyApp`, which now needs an initialized Firebase, so it throws before it even reaches its (already wrong) counter assertions. Every other test passes.
-- The Amigos tab ships its first sub-screen only: the friends list, invites and
-  the `@nickname` search. *Ranking* and *Feed* are the other two segments and
-  render an "Em breve" placeholder — see `docs/specs/amigos.md`.
+- The Amigos tab has all three sub-screens working (friends/invites/search,
+  ranking, feed with posts, likes, comments, blocking and reporting). What is
+  left there is **App Check plus a billing budget and alert** — the one item
+  `docs/specs/amigos.md` marks as "do it before the app leaves your phone",
+  because a globally writable collection on Blaze without App Check is a
+  ten-line script making you pay. Also missing: automatic moderation (today the
+  report queue is read by hand in the console) and the Function that would
+  delete the likes/comments subcollections of a tombstoned post — that one is
+  quota economy, not correctness.
 
 `AddIter._saveRoute()` **is** wired (`addIter.dart:838`) and its guard is correct
 (`if (!validate()) { notify; return; }`); the save button really writes to

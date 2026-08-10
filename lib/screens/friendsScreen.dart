@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:iter/Utils/friendship.dart';
 import 'package:iter/Utils/ranking.dart';
+import 'package:iter/controller/blockController.dart';
 import 'package:iter/controller/friendController.dart';
 import 'package:iter/controller/profileController.dart';
 import 'package:iter/model/publicProfile.dart';
 import 'package:iter/screens/addFriend.dart';
+import 'package:iter/widget/blockDialog.dart';
 import 'package:iter/widget/feedTab.dart';
 import 'package:iter/widget/friendTile.dart';
 import 'package:iter/widget/notificationPush.dart';
@@ -42,7 +46,38 @@ class _FriendsScreenState extends State<FriendsScreen> {
   final Map<String, PublicProfile?> _profiles = {};
   final Set<String> _loading = {};
 
+  /// Quem eu bloqueei.
+  ///
+  /// Uma assinatura e não um `StreamBuilder`, ao contrário dos outros dois
+  /// streams desta tela: **duas sub-telas precisam do mesmo conjunto** — a
+  /// lista, para desenhar a seção de bloqueados, e o mural, para filtrar os
+  /// posts. Embrulhar as duas em mais um `StreamBuilder` empilharia um
+  /// terceiro nível de aninhamento por um dado que cabe num campo.
+  Set<String> _blocked = const {};
+  StreamSubscription<Set<String>>? _blockedSub;
+
   double get _bottomGap => 24 + MediaQuery.paddingOf(context).bottom;
+
+  @override
+  void initState() {
+    super.initState();
+    _blockedSub = BlockController.watch(widget.user.uid).listen(
+      (blocked) {
+        if (!mounted) return;
+        setState(() => _blocked = blocked);
+      },
+      // A falha esconde só a seção dela — e falha de regra do Firestore já
+      // sumiu silenciosamente neste projeto antes.
+      onError: (Object e) =>
+          debugPrint('amigos: lista de bloqueados indisponível: $e'),
+    );
+  }
+
+  @override
+  void dispose() {
+    _blockedSub?.cancel();
+    super.dispose();
+  }
 
   /// Busca os perfis que ainda não vieram, sem bloquear a lista.
   ///
@@ -106,6 +141,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
               // O mesmo mapa da lista e do ranking. Um cache próprio no feed
               // morreria a cada troca de aba e releria perfis que este já tem.
               profiles: _profiles,
+              blocked: _blocked,
               onNeedProfiles: _prefetch,
               bottomGap: _bottomGap,
             ),
@@ -176,9 +212,11 @@ class _FriendsScreenState extends State<FriendsScreen> {
               friends,
             );
 
-            _prefetch([...friends, ...pending]);
+            _prefetch([...friends, ...pending, ..._blocked]);
 
-            if (friends.isEmpty && pending.isEmpty) return _vazio();
+            if (friends.isEmpty && pending.isEmpty && _blocked.isEmpty) {
+              return _vazio();
+            }
 
             return ListView(
               padding: EdgeInsets.fromLTRB(16, 16, 16, _bottomGap),
@@ -191,6 +229,13 @@ class _FriendsScreenState extends State<FriendsScreen> {
                 if (friends.isNotEmpty) ...[
                   _secao('MEUS AMIGOS (${friends.length})'),
                   for (final uid in friends) _amigo(uid),
+                ],
+                // Bloquear sem ter como desbloquear é uma armadilha: a lista
+                // fica aqui, embaixo, e só aparece quando existe.
+                if (_blocked.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  _secao('BLOQUEADOS (${_blocked.length})'),
+                  for (final uid in _blocked) _bloqueado(uid),
                 ],
               ],
             );
@@ -257,6 +302,26 @@ class _FriendsScreenState extends State<FriendsScreen> {
     );
   }
 
+  /// Sem `onTap`: o dialog de perfil de quem eu bloqueei ofereceria
+  /// "Adicionar" — a tela convidando para desfazer o que a pessoa acabou de
+  /// fazer, e um convite que a própria regra recusa.
+  Widget _bloqueado(String uid) {
+    return FriendTile(
+      uid: uid,
+      profile: _profiles[uid],
+      trailing: TextButton(
+        key: ValueKey('desbloquear-$uid'),
+        onPressed: () => _run(
+          () => BlockController.unblock(me: widget.user.uid, other: uid),
+          // Não diz "vocês voltaram a ser amigos": a amizade foi desfeita no
+          // bloqueio, e ressuscitá-la sozinha seria decidir pelo outro lado.
+          'Desbloqueado. Vocês podem se convidar de novo.',
+        ),
+        child: const Text('Desbloquear'),
+      ),
+    );
+  }
+
   /// O mesmo dialog que a busca usa, com o rótulo que a relação pede.
   ///
   /// O `actionLabel` vem de `FriendshipStatus` e não de um literal aqui: são
@@ -264,15 +329,22 @@ class _FriendsScreenState extends State<FriendsScreen> {
   /// mesmo conceito divergem na primeira vez que alguém edita uma só.
   void _openProfile(String uid, {required FriendshipStatus status}) {
     final profile = _profiles[uid];
+    final name = profile?.name.isNotEmpty == true ? profile!.name : 'Entregador';
 
     showProfileDialog(
       context,
-      name: profile?.name.isNotEmpty == true ? profile!.name : 'Entregador',
+      name: name,
       nickName: profile?.nickName,
       photoUrl: profile?.photoUrl,
       // Sem fabricar zeros: `null` chega ao dialog como "não posso ver".
       stats: ProfileController.fetchCareer(uid),
       actionLabel: status.actionLabel ?? 'Fechar',
+      // É daqui que se bloqueia quem insiste em convidar: recusar sozinho não
+      // resolve, porque quem é recusado reconvida e o badge acende de novo.
+      onBlock: () {
+        Navigator.of(context).pop();
+        _blockFrom(uid, name);
+      },
       onAction: () {
         Navigator.of(context).pop();
         switch (status) {
@@ -290,6 +362,21 @@ class _FriendsScreenState extends State<FriendsScreen> {
             break;
         }
       },
+    );
+  }
+
+  /// Bloquear a partir do dialog de perfil.
+  ///
+  /// Passa pela mesma confirmação do mural: bloquear **apaga a amizade e os
+  /// convites**, e essa consequência não pode aparecer só num dos dois lugares
+  /// de onde se bloqueia.
+  Future<void> _blockFrom(String uid, String name) async {
+    final ok = await confirmBlock(context, name: name);
+    if (ok != true || !mounted) return;
+
+    await _run(
+      () => BlockController.block(me: widget.user.uid, other: uid),
+      '$name foi bloqueado.',
     );
   }
 

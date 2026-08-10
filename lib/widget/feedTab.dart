@@ -1,11 +1,19 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:iter/Utils/profileDisplay.dart';
+import 'package:iter/controller/blockController.dart';
 import 'package:iter/controller/postController.dart';
+import 'package:iter/controller/reportController.dart';
 import 'package:iter/model/post.dart';
 import 'package:iter/model/publicProfile.dart';
+import 'package:iter/model/report.dart';
 import 'package:iter/screens/addPost.dart';
 import 'package:iter/services/postImage.dart';
+import 'package:iter/widget/blockDialog.dart';
+import 'package:iter/widget/commentsSheet.dart';
+import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/postCard.dart';
+import 'package:iter/widget/reportSheet.dart';
 
 /// O mural: o que todos os entregadores publicaram.
 ///
@@ -21,12 +29,19 @@ class FeedTab extends StatefulWidget {
     super.key,
     required this.uid,
     required this.profiles,
+    required this.blocked,
     required this.onNeedProfiles,
     required this.bottomGap,
   });
 
   final String uid;
   final Map<String, PublicProfile?> profiles;
+
+  /// Quem eu bloqueei. Filtro de **cliente**: o mural é global e a regra não
+  /// tem como esconder documento de quem lista a coleção. O que a regra
+  /// garante é o outro lado — bloqueado não comenta e não convida.
+  final Set<String> blocked;
+
   final ValueChanged<Iterable<String>> onNeedProfiles;
   final double bottomGap;
 
@@ -43,6 +58,7 @@ class _FeedTabState extends State<FeedTab> {
   final _posts = <Post>[];
   final _likes = <String, int>{};
   final _liked = <String>{};
+  final _comments = <String, int>{};
 
   /// URL resolvida do Storage, por post.
   ///
@@ -87,6 +103,29 @@ class _FeedTabState extends State<FeedTab> {
     super.dispose();
   }
 
+  /// Bloquear na aba Amigos tem de limpar o mural que já está carregado.
+  ///
+  /// O filtro do `_load` só alcança as páginas seguintes; sem isto, quem eu
+  /// acabei de bloquear continuaria na tela até eu puxar para atualizar — e
+  /// "bloqueei e ele continua aí" é a tela dizendo que o bloqueio não pegou.
+  @override
+  void didUpdateWidget(FeedTab old) {
+    super.didUpdateWidget(old);
+    if (old.blocked.length == widget.blocked.length) return;
+
+    final blocked = _posts.where((p) => widget.blocked.contains(p.uid));
+    if (blocked.isEmpty) return;
+    setState(() => _posts.removeWhere((p) => widget.blocked.contains(p.uid)));
+  }
+
+  /// Sem os autores bloqueados. Aplicado no **carregamento**, não no desenho:
+  /// contar curtidas e comentários de post que não vai aparecer é leitura
+  /// cobrada por nada.
+  List<Post> _allowed(Iterable<Post> posts) => [
+    for (final post in posts)
+      if (!widget.blocked.contains(post.uid)) post,
+  ];
+
   void _onScroll() {
     final position = _scroll.position;
     if (position.pixels > position.maxScrollExtent - 400) _load();
@@ -130,7 +169,7 @@ class _FeedTabState extends State<FeedTab> {
         if (snapshot.docs.length < PostController.pageSize) _done = true;
         if (snapshot.docs.isNotEmpty) _last = snapshot.docs.last;
 
-        fresh.addAll(PostController.parse(snapshot));
+        fresh.addAll(_allowed(PostController.parse(snapshot)));
         if (fresh.isNotEmpty) break;
       }
 
@@ -141,7 +180,7 @@ class _FeedTabState extends State<FeedTab> {
 
       widget.onNeedProfiles([for (final post in fresh) post.uid]);
       await _fetchMedia(fresh, gen);
-      await _fetchLikes(fresh, gen);
+      await _fetchCounters(fresh, gen);
     } catch (e) {
       debugPrint('feed: não foi possível carregar: $e');
       if (!mounted || gen != _generation) return;
@@ -171,20 +210,30 @@ class _FeedTabState extends State<FeedTab> {
     });
   }
 
-  Future<void> _fetchLikes(List<Post> page, int gen) async {
+  /// Curtidas e comentários da página, em paralelo.
+  ///
+  /// Três agregações por post — curtidas, comentários e a minha curtida —, e
+  /// nenhuma delas funciona com listener: `count()` só responde por chamada
+  /// direta ao servidor. Os números são os da abertura da tela, e é isso que a
+  /// atualização otimista da curtida e o retorno da folha de comentários
+  /// corrigem.
+  Future<void> _fetchCounters(List<Post> page, int gen) async {
     final ids = [for (final post in page) post.id];
     if (ids.isEmpty) return;
 
-    final counts = await Future.wait(ids.map(PostController.likeCount));
+    final likes = await Future.wait(ids.map(PostController.likeCount));
+    final comments = await Future.wait(ids.map(PostController.commentCount));
     final mine = await PostController.likedAmong(ids, widget.uid);
     if (!mounted || gen != _generation) return;
 
     setState(() {
       for (var i = 0; i < ids.length; i++) {
+        _comments[ids[i]] = comments[i];
+
         // O que o usuário acabou de tocar manda: o número do servidor foi
         // lido antes da escrita e faria o coração voltar atrás.
         if (_dirtyLikes.contains(ids[i])) continue;
-        _likes[ids[i]] = counts[i];
+        _likes[ids[i]] = likes[i];
         mine.contains(ids[i]) ? _liked.add(ids[i]) : _liked.remove(ids[i]);
       }
     });
@@ -234,14 +283,106 @@ class _FeedTabState extends State<FeedTab> {
     try {
       await PostController.erase(post);
       if (!mounted) return;
-      setState(() {
-        _posts.removeWhere((p) => p.id == post.id);
-        _likes.remove(post.id);
-        _liked.remove(post.id);
-        _imageUrls.remove(post.id);
-      });
+      setState(() => _forget(post.id));
     } catch (e) {
       debugPrint('feed: não foi possível apagar: $e');
+    }
+  }
+
+  /// Tira o post da lista e dos mapas. Sempre dentro de um `setState`.
+  void _forget(String id) {
+    _posts.removeWhere((p) => p.id == id);
+    _likes.remove(id);
+    _liked.remove(id);
+    _comments.remove(id);
+    _imageUrls.remove(id);
+  }
+
+  /// A thread do post.
+  ///
+  /// A contagem volta da folha porque ela é a única que sabe o número certo: o
+  /// `count()` do servidor inclui os comentários de quem eu bloqueei, e a
+  /// folha os filtra.
+  Future<void> _openComments(Post post) {
+    return showCommentsSheet(
+      context,
+      post: post,
+      uid: widget.uid,
+      profiles: widget.profiles,
+      blocked: widget.blocked,
+      onCount: (total) {
+        if (!mounted) return;
+        setState(() => _comments[post.id] = total);
+      },
+    );
+  }
+
+  Future<void> _report(Post post) async {
+    final reason = await showReportSheet(context, isComment: false);
+    if (reason == null || !mounted) return;
+
+    try {
+      await ReportController.send(
+        Report(uid: widget.uid, postId: post.id, reason: reason),
+      );
+      if (!mounted) return;
+
+      // Some da **minha** lista agora. Denunciar e continuar vendo o post é a
+      // tela dizendo que nada aconteceu — e nada aconteceu mesmo, porque quem
+      // modera é uma pessoa e ela lê depois.
+      //
+      // Não persiste de propósito: guardar "posts que fulano escondeu" é mais
+      // uma coleção e mais uma leitura por abertura, para resolver o que
+      // bloquear já resolve de vez. Reabrir o app traz o post de volta, até
+      // alguém moderar.
+      setState(() => _forget(post.id));
+      showNotification(
+        context: context,
+        type: 'success',
+        msg: 'Denúncia enviada. Obrigado.',
+      );
+    } catch (e) {
+      debugPrint('feed: denúncia recusada: $e');
+      if (!mounted) return;
+      showNotification(
+        context: context,
+        type: 'error',
+        msg: 'Não foi possível enviar a denúncia.',
+      );
+    }
+  }
+
+  Future<void> _block(Post post) async {
+    final name = displayName(widget.profiles[post.uid]);
+    final ok = await confirmBlock(context, name: name);
+    if (ok != true || !mounted) return;
+
+    try {
+      await BlockController.block(me: widget.uid, other: post.uid);
+      if (!mounted) return;
+
+      // Todos os posts dele, não só este: bloquear é sobre a pessoa.
+      setState(() {
+        for (final id in [
+          for (final p in _posts)
+            if (p.uid == post.uid) p.id,
+        ]) {
+          _forget(id);
+        }
+      });
+      showNotification(
+        context: context,
+        type: 'success',
+        msg: '$name foi bloqueado.',
+      );
+    } catch (e) {
+      debugPrint('feed: bloqueio recusado: $e');
+      if (!mounted) return;
+      showNotification(
+        context: context,
+        type: 'error',
+        msg: 'Não foi possível bloquear agora.',
+      );
     }
   }
 
@@ -309,6 +450,8 @@ class _FeedTabState extends State<FeedTab> {
         }
 
         final post = _posts[index - 1];
+        final isMine = post.uid == widget.uid;
+
         return PostCard(
           post: post,
           author: widget.profiles[post.uid],
@@ -316,9 +459,15 @@ class _FeedTabState extends State<FeedTab> {
           imageLoading: post.hasImage && !_imageUrls.containsKey(post.id),
           likes: _likes[post.id] ?? 0,
           liked: _liked.contains(post.id),
-          isMine: post.uid == widget.uid,
+          comments: _comments[post.id] ?? 0,
+          isMine: isMine,
           onLike: (liked) => _toggleLike(post, liked),
+          onComment: () => _openComments(post),
           onDelete: () => _erase(post),
+          // Ninguém se denuncia nem se bloqueia: no post próprio o menu tem
+          // uma linha só.
+          onReport: isMine ? null : () => _report(post),
+          onBlock: isMine ? null : () => _block(post),
         );
       },
     );

@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:iter/model/comment.dart';
 import 'package:iter/model/post.dart';
 import 'package:iter/services/firebase.dart';
 import 'package:iter/services/postImage.dart';
@@ -20,6 +21,9 @@ class PostController {
 
   static CollectionReference<Map<String, dynamic>> likesOf(String postId) =>
       _collection.doc(postId).collection('likes');
+
+  static CollectionReference<Map<String, dynamic>> commentsOf(String postId) =>
+      _collection.doc(postId).collection('comments');
 
   /// Quantos posts por página. Vinte é o que cabe em duas ou três rolagens, e
   /// é o número com que a conta de custo da spec foi feita.
@@ -156,6 +160,72 @@ class PostController {
     } catch (e) {
       debugPrint('feed: curtidas do usuário não vieram: $e');
       return {};
+    }
+  }
+
+  /// A thread de um post, do mais antigo para o mais novo.
+  ///
+  /// `snapshots()` aqui, ao contrário do mural — e a diferença não é
+  /// incoerência, é o que cada um custa. Um listener no mural reentrega o
+  /// documento a cada curtida de qualquer pessoa, para todo mundo com o app
+  /// aberto; um listener numa thread reentrega os comentários de **um** post,
+  /// para quem está com a folha aberta olhando. É o que faz o próprio
+  /// comentário aparecer sem recarregar a tela.
+  ///
+  /// `orderBy('createdAt')` é campo único em subcoleção: **não** precisa de
+  /// índice composto.
+  static Stream<List<Comment>> watchComments(String postId) =>
+      commentsOf(postId).orderBy('createdAt').snapshots().map(parseComments);
+
+  /// A thread inteira desce de uma vez: sem paginação, porque uma thread não é
+  /// o mural. Se um dia um post juntar centenas de comentários, o `limit` entra
+  /// aqui — o `orderBy` de campo único já suporta.
+  ///
+  /// A reordenação em Dart **não** é redundante com o `orderBy`:
+  /// `serverTimestamp()` chega nulo no snapshot local que o Firestore entrega
+  /// antes de o servidor confirmar, e nulo ordena antes de qualquer data. Sem
+  /// ela, o comentário recém-enviado salta para o topo da thread e volta
+  /// sozinho um segundo depois.
+  static List<Comment> parseComments(
+    QuerySnapshot<Map<String, dynamic>> snapshot,
+  ) {
+    final comments = <Comment>[];
+    for (final doc in snapshot.docs) {
+      try {
+        comments.add(Comment.fromMap(doc.id, doc.data()));
+      } catch (e) {
+        // Um documento fora do formato não derruba a thread inteira.
+        debugPrint('Comentário ${doc.id} ignorado: $e');
+      }
+    }
+    comments.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return comments;
+  }
+
+  static Future<void> comment(String postId, Comment comment) =>
+      commentsOf(postId).doc(comment.id).set(comment.toCreateMap());
+
+  /// Apaga um comentário. A regra deixa o autor **e o dono do post** — é a
+  /// moderação que existe sem servidor, e é a diferença entre curtida e
+  /// comentário: quem foi comentado não escolheu ser comentado.
+  static Future<void> deleteComment({
+    required String postId,
+    required String commentId,
+  }) => commentsOf(postId).doc(commentId).delete();
+
+  /// Quantos comentários um post tem, na abertura da tela.
+  ///
+  /// Mesma agregação da curtida, e mesmo limite: `count()` não funciona com
+  /// listener nem offline. O número da folha aberta é que manda — e ele já vem
+  /// sem os autores bloqueados, que esta contagem do servidor não tem como
+  /// descontar.
+  static Future<int> commentCount(String postId) async {
+    try {
+      final snapshot = await commentsOf(postId).count().get();
+      return snapshot.count ?? 0;
+    } catch (e) {
+      debugPrint('feed: contagem de comentários de $postId falhou: $e');
+      return 0;
     }
   }
 }

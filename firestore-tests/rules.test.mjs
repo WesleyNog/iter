@@ -442,6 +442,97 @@ describe('feed — o mural é a coleção mais exposta, e a mais validada', () =
     )
     await assertFails(getDoc(doc(bia, 'iter', ANA, 'posts', 'p1')))
   })
+
+  it('a lápide não vira porta dos fundos do create', async () => {
+    // `affectedKeys` diz QUAIS chaves mudaram, nunca o valor delas. Sem prender
+    // a forma, um post de 10 caracteres virava 1 MiB permanente — `delete` é
+    // `false` — numa coleção com `list` aberto; e o `imagePath` escapava do
+    // prefixo `^posts/{meu uid}/` que só o `create` exigia, passando a apontar
+    // para a foto de outra pessoa no Storage.
+    await assertSucceeds(setDoc(doc(ana, 'posts', 'p20'), post(ANA)))
+
+    await assertFails(
+      updateDoc(doc(ana, 'posts', 'p20'), {
+        deleted: true,
+        text: 'x'.repeat(1000),
+        imagePath: null,
+      }),
+    )
+    await assertFails(
+      updateDoc(doc(ana, 'posts', 'p20'), {
+        deleted: true,
+        text: '',
+        imagePath: `posts/${BIA}/foto.jpg`,
+      }),
+    )
+
+    // A forma exata que `PostController.erase` grava continua passando.
+    await assertSucceeds(
+      updateDoc(doc(ana, 'posts', 'p20'), {
+        deleted: true,
+        text: '',
+        imagePath: null,
+      }),
+    )
+  })
+
+  it('NÃO escolho um id que torna o post imdenunciável', async () => {
+    // O id entra no id da denúncia, e id de documento estoura em 1500 bytes:
+    // sem teto, quem publica escolhe um id que impede qualquer denúncia sobre
+    // o próprio post, para sempre. O `_` fica de fora porque é o separador do
+    // id da denúncia.
+    await assertFails(setDoc(doc(ana, 'posts', 'z'.repeat(200)), post(ANA)))
+    await assertFails(setDoc(doc(ana, 'posts', 'com_underscore'), post(ANA)))
+    await assertSucceeds(
+      setDoc(doc(ana, 'posts', '9f8e7d6c-1234-4abc-9def-0123456789ab'), post(ANA)),
+    )
+  })
+
+  it('post apagado não aceita curtida nem comentário novos', async () => {
+    // Apagar é marcar, então `exists` continua verdadeiro — era por aí que a
+    // thread de um post apagado seguia viva, aceitando texto e legível por
+    // quem tivesse o id, enquanto sumia da tela do dono.
+    await assertFails(
+      setDoc(doc(bia, 'posts', 'p20', 'likes', BIA), {
+        uid: BIA,
+        at: serverTimestamp(),
+      }),
+    )
+    await assertFails(
+      setDoc(doc(bia, 'posts', 'p20', 'comments', 'c1'), {
+        uid: BIA,
+        text: 'ainda dá?',
+        createdAt: serverTimestamp(),
+      }),
+    )
+  })
+
+  it('post antigo, sem o campo `deleted`, continua aceitando os dois', async () => {
+    // `.get('deleted', false)` e não `.deleted`: chave ausente erra, e erro
+    // nega. O acervo publicado antes de a regra exigir o campo viraria "não dá
+    // para comentar", em silêncio.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'posts', 'antigo'), {
+        uid: ANA,
+        text: 'sem o campo deleted',
+        createdAt: new Date(),
+      })
+    })
+
+    await assertSucceeds(
+      setDoc(doc(bia, 'posts', 'antigo', 'likes', BIA), {
+        uid: BIA,
+        at: serverTimestamp(),
+      }),
+    )
+    await assertSucceeds(
+      setDoc(doc(bia, 'posts', 'antigo', 'comments', 'c1'), {
+        uid: BIA,
+        text: 'passa',
+        createdAt: serverTimestamp(),
+      }),
+    )
+  })
 })
 
 describe('desfazer', () => {
@@ -474,5 +565,423 @@ describe('desfazer', () => {
 
   it('NÃO mexo na amizade de dois terceiros', async () => {
     await assertFails(deleteDoc(doc(zeca, 'friends', ANA, 'list', BIA)))
+  })
+})
+
+describe('bloqueio — a dívida que cabia numa regra', () => {
+  before(seed)
+
+  it('bloqueio alguém, e bloquear de novo não é erro', async () => {
+    // `create, update` sob a mesma condição, como a aresta de amizade: o
+    // segundo toque não pode virar permission-denied.
+    await assertSucceeds(setDoc(doc(ana, 'blocks', ANA, 'list', BIA), stamp()))
+    await assertSucceeds(setDoc(doc(ana, 'blocks', ANA, 'list', BIA), stamp()))
+  })
+
+  it('NÃO bloqueio em nome de outro', async () => {
+    await assertFails(setDoc(doc(bia, 'blocks', ANA, 'list', ZECA), stamp()))
+  })
+
+  it('NÃO me bloqueio', async () => {
+    await assertFails(setDoc(doc(ana, 'blocks', ANA, 'list', ANA), stamp()))
+  })
+
+  it('NÃO carimbo o bloqueio com hora escolhida a dedo', async () => {
+    await assertFails(
+      setDoc(doc(ana, 'blocks', ANA, 'list', ZECA), {
+        at: new Date('9999-12-31'),
+      }),
+    )
+  })
+
+  it('NÃO leio a lista de bloqueio alheia — nem descubro que fui bloqueado', async () => {
+    // O bloqueado não pode saber que foi bloqueado: o convite dele apenas
+    // falha, como falharia sem rede.
+    await assertFails(getDoc(doc(bia, 'blocks', ANA, 'list', BIA)))
+    await assertFails(getDocs(collection(bia, 'blocks', ANA, 'list')))
+    await assertSucceeds(getDocs(collection(ana, 'blocks', ANA, 'list')))
+  })
+
+  it('quem foi bloqueado NÃO convida', async () => {
+    // Ana bloqueou Bia no primeiro caso deste bloco.
+    const batch = writeBatch(bia)
+    batch.set(doc(bia, 'friendRequests', ANA, 'incoming', BIA), stamp())
+    batch.set(doc(bia, 'friendRequests', BIA, 'outgoing', ANA), stamp())
+    await assertFails(batch.commit())
+  })
+
+  it('o marcador `outgoing` sozinho passa — e não informa nada', async () => {
+    // A checagem de bloqueio mora só no `incoming`, de propósito: o batch é
+    // atômico, então negar um lado nega o convite inteiro, e repetir a
+    // condição no documento que mora no subtree de quem escreve criava um
+    // oráculo silencioso — "negou, logo ela me bloqueou", sem rastro do lado
+    // dela e repetível à vontade.
+    await assertSucceeds(
+      setDoc(doc(bia, 'friendRequests', BIA, 'outgoing', ANA), stamp()),
+    )
+    await assertSucceeds(
+      deleteDoc(doc(bia, 'friendRequests', BIA, 'outgoing', ANA)),
+    )
+  })
+
+  it('marcador `outgoing` solto NÃO vira amizade', async () => {
+    // O que sustenta a assimetria acima: a aresta exige o `incoming` da
+    // vítima, e só ela consegue criá-lo.
+    await assertSucceeds(
+      setDoc(doc(bia, 'friendRequests', BIA, 'outgoing', ANA), stamp()),
+    )
+
+    const batch = writeBatch(bia)
+    batch.set(doc(bia, 'friends', BIA, 'list', ANA), stamp())
+    batch.set(doc(bia, 'friends', ANA, 'list', BIA), stamp())
+    await assertFails(batch.commit())
+
+    await assertSucceeds(
+      deleteDoc(doc(bia, 'friendRequests', BIA, 'outgoing', ANA)),
+    )
+  })
+
+  it('quem bloqueou também não convida o bloqueado', async () => {
+    // A condição vale nas duas direções de propósito: bloquear e convidar a
+    // mesma pessoa é uma contradição, e o servidor não deve aceitá-la só
+    // porque a tela não a oferece.
+    const batch = writeBatch(ana)
+    batch.set(doc(ana, 'friendRequests', BIA, 'incoming', ANA), stamp())
+    batch.set(doc(ana, 'friendRequests', ANA, 'outgoing', BIA), stamp())
+    await assertFails(batch.commit())
+  })
+
+  it('desbloquear devolve o convite', async () => {
+    await assertSucceeds(deleteDoc(doc(ana, 'blocks', ANA, 'list', BIA)))
+
+    const batch = writeBatch(bia)
+    batch.set(doc(bia, 'friendRequests', ANA, 'incoming', BIA), stamp())
+    batch.set(doc(bia, 'friendRequests', BIA, 'outgoing', ANA), stamp())
+    await assertSucceeds(batch.commit())
+  })
+
+  it('bloquear apaga a amizade no mesmo commit', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'friends', ANA, 'list', BIA), { at: new Date() })
+      await setDoc(doc(db, 'friends', BIA, 'list', ANA), { at: new Date() })
+    })
+
+    // Um marcador de convite vivo continua autorizando recriar a aresta: o
+    // bloqueio tem de levar os quatro junto, senão a amizade ressuscita.
+    const batch = writeBatch(ana)
+    batch.set(doc(ana, 'blocks', ANA, 'list', BIA), stamp())
+    batch.delete(doc(ana, 'friends', ANA, 'list', BIA))
+    batch.delete(doc(ana, 'friends', BIA, 'list', ANA))
+    batch.delete(doc(ana, 'friendRequests', ANA, 'incoming', BIA))
+    batch.delete(doc(ana, 'friendRequests', BIA, 'outgoing', ANA))
+    batch.delete(doc(ana, 'friendRequests', BIA, 'incoming', ANA))
+    batch.delete(doc(ana, 'friendRequests', ANA, 'outgoing', BIA))
+    await assertSucceeds(batch.commit())
+  })
+})
+
+describe('comentário — texto livre embaixo do post de outro', () => {
+  const comentario = (uid, extra = {}) => ({
+    uid,
+    text: 'Boa, parceiro!',
+    createdAt: serverTimestamp(),
+    ...extra,
+  })
+
+  before(async () => {
+    await seed()
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'posts', 'p1'), {
+        uid: ANA,
+        text: 'Dia puxado',
+        createdAt: new Date(),
+        deleted: false,
+      })
+    })
+  })
+
+  it('comento no post de alguém', async () => {
+    await assertSucceeds(
+      setDoc(doc(bia, 'posts', 'p1', 'comments', 'c1'), comentario(BIA)),
+    )
+  })
+
+  it('qualquer autenticado lê a thread — `list` é liberado aqui', async () => {
+    // Ao contrário de `profiles` e `nicknames`: a subcoleção está sob um post,
+    // então listar devolve aquele post e nada mais.
+    await assertSucceeds(getDocs(collection(zeca, 'posts', 'p1', 'comments')))
+  })
+
+  it('NÃO comento assinando como outro', async () => {
+    await assertFails(
+      setDoc(doc(bia, 'posts', 'p1', 'comments', 'c2'), comentario(ANA)),
+    )
+  })
+
+  it('NÃO comento vazio nem acima do teto', async () => {
+    await assertFails(
+      setDoc(
+        doc(bia, 'posts', 'p1', 'comments', 'c3'),
+        comentario(BIA, { text: '' }),
+      ),
+    )
+    await assertFails(
+      setDoc(
+        doc(bia, 'posts', 'p1', 'comments', 'c4'),
+        comentario(BIA, { text: 'x'.repeat(501) }),
+      ),
+    )
+  })
+
+  it('NÃO carimbo o comentário com data futura nem invento campo', async () => {
+    await assertFails(
+      setDoc(
+        doc(bia, 'posts', 'p1', 'comments', 'c5'),
+        comentario(BIA, { createdAt: new Date('9999-12-31') }),
+      ),
+    )
+    await assertFails(
+      setDoc(
+        doc(bia, 'posts', 'p1', 'comments', 'c6'),
+        comentario(BIA, { nickName: 'bia.b2' }),
+      ),
+    )
+  })
+
+  it('NÃO escolho um id de comentário fora do formato', async () => {
+    // O id entra no id da denúncia (`c_{postId}_{commentId}__{quem}`): sem o
+    // teto, o comentário fica imdenunciável para sempre; sem excluir o `_`, o
+    // separador daquele id vira ambíguo.
+    await assertFails(
+      setDoc(
+        doc(bia, 'posts', 'p1', 'comments', 'z'.repeat(200)),
+        comentario(BIA),
+      ),
+    )
+    await assertFails(
+      setDoc(doc(bia, 'posts', 'p1', 'comments', 'com_under'), comentario(BIA)),
+    )
+  })
+
+  it('NÃO comento em post que não existe', async () => {
+    // Sem o `exists` no pai, `posts/<inventado>/comments/*` é depósito
+    // permanente e cobrado que nenhum delete alcança — o ramo de moderação
+    // erraria num post que nunca existiu.
+    await assertFails(
+      setDoc(doc(bia, 'posts', 'nao-existe', 'comments', 'c7'), comentario(BIA)),
+    )
+  })
+
+  it('NÃO reescrevo comentário — nem o meu', async () => {
+    await assertFails(
+      updateDoc(doc(bia, 'posts', 'p1', 'comments', 'c1'), { text: 'outro' }),
+    )
+  })
+
+  it('apago o meu comentário', async () => {
+    await assertSucceeds(deleteDoc(doc(bia, 'posts', 'p1', 'comments', 'c1')))
+  })
+
+  it('o dono do post apaga qualquer comentário do próprio post', async () => {
+    // Moderação sem servidor, e só funciona porque o post nunca é apagado de
+    // verdade: com `delete` real o `get()` erraria, e erro em regra nega.
+    await assertSucceeds(
+      setDoc(doc(bia, 'posts', 'p1', 'comments', 'c8'), comentario(BIA)),
+    )
+    await assertSucceeds(deleteDoc(doc(ana, 'posts', 'p1', 'comments', 'c8')))
+  })
+
+  it('terceiro NÃO apaga comentário alheio', async () => {
+    await assertSucceeds(
+      setDoc(doc(bia, 'posts', 'p1', 'comments', 'c9'), comentario(BIA)),
+    )
+    await assertFails(deleteDoc(doc(zeca, 'posts', 'p1', 'comments', 'c9')))
+  })
+
+  it('bloqueado NÃO comenta no post de quem o bloqueou', async () => {
+    // É esta linha que faz o bloqueio valer alguma coisa aqui: o filtro do
+    // cliente some com o comentário na tela de quem bloqueou; sem a regra, ele
+    // continua visível para todo mundo embaixo do post.
+    await assertSucceeds(setDoc(doc(ana, 'blocks', ANA, 'list', ZECA), stamp()))
+    await assertFails(
+      setDoc(doc(zeca, 'posts', 'p1', 'comments', 'c10'), comentario(ZECA)),
+    )
+
+    await assertSucceeds(deleteDoc(doc(ana, 'blocks', ANA, 'list', ZECA)))
+    await assertSucceeds(
+      setDoc(doc(zeca, 'posts', 'p1', 'comments', 'c10'), comentario(ZECA)),
+    )
+  })
+})
+
+describe('denúncia — sem servidor, o documento é o canal', () => {
+  const denuncia = (uid, extra = {}) => ({
+    uid,
+    postId: 'p1',
+    reason: 'ofensa',
+    at: serverTimestamp(),
+    ...extra,
+  })
+
+  before(async () => {
+    await seed()
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'posts', 'p1'), {
+        uid: ANA,
+        text: 'Dia puxado',
+        createdAt: new Date(),
+        deleted: false,
+      })
+      await setDoc(doc(db, 'posts', 'p1', 'comments', 'c1'), {
+        uid: ANA,
+        text: 'Comentário qualquer',
+        createdAt: new Date(),
+      })
+    })
+  })
+
+  it('denuncio um post, e denunciar de novo não é erro', async () => {
+    // O id é `p_{postId}__{quem denunciou}`: uma denúncia por pessoa por alvo,
+    // garantida pela forma do dado. A segunda sobrescreve a primeira.
+    await assertSucceeds(
+      setDoc(doc(bia, 'reports', `p_p1__${BIA}`), denuncia(BIA)),
+    )
+    await assertSucceeds(
+      setDoc(
+        doc(bia, 'reports', `p_p1__${BIA}`),
+        denuncia(BIA, { reason: 'spam' }),
+      ),
+    )
+  })
+
+  it('denuncio um comentário', async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(bia, 'reports', `c_p1_c1__${BIA}`),
+        denuncia(BIA, { commentId: 'c1' }),
+      ),
+    )
+  })
+
+  it('NÃO leio denúncia nenhuma — nem a minha', async () => {
+    // Uma coleção de denúncias legível é a lista de quem delatou quem.
+    await assertFails(getDoc(doc(bia, 'reports', `p_p1__${BIA}`)))
+    await assertFails(getDocs(collection(bia, 'reports')))
+  })
+
+  it('NÃO denuncio em nome de outro', async () => {
+    await assertFails(
+      setDoc(doc(bia, 'reports', `p_p1__${ANA}`), denuncia(ANA)),
+    )
+  })
+
+  it('NÃO denuncio o meu próprio conteúdo', async () => {
+    // Denúncia é sobre conteúdo alheio, e essa condição é o que fecha o laço
+    // de uma conta só: publicar, denunciar a si mesma, apagar o alvo e repetir
+    // deixava documentos permanentes em `reports` — `delete: if false`,
+    // `get/list: if false` — que nem o dono do app alcança pelo cliente.
+    await assertFails(setDoc(doc(ana, 'reports', `p_p1__${ANA}`), denuncia(ANA)))
+    await assertFails(
+      setDoc(
+        doc(ana, 'reports', `c_p1_c1__${ANA}`),
+        denuncia(ANA, { commentId: 'c1' }),
+      ),
+    )
+  })
+
+  it('NÃO uso id fora do padrão', async () => {
+    // Sem a amarra do id, a mesma pessoa denuncia o mesmo post mil vezes com
+    // ids diferentes e enche a fila de moderação de graça.
+    await assertFails(setDoc(doc(bia, 'reports', 'qualquer'), denuncia(BIA)))
+    await assertFails(
+      setDoc(doc(bia, 'reports', `p_p1__${BIA}x`), denuncia(BIA)),
+    )
+    // Sem o prefixo, denúncia de post e de comentário dividiam o mesmo espaço
+    // de nomes — e os dois ids são escolhidos pelo cliente.
+    await assertFails(setDoc(doc(bia, 'reports', `p1__${BIA}`), denuncia(BIA)))
+    await assertFails(
+      setDoc(
+        doc(bia, 'reports', `p_p1__${BIA}`),
+        denuncia(BIA, { commentId: 'c1' }),
+      ),
+    )
+  })
+
+  it('comentário homônimo de post NÃO sobrescreve a denúncia do post', async () => {
+    // O ataque que o prefixo fecha: publicar um comentário com o id de um post
+    // e ver a denúncia de um apagar a do outro, em silêncio.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'posts', 'q9'), {
+        uid: ANA,
+        text: 'outro post',
+        createdAt: new Date(),
+        deleted: false,
+      })
+      await setDoc(doc(ctx.firestore(), 'posts', 'q9', 'comments', 'p1'), {
+        uid: ANA,
+        text: 'comentário com id de post',
+        createdAt: new Date(),
+      })
+    })
+
+    await assertSucceeds(
+      setDoc(
+        doc(bia, 'reports', `c_q9_p1__${BIA}`),
+        denuncia(BIA, { postId: 'q9', commentId: 'p1' }),
+      ),
+    )
+    // E o id continua sendo lido pelo dono: a denúncia do post p1 sobrevive.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const anterior = await getDoc(
+        doc(ctx.firestore(), 'reports', `p_p1__${BIA}`),
+      )
+      assert.equal(anterior.exists(), true)
+      assert.equal(anterior.data().postId, 'p1')
+    })
+  })
+
+  it('NÃO denuncio alvo que não existe', async () => {
+    await assertFails(
+      setDoc(
+        doc(bia, 'reports', `p_fantasma__${BIA}`),
+        denuncia(BIA, { postId: 'fantasma' }),
+      ),
+    )
+    await assertFails(
+      setDoc(
+        doc(bia, 'reports', `c_p1_c-fantasma__${BIA}`),
+        denuncia(BIA, { commentId: 'c-fantasma' }),
+      ),
+    )
+  })
+
+  it('NÃO invento motivo, campo ou hora', async () => {
+    await assertFails(
+      setDoc(
+        doc(bia, 'reports', `p_p1__${BIA}`),
+        denuncia(BIA, { reason: 'porque sim' }),
+      ),
+    )
+    await assertFails(
+      setDoc(
+        doc(bia, 'reports', `p_p1__${BIA}`),
+        denuncia(BIA, { detalhe: 'texto livre' }),
+      ),
+    )
+    await assertFails(
+      setDoc(
+        doc(bia, 'reports', `p_p1__${BIA}`),
+        denuncia(BIA, { at: new Date('9999-12-31') }),
+      ),
+    )
+  })
+
+  it('NÃO apago uma denúncia', async () => {
+    // Denúncia que se apaga não é denúncia — mesma razão de `precos` não ter
+    // update nem delete.
+    await assertFails(deleteDoc(doc(bia, 'reports', `p_p1__${BIA}`)))
   })
 })

@@ -2,6 +2,42 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Bloqueio entre duas pessoas, nas duas direções.
+    //
+    // Uma função e não a condição copiada: o convite mora em **duas** matches
+    // (`incoming` e `outgoing`) que precisam decidir a mesma coisa sobre o
+    // mesmo par. Um invariante que vale só num dos dois documentos do batch é
+    // um invariante que some na primeira mexida — a mesma razão de o
+    // `friendId != userId` continuar escrito mesmo sendo redundante.
+    function bloqueioEntre(database, a, b) {
+      return exists(/databases/$(database)/documents/blocks/$(a)/list/$(b))
+             || exists(/databases/$(database)/documents/blocks/$(b)/list/$(a));
+    }
+
+    // Uma denúncia aponta para um comentário ou para o post inteiro, e é a
+    // ausência de `commentId` que diz qual — não um campo `tipo` que o cliente
+    // preencheria de um jeito e o alvo de outro.
+    function denunciaDeComentario(data) {
+      return 'commentId' in data && data.commentId != null;
+    }
+
+    // O id da denúncia, e ele carrega o **tipo** do alvo.
+    //
+    // Sem o prefixo, post e comentário dividiam o mesmo espaço de nomes e os
+    // dois ids são escolhidos pelo cliente: bastava criar um comentário com o
+    // id de um post para a segunda denúncia sobrescrever a primeira em
+    // silêncio, numa coleção onde `delete: if false` promete o contrário.
+    //
+    // O `_` como separador só é seguro porque o `create` de `posts` e o de
+    // `comments` recusam id que o contenha — senão `c_a_b_c` sairia de dois
+    // pares diferentes de (post, comentário).
+    function idDaDenuncia(data, uid) {
+      return (denunciaDeComentario(data)
+                ? 'c_' + data.postId + '_' + data.commentId
+                : 'p_' + data.postId)
+             + '__' + uid;
+    }
+
     // O app grava user/{uid} no primeiro login (GoogleSignInService).
     // Cada usuário só lê e escreve o próprio documento.
     match /user/{userId} {
@@ -179,11 +215,16 @@ service cloud.firestore {
       // um uid inventado; o de quem envia é o que garante que dá para saber
       // quem convidou — sem ele o convite chega como "Entregador", e aceitar
       // ou recusar sem saber de quem é não é decisão, é chute.
+      //
+      // E ninguém convida quem o bloqueou. Sem esta linha, quem foi recusado
+      // reconvida para sempre e acende o badge toda vez — era a dívida
+      // "bloquear uma pessoa" da spec, e ela cabia numa regra.
       allow create: if request.auth != null
                     && request.auth.uid == otherId
                     && otherId != userId
                     && exists(/databases/$(database)/documents/profiles/$(userId))
                     && exists(/databases/$(database)/documents/profiles/$(otherId))
+                    && !bloqueioEntre(database, userId, otherId)
                     && request.resource.data.keys().hasOnly(['at'])
                     && request.resource.data.at == request.time;
 
@@ -201,6 +242,22 @@ service cloud.firestore {
     match /friendRequests/{userId}/outgoing/{otherId} {
       allow read: if request.auth != null && request.auth.uid == userId;
 
+      // **Sem `bloqueioEntre` aqui, de propósito.** O convite é um `WriteBatch`
+      // com os dois documentos, e batch é atômico: negar o `incoming` já nega
+      // o convite inteiro. Repetir a checagem neste lado não protegia mais
+      // nada e criava um **oráculo silencioso** — este documento mora no
+      // subtree de quem escreve, então bastava eliminar as outras condições
+      // (o perfil se lê, a própria lista de bloqueio se lê) e sondar: negado
+      // significava "ela me bloqueou", com certeza, sem rastro do lado dela e
+      // repetível. Com o `uid` de todo mundo saindo do `list` de `posts`, isso
+      // era o mapa de quem te bloqueou na base inteira.
+      //
+      // A sonda que sobra é escrever direto na caixa da vítima, e essa, quando
+      // passa, **acende o badge dela**. Oráculo barulhento em vez de
+      // silencioso é a diferença que dá para conseguir sem servidor.
+      //
+      // Um marcador `outgoing` solto não vira amizade: a aresta exige o
+      // `incoming` da vítima, que só ela cria.
       allow create: if request.auth != null
                     && request.auth.uid == userId
                     && otherId != userId
@@ -214,6 +271,37 @@ service cloud.firestore {
                         || request.auth.uid == otherId);
 
       allow update: if false;
+    }
+
+    // ── Bloqueio ──────────────────────────────────────────────────────────
+    //
+    // `blocks/{uid}/list/{otherId}`: a lista é do dono e **só ele lê**.
+    //
+    // O que isso NÃO garante, e uma versão anterior deste comentário afirmava
+    // que sim: opacidade. `permission-denied` **é** distinguível de "sem
+    // rede" — escrita offline fica pendente no SDK, negada volta na hora — e
+    // quem sonda elimina as outras condições antes (o perfil se lê, a própria
+    // lista de bloqueio se lê). **O bloqueio impede o contato; não esconde que
+    // existe.** O que dá para conseguir sem servidor é que a sonda seja
+    // barulhenta — ver `friendRequests/outgoing` —, e limitar sonda em escala
+    // é trabalho de App Check, não de regra.
+    //
+    // Bloquear é um `WriteBatch` que também apaga as duas arestas de amizade e
+    // os quatro marcadores de convite: um marcador vivo continua autorizando
+    // recriar a aresta, e a amizade ressuscitaria depois do bloqueio.
+    match /blocks/{userId}/list/{otherId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+
+      // `create, update` sob a mesma condição, como a aresta de amizade:
+      // bloquear duas vezes é a mesma intenção, e um `update: if false`
+      // transformaria o segundo toque em permission-denied.
+      allow create, update: if request.auth != null
+                            && request.auth.uid == userId
+                            && otherId != userId
+                            && request.resource.data.keys().hasOnly(['at'])
+                            && request.resource.data.at == request.time;
+
+      allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
     // A aresta de amizade.
@@ -275,7 +363,16 @@ service cloud.firestore {
       // O último é o mesmo ataque que a regra de `friends` já fecha no `at`:
       // ordenar por dado do adversário. Lá a lista é de um usuário; aqui é de
       // todos.
+      //
+      // O **id** também é validado, e não por capricho: ele é escolhido pelo
+      // cliente e entra no id da denúncia (`p_{postId}__{uid}`). Sem teto,
+      // quem publica escolhe um id de 1490 bytes e a denúncia estoura o limite
+      // de 1500 do Firestore — o post fica **imdenunciável para sempre**, que
+      // é o mesmo "gesto que torna a ofensa permanente" do tombstone, só que
+      // escolhido pelo agressor. E sem o `_` fora do alfabeto, o separador do
+      // id da denúncia fica ambíguo. `Uuid().v4()` é hex e hífen: cabe.
       allow create: if request.auth != null
+                    && postId.matches('^[A-Za-z0-9-]{1,64}$')
                     && request.resource.data.uid == request.auth.uid
                     && request.resource.data.keys().hasAll(
                          ['uid', 'text', 'createdAt', 'deleted'])
@@ -304,12 +401,24 @@ service cloud.firestore {
       // voltaria a ficar livre — um post novo herdaria a thread do anterior —
       // e o `get()` da moderação passaria a errar, que é o mesmo que negar.
       // Apagar o post seria o gesto que torna a ofensa permanente.
+      //
+      // **`affectedKeys` diz QUAIS chaves mudaram, nunca o valor delas.** Só
+      // com ele, o `update` era a porta de trás do `create`: um post nasce com
+      // 10 caracteres e a lápide grava 1 MiB de texto, num documento que
+      // `delete: if false` torna **indelével**, numa coleção com `list`
+      // aberto; e o `imagePath` escapava do `^posts/{meu uid}/` que só o
+      // `create` exigia, passando a apontar para a foto de outra pessoa no
+      // Storage. Por isso a lápide é presa à forma exata que
+      // `PostController.erase` grava, e não a um conjunto de chaves.
       allow update: if request.auth != null
                     && resource.data.uid == request.auth.uid
                     && request.resource.data.diff(resource.data)
                          .affectedKeys()
                          .hasOnly(['deleted', 'text', 'imagePath'])
-                    && request.resource.data.deleted == true;
+                    && request.resource.data.deleted == true
+                    && request.resource.data.text == ''
+                    && (!('imagePath' in request.resource.data)
+                        || request.resource.data.imagePath == null);
 
       allow delete: if false;
 
@@ -323,16 +432,153 @@ service cloud.firestore {
       match /likes/{likerId} {
         allow get, list: if request.auth != null;
 
+        // `get` e não `exists`: **lápide também existe**, e curtir um post
+        // apagado é escrever numa subcoleção que nenhuma tela mostra. `get` de
+        // documento inexistente devolve null, `.data` erra e erro nega, então
+        // ele faz os dois trabalhos por uma leitura só.
+        //
+        // `.get('deleted', false)` e não `.deleted`: chave ausente **erra**, e
+        // um post do acervo antigo sem o campo viraria "não dá para curtir",
+        // em silêncio.
         allow create: if request.auth != null
                       && request.auth.uid == likerId
                       && request.resource.data.keys().hasOnly(['uid', 'at'])
                       && request.resource.data.uid == likerId
                       && request.resource.data.at == request.time
-                      && exists(/databases/$(database)/documents/posts/$(postId));
+                      && get(/databases/$(database)/documents/posts/$(postId))
+                           .data.get('deleted', false) == false;
 
         allow update: if false;
         allow delete: if request.auth != null && request.auth.uid == likerId;
       }
+
+      // Comentário: texto livre de uma pessoa aparecendo embaixo do post de
+      // outra. Quem publica assume o que escreve; **quem é comentado não
+      // escolheu** — é por isso que esta subcoleção só sobe depois de o
+      // bloqueio e a denúncia existirem.
+      //
+      // `list` liberado aqui, ao contrário de `profiles` e `nicknames`: a
+      // subcoleção está sob um post, então listar devolve os comentários
+      // daquele post e nada mais. Fechar `list` é sobre não deixar enumerar a
+      // base inteira, não sobre proibir listagem.
+      //
+      // Ordena por `createdAt`, campo único em subcoleção: **não** precisa de
+      // índice composto.
+      match /comments/{commentId} {
+        allow get, list: if request.auth != null;
+
+        allow create: if request.auth != null
+                      && commentId.matches('^[A-Za-z0-9-]{1,64}$')
+                      && request.resource.data.uid == request.auth.uid
+                      && request.resource.data.keys().hasAll(
+                           ['uid', 'text', 'createdAt'])
+                      && request.resource.data.keys().hasOnly(
+                           ['uid', 'text', 'createdAt'])
+                      && request.resource.data.text is string
+                      && request.resource.data.text.size() > 0
+                      && request.resource.data.text.size() <= 500
+                      && request.resource.data.createdAt == request.time
+                      // O post tem de existir **e estar vivo**, e o `get` faz
+                      // os dois: `get` de documento inexistente devolve null,
+                      // `.data` erra e erro nega — é o que fecha o depósito de
+                      // lixo em `posts/<id-inventado>/comments`.
+                      //
+                      // **Lápide também existe**, e era por aí que o gesto de
+                      // quem foi ofendido — apagar o próprio post — deixava a
+                      // thread viva: aceitando texto novo, legível por quem
+                      // tivesse o id, e invisível para o dono, que passava a
+                      // moderar às cegas.
+                      //
+                      // `.get('deleted', false)` e não `.deleted`: chave
+                      // ausente erra, e um post do acervo antigo sem o campo
+                      // viraria "não dá para comentar", em silêncio.
+                      && get(/databases/$(database)/documents/posts/$(postId))
+                           .data.get('deleted', false) == false
+                      // Bloqueado não comenta, e é esta linha que faz o
+                      // bloqueio valer alguma coisa aqui. O filtro do cliente
+                      // some com o comentário na **minha** tela; sem a regra,
+                      // ele continua visível para todo mundo embaixo do meu
+                      // post.
+                      && !bloqueioEntre(
+                           database,
+                           get(/databases/$(database)/documents/posts/$(postId)).data.uid,
+                           request.auth.uid);
+
+        // Sem `update`, como o histórico de preço do posto: comentário que
+        // pode ser reescrito depois de alguém responder não é comentário.
+        allow update: if false;
+
+        // Moderação sem servidor: o dono do post apaga qualquer comentário do
+        // próprio post. Quem foi comentado não escolheu ser comentado, e essa
+        // é a diferença entre curtida e comentário.
+        //
+        // Só funciona porque o post nunca é apagado de verdade — com `delete`
+        // real o `get()` erraria, e erro em regra nega justamente quando mais
+        // importa.
+        allow delete: if request.auth != null
+                      && resource != null
+                      && (resource.data.uid == request.auth.uid
+                          || get(/databases/$(database)/documents/posts/$(postId))
+                               .data.uid == request.auth.uid);
+      }
+    }
+
+    // ── Denúncia ──────────────────────────────────────────────────────────
+    //
+    // Não há servidor, então **o documento é o canal**: a denúncia é lida no
+    // console do Firebase, e esconder o conteúdo é uma escrita de admin, que
+    // não passa por estas regras. Uma Function que recebe, esconde e notifica
+    // continua sendo o passo seguinte — e continua custando dinheiro por uso.
+    match /reports/{reportId} {
+      // Ninguém lê pelo app, nem quem denunciou. Uma coleção de denúncias
+      // legível é a lista de quem delatou quem, e entre entregadores que se
+      // conhecem do galpão isso é pior do que o conteúdo denunciado.
+      allow get, list: if false;
+
+      // O id é `p_{postId}__{quem}` ou `c_{postId}_{commentId}__{quem}` — a
+      // técnica de `nicknames/{apelido}` outra vez: uma denúncia por pessoa
+      // por alvo, garantida pela **forma** do dado, sem contador e sem
+      // corrida.
+      //
+      // `create, update` sob a mesma condição porque denunciar de novo não
+      // pode virar permission-denied na cara de quem denuncia: a segunda
+      // sobrescreve a primeira e continua sendo uma.
+      allow create, update: if request.auth != null
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasAll(
+             ['uid', 'postId', 'reason', 'at'])
+        && request.resource.data.keys().hasOnly(
+             ['uid', 'postId', 'commentId', 'reason', 'at'])
+        && request.resource.data.at == request.time
+        // Motivo de lista fechada, não texto livre. O campo existe para triar
+        // a fila; um campo de texto que só o dono do app lê seria um canal de
+        // recado que ninguém pediu — e o primeiro lugar onde alguém escreveria
+        // o nome e o telefone de outra pessoa.
+        && request.resource.data.reason in
+             ['spam', 'ofensa', 'improprio', 'golpe', 'outro']
+        && reportId == idDaDenuncia(request.resource.data, request.auth.uid)
+        // **Denúncia é sobre conteúdo alheio**, e o `get` no autor é o que diz
+        // isso. De quebra ele nega alvo inexistente sozinho: `get` de
+        // documento que não existe devolve null e `.data` erra.
+        //
+        // Um `exists` puro só proibia denunciar o que não existe — não
+        // proibia **fabricar** o que existe. Uma conta só publicava um
+        // comentário, denunciava a si mesma, apagava o comentário e repetia:
+        // cada volta deixava um documento permanente em `reports`, com
+        // `delete: if false` e `get/list: if false`, que nem o dono do app
+        // alcança pelo cliente. Milhares por dia, soterrando o único canal de
+        // moderação que a feature tem.
+        //
+        // O que isto **não** faz é limitar volume: duas contas em conluio
+        // fabricam alvo alheio de verdade. Teto de coleção global gravável não
+        // sai de regra — sai de App Check, que segue pendente.
+        && (denunciaDeComentario(request.resource.data)
+              ? get(/databases/$(database)/documents/posts/$(request.resource.data.postId)/comments/$(request.resource.data.commentId)).data.uid != request.auth.uid
+              : get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.uid != request.auth.uid);
+
+      // Denúncia que se apaga não é denúncia — mesma razão de `precos` não ter
+      // `update` nem `delete`.
+      allow delete: if false;
     }
 
     // O espelho do dono: `iter/{uid}/posts/{id}`, mesmo id do global, gravado

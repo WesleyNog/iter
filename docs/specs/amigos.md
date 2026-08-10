@@ -1,9 +1,10 @@
 # Spec: Amigos
 
 Status: **implementada** · Criada, aprovada e implementada em 2026-08-07 ·
-As três abas verificadas em aparelho no mesmo dia · Faltam os fluxos de recusa,
-cancelamento, remoção e convite mútuo, e o App Check antes de abrir para
-desconhecidos
+Bloqueio, denúncia e comentário em 2026-08-09 · As três abas verificadas em
+aparelho · Faltam a verificação em aparelho dos fluxos de recusa, cancelamento,
+remoção, convite mútuo, bloqueio e denúncia, e o **App Check** antes de abrir
+para desconhecidos
 
 ## Objetivo
 
@@ -671,6 +672,16 @@ e por isso a dívida "teste de regras" saiu da lista: virou `npm test`.
 - [x] O mural mostra autor, foto, empresa, tempo relativo e curtida.
 - [x] O ranking mostra o dono com nome e foto, destacado, e o mês navega.
 - [x] No iPhone, "Amigos", "Ranking" e "Feed" cabem em uma linha cada.
+- [x] O post alheio tem menu, e ele denuncia e bloqueia; o post próprio, não.
+- [x] Comentar aparece na hora e no fim da thread, sem recarregar.
+- [ ] O dono do post apaga um comentário que não é dele.
+- [ ] Bloquear tira a pessoa do mural, da lista de amigos e do ranking, e o
+      convite dela passa a falhar.
+- [ ] Bloqueado tenta comentar no meu post e é recusado pela regra.
+- [ ] Desbloquear pela seção BLOQUEADOS devolve a possibilidade do convite, e
+      **não** a amizade.
+- [ ] Denunciar some com o post da minha lista e o documento aparece em
+      `reports` no console.
 - [x] Os quatro ataques dão `permission-denied` — verificado no emulador,
       `firestore-tests`, junto com outros 26 casos.
 - [x] Abrir o app com sessão restaurada publica/atualiza `profiles/{uid}`.
@@ -787,17 +798,23 @@ o selo que `CreateAction.comingSoon` desenha.
   `AndroidManifest.xml`, `NSUserTrackingUsageDescription` e o fluxo de ATT no
   iOS — e o `release` do Android ainda assina com a chave de debug, então não
   há build publicável hoje de qualquer forma. O Blaze não muda nada aqui.
-- **Bloquear uma pessoa** — escopo que ficou de fora, e continua cabendo numa
-  regra mesmo com servidor disponível: `blocks/{uid}/list/{otherUid}` legível e
-  gravável só pelo dono, e `&& !exists(.../blocks/$(uid)/list/$(request.auth.uid))`
-  no `create` do convite. Sem isso, quem for recusado reconvida para sempre. A
-  lista fica invisível para o bloqueado — o `create` dele só falha. Regra é
-  mais barata que Function e não tem cold start; não troque uma pela outra só
-  porque agora dá.
-- **Moderação e denúncia de conteúdo** — passa a ser possível: uma Function
-  que recebe denúncia, esconde o post e notifica. Continua sendo trabalho de
-  verdade, e continua sendo **pré-requisito** para abrir o feed a
+- ~~**Bloquear uma pessoa**~~ — **entregue em 09/08/2026**, e cabia mesmo numa
+  regra, sem Function e sem cold start. Ver **Bloqueio**.
+- **Moderação e denúncia de conteúdo** — o **canal** está entregue
+  (`reports/{alvo}__{quem}`, ver **Denúncia**); o que falta é o automático.
+  Hoje a fila é lida no console do Firebase e esconder um post é escrita de
+  admin — funciona para um app de uma pessoa e não escala para além disso. Uma
+  Function que recebe a denúncia, esconde o post e notifica continua sendo
+  trabalho de verdade, e continua sendo **pré-requisito** para abrir o feed a
   desconhecidos.
+- **A Function que limpa subcoleção e objeto** — o Firestore não apaga
+  subcoleção em cascata, então um post apagado deixa curtidas e comentários
+  para trás. **Não é correção, é economia de cota:** o tombstone já apaga a
+  foto do Storage, e nenhuma tela lê a subcoleção de post apagado. Entra junto
+  com a moderação automática.
+- **Thread paginada** — a folha de comentários baixa a thread inteira. Um
+  `limit` no `orderBy('createdAt')` de campo único resolve quando algum post
+  juntar centenas; hoje seria aparato para nada.
 - **Notificação de convite** — `firebase_messaging` mais uma Function que
   dispara no `create` de `friendRequests/{uid}/incoming`. Hoje o badge só
   acende com o app aberto.
@@ -957,6 +974,24 @@ O tombstone resolve os três de uma vez, e custa ~50 bytes. Exige trocar
 `diff().affectedKeys().hasOnly([...])`. A limpeza de verdade — subcoleções e o
 objeto no Storage — é Function, e entra junto com a moderação.
 
+**Correção de 09/08/2026, e é a mais séria que a revisão adversarial achou: o
+`hasOnly` sozinho não prendia nada.** `affectedKeys` diz **quais** chaves
+mudaram, nunca **o que** elas viraram. Com só ele, o `update` era a porta dos
+fundos do `create`: um post de dez caracteres virava 1 MiB de texto num
+documento que `delete: if false` torna **indelével**, numa coleção com `list`
+aberto — e o `imagePath` escapava do `^posts/{meu uid}/` que só o `create`
+exigia, passando a apontar para a foto de outra pessoa no Storage, servida a
+qualquer autenticado. Agora a lápide é presa à **forma exata** que
+`PostController.erase` grava: `deleted == true`, `text == ''`, `imagePath` nulo.
+
+E como `exists()` é verdadeiro para uma lápide, curtida e comentário deixaram de
+usar `exists` e passaram a `get(...).data.get('deleted', false) == false`: sem
+isso, apagar o próprio post — o gesto de quem foi ofendido — deixava a thread
+**viva**, aceitando texto novo, legível por quem tivesse o id e invisível para o
+dono, que passava a moderar às cegas. `.get('deleted', false)` e não `.deleted`
+porque chave ausente **erra**, e erro nega: o acervo publicado antes de a regra
+exigir o campo viraria "não dá para comentar", em silêncio.
+
 ### Curtida
 
 `posts/{postId}/likes/{uid}` — **o id do documento é quem curtiu**. Curtir é
@@ -998,6 +1033,145 @@ sobre proibir listagem.
 **Sem `update`, como o histórico de preço do posto.** Comentário que pode ser
 reescrito depois de alguém responder não é comentário.
 
+Entregue em 09/08/2026, e três coisas mudaram do esboço para o que subiu.
+
+**A thread usa `snapshots()`, e o mural não.** Não é incoerência: um listener no
+mural reentrega o documento a cada curtida de qualquer pessoa, para todo mundo
+com o app aberto; um listener numa thread reentrega os comentários de **um**
+post, para quem está com a folha aberta olhando para eles. É o que faz o próprio
+comentário aparecer sem recarregar.
+
+**A ordenação final é em Dart, mesmo com o `orderBy` na query.** `createdAt` é
+`serverTimestamp()`, e chega **nulo** no snapshot local que o Firestore entrega
+antes de o servidor confirmar — nulo ordena antes de qualquer data. Sem a
+reordenação, o comentário recém-escrito salta para o topo da thread e volta
+sozinho um segundo depois. É o mesmo tratamento que `Post.fromMap` e
+`FriendController._stampOf` já davam ao carimbo pendente, agora no lugar onde
+ele aparece na cara do usuário.
+
+**Bloqueado não comenta, e isso é regra.** O filtro do cliente some com o
+comentário na tela de quem bloqueou — e só nela. Sem a condição na regra, quem
+foi bloqueado continua aparecendo embaixo do seu post para todo mundo. Custa um
+`get` no post, que é o mesmo documento que o `delete` de moderação já lê.
+
+O contador do card é `count()`, como o da curtida, e vem com o mesmo limite:
+não funciona com listener. Some com ele mais uma leitura por post na abertura
+do mural (~72 numa página de 20, contra as ~52 de antes). E o número do servidor
+**não** desconta os autores bloqueados — quem corrige é a folha, que devolve o
+número que realmente mostrou quando fecha.
+
+### Bloqueio
+
+`blocks/{uid}/list/{otherUid}`, o marcador com `at` preso a `request.time`. Era
+a dívida "bloquear uma pessoa", e ela cabia mesmo numa regra: o `create` do
+convite passou a exigir `!bloqueioEntre(...)`, nas **duas** matches
+(`incoming` e `outgoing`), porque um invariante que vale só num dos dois
+documentos do batch é um invariante que some na primeira mexida.
+
+**A lista é do dono e só ele lê — e isso esconde a lista, não o fato.** Uma
+primeira versão desta seção afirmava que o bloqueado não descobre; é falso, e a
+revisão adversarial derrubou com o emulador na mão. `permission-denied` **é**
+distinguível de "sem rede" (escrita offline fica pendente no SDK, negada volta
+na hora), e quem sonda elimina as outras condições antes — o perfil se lê, a
+própria lista de bloqueio se lê. **O bloqueio impede o contato; não esconde que
+existe.**
+
+O que dá para conseguir sem servidor é que a sonda seja **barulhenta**, e é por
+isso que o `!bloqueioEntre` mora só no `incoming`. O convite é um `WriteBatch`
+atômico com os dois documentos, então negar o `incoming` já nega o convite
+inteiro; repetir a condição no `outgoing` — que mora no subtree de **quem
+escreve** — não protegia nada e entregava um oráculo silencioso, repetível e sem
+rastro do lado da vítima. Com o `uid` de todo mundo saindo do `list` de `posts`,
+aquilo era o mapa de quem te bloqueou na base inteira. A sonda que sobra tem de
+escrever na caixa da vítima, e essa acende o badge dela.
+
+Um marcador `outgoing` solto não vira amizade: a aresta continua exigindo o
+`incoming` da vítima, que só ela cria — tem caso no emulador para isso.
+
+Limitar sonda em escala é trabalho de **App Check**, não de regra, e o App Check
+segue pendente.
+
+**Bloquear apaga a amizade e os quatro marcadores, no mesmo commit.** Bloquear
+sem apagar deixaria a pessoa na lista, no ranking e com acesso aos números de
+carreira, que são de amigo; e um marcador de convite vivo continua autorizando
+recriar a aresta — a amizade ressuscitaria no primeiro aceite. Os seis caminhos
+moram em `FriendController.severTies`, que `remove()` e `block()` chamam: duas
+implementações divergiriam, e a que ficasse para trás deixaria o marcador.
+
+O filtro do mural é de **cliente**, e não tem como não ser: `posts` é uma
+coleção global listável, e regra não filtra query. O que a regra garante é o
+outro lado — bloqueado não comenta e não convida.
+
+**Desbloquear não devolve a amizade.** Ela foi desfeita no bloqueio, e
+ressuscitá-la sozinha seria decidir pelo outro lado.
+
+Bloquear sem ter como desbloquear é armadilha, então a seção **BLOQUEADOS** fica
+no fim da aba Amigos e só aparece quando existe. Aquele tile não abre o dialog
+de perfil de propósito: ele ofereceria "Adicionar" — a tela convidando a desfazer
+o que a pessoa acabou de fazer, com um convite que a própria regra recusa.
+
+### Denúncia
+
+`reports/p_{postId}__{quem}` — ou `c_{postId}_{commentId}__{quem}` —, e **o
+documento é o canal**: não há servidor, então quem modera lê no console do
+Firebase e marca o post com `deleted: true`, que é escrita de admin e não passa
+pelas regras.
+
+**Ninguém lê essa coleção pelo app, nem quem denunciou** (`get` e `list` em
+`false`). Uma lista de denúncias legível é a lista de quem delatou quem, e entre
+entregadores que se conhecem do galpão isso é pior do que o conteúdo denunciado.
+
+**O id é o dado, de novo.** Uma denúncia por pessoa por alvo pela **forma**, sem
+contador e sem corrida — a técnica de `nicknames/{apelido}`. A regra confere o
+id contra o corpo, e `create`/`update` estão sob a mesma condição: denunciar de
+novo sobrescreve em vez de voltar como `permission-denied` na cara de quem
+denuncia.
+
+**O prefixo `p_`/`c_` não é enfeite, e o esboço sem ele tinha um buraco.** Os
+ids de post e de comentário são os dois **escolhidos pelo cliente**: com um
+espaço de nomes só, bastava publicar um comentário com o id de um post para a
+denúncia de um sobrescrever a do outro — em silêncio, numa coleção cujo
+`delete: if false` promete que nada se perde. E o `_` só é separador seguro
+porque o `create` de `posts` e o de `comments` passaram a exigir
+`^[A-Za-z0-9-]{1,64}$` no **id do documento**.
+
+Esse teto de 64 resolve um segundo buraco, mais feio: o id do post entra no id
+da denúncia, e id de documento estoura em 1500 bytes. Sem limite, **quem publica
+escolhe um id de 1490 bytes e torna o próprio conteúdo indenunciável para
+sempre** — o mesmo "gesto que torna a ofensa permanente" do tombstone, só que
+escolhido pelo agressor.
+
+**O alvo é o `commentId` quando ele existe, senão o `postId`** — e a *ausência*
+da chave é que diz qual, não um campo `tipo` que o cliente preencheria de um
+jeito e apontaria para outro. Por isso `toCreateMap()` omite `commentId` em vez
+de gravá-lo `null`: a regra procuraria o comentário chamado `null`.
+
+**Motivo é lista fechada, não texto livre.** O campo existe para triar a fila; um
+campo de texto que só o dono do app lê seria um canal de recado que ninguém
+pediu — e o primeiro lugar onde alguém escreveria o nome e o telefone de outra
+pessoa.
+
+**Denúncia é sobre conteúdo alheio, e a regra confere isso** com
+`get(alvo).data.uid != request.auth.uid`. Não é etiqueta: com um `exists` puro
+— que era o desenho — a regra só proibia denunciar o que não existe, e não
+proibia **fabricar** o que existe. Uma conta só publicava um comentário,
+denunciava a si mesma, apagava o comentário e repetia; cada volta deixava um
+documento permanente em `reports`, com `delete: if false` e `get/list: if
+false`, que nem o dono do app alcança pelo cliente. Milhares por dia soterrando
+o único canal de moderação da feature. O `get` ainda nega alvo inexistente de
+graça, porque `get` de documento que não existe devolve `null` e `.data` erra.
+
+O que isso **não** faz é limitar volume: duas contas em conluio fabricam alvo
+alheio de verdade. Teto de coleção global gravável não sai de regra — sai de App
+Check.
+
+**Denunciar esconde o post da sua lista na hora, e não persiste.** Continuar
+vendo o post depois de denunciar é a tela dizendo que nada aconteceu; e nada
+aconteceu mesmo, porque quem modera é uma pessoa e ela lê depois. Guardar
+"posts que fulano escondeu" seria mais uma coleção e mais uma leitura por
+abertura para resolver o que bloquear já resolve de vez — reabrir o app traz o
+post de volta, até alguém moderar. A folha de denúncia diz isso em uma linha.
+
 ### As regras, com o que a revisão encontrou
 
 Duas coisas que a primeira versão deste esboço errou, e valem enunciadas porque
@@ -1019,6 +1193,11 @@ match /posts/{postId} {
   // dado do adversário é o tipo de coisa que só aparece quando alguém quer".
   // Lá a lista era de um usuário; aqui é de todos.
   allow create: if request.auth != null
+                // O id entra no id da denúncia, e id de documento estoura em
+                // 1500 bytes: sem teto, quem publica escolhe um id que torna o
+                // próprio post indenunciável. O `_` fica de fora porque é o
+                // separador daquele id.
+                && postId.matches('^[A-Za-z0-9-]{1,64}$')
                 && request.resource.data.uid == request.auth.uid
                 && request.resource.data.keys().hasAll(
                      ['uid', 'text', 'createdAt'])
@@ -1031,24 +1210,32 @@ match /posts/{postId} {
                     || request.resource.data.imagePath
                          .matches('^posts/' + request.auth.uid + '/.*'));
 
-  // Apagar é marcar. O `diff` prende o update ao tombstone: o autor não
-  // reescreve o texto depois de comentado, e ninguém mexe no `createdAt`.
+  // Apagar é marcar, e a lápide é presa à FORMA, não a um conjunto de chaves:
+  // `affectedKeys` diz quais mudaram, nunca o que viraram — sem `text == ''` e
+  // sem o `imagePath` nulo, o update era a porta dos fundos do create.
   allow update: if request.auth != null
                 && resource.data.uid == request.auth.uid
                 && request.resource.data.diff(resource.data)
                      .affectedKeys().hasOnly(['deleted', 'text', 'imagePath'])
-                && request.resource.data.deleted == true;
+                && request.resource.data.deleted == true
+                && request.resource.data.text == ''
+                && (!('imagePath' in request.resource.data)
+                    || request.resource.data.imagePath == null);
 
   allow delete: if false;
 
   match /likes/{likerId} {
     allow get, list: if request.auth != null;
+    // `get` e não `exists`: lápide também existe. `get` de documento
+    // inexistente devolve null e `.data` erra, então ele nega as duas coisas
+    // por uma leitura só.
     allow create: if request.auth != null
                   && request.auth.uid == likerId
                   && request.resource.data.keys().hasOnly(['uid', 'at'])
                   && request.resource.data.uid == likerId
                   && request.resource.data.at == request.time
-                  && exists(/databases/$(database)/documents/posts/$(postId));
+                  && get(/databases/$(database)/documents/posts/$(postId))
+                       .data.get('deleted', false) == false;
     allow update: if false;
     allow delete: if request.auth != null && request.auth.uid == likerId;
   }
@@ -1069,8 +1256,19 @@ match /posts/{postId} {
                   && request.resource.data.text is string
                   && request.resource.data.text.size() > 0
                   && request.resource.data.text.size() <= 500
+                  && commentId.matches('^[A-Za-z0-9-]{1,64}$')
                   && request.resource.data.createdAt == request.time
-                  && exists(/databases/$(database)/documents/posts/$(postId));
+                  // Existe E está vivo: lápide também existe, e era por aí que
+                  // a thread de um post apagado seguia aceitando texto.
+                  && get(/databases/$(database)/documents/posts/$(postId))
+                       .data.get('deleted', false) == false
+                  // Bloqueado não comenta. Sem esta linha, o filtro do cliente
+                  // some com o comentário só na tela de quem bloqueou, e ele
+                  // continua visível para todo mundo embaixo do post.
+                  && !bloqueioEntre(
+                       database,
+                       get(/databases/$(database)/documents/posts/$(postId)).data.uid,
+                       request.auth.uid);
 
     allow update: if false;
 
@@ -1093,7 +1291,63 @@ match /posts/{postId} {
 match /iter/{userId}/posts/{postId} {
   allow read, write: if request.auth != null && request.auth.uid == userId;
 }
+
+// Bloqueio. A função mora no topo do bloco `documents` porque o convite
+// precisa dela em DUAS matches, e a condição copiada some numa delas.
+function bloqueioEntre(database, a, b) {
+  return exists(/databases/$(database)/documents/blocks/$(a)/list/$(b))
+         || exists(/databases/$(database)/documents/blocks/$(b)/list/$(a));
+}
+
+// E o `!bloqueioEntre` entra SÓ na match `incoming` do convite. O batch é
+// atômico, então negar um lado nega o convite inteiro; repetir no `outgoing`,
+// que mora no subtree de quem escreve, criava um oráculo silencioso de "quem me
+// bloqueou".
+match /blocks/{userId}/list/{otherId} {
+  allow read: if request.auth != null && request.auth.uid == userId;
+
+  // `create, update` juntos, como a aresta de amizade: bloquear duas vezes é a
+  // mesma intenção, e não pode virar permission-denied.
+  allow create, update: if request.auth != null
+                        && request.auth.uid == userId
+                        && otherId != userId
+                        && request.resource.data.keys().hasOnly(['at'])
+                        && request.resource.data.at == request.time;
+
+  allow delete: if request.auth != null && request.auth.uid == userId;
+}
+
+// Denúncia. O id é `{alvo}__{quem denunciou}`.
+match /reports/{reportId} {
+  // Nem quem denunciou lê: seria a lista de quem delatou quem.
+  allow get, list: if false;
+
+  allow create, update: if request.auth != null
+    && request.resource.data.uid == request.auth.uid
+    && request.resource.data.keys().hasAll(['uid', 'postId', 'reason', 'at'])
+    && request.resource.data.keys().hasOnly(
+         ['uid', 'postId', 'commentId', 'reason', 'at'])
+    && request.resource.data.at == request.time
+    && request.resource.data.reason in
+         ['spam', 'ofensa', 'improprio', 'golpe', 'outro']
+    && reportId == idDaDenuncia(request.resource.data, request.auth.uid)
+    // Denúncia é sobre conteúdo ALHEIO. Com `exists` puro, uma conta só
+    // fabricava o próprio alvo em laço e enchia a fila de moderação de
+    // documentos indeléveis.
+    && (denunciaDeComentario(request.resource.data)
+          ? get(/databases/$(database)/documents/posts/$(request.resource.data.postId)/comments/$(request.resource.data.commentId)).data.uid != request.auth.uid
+          : get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.uid != request.auth.uid);
+
+  allow delete: if false;
+}
 ```
+
+Essas quatro correções — a forma da lápide, a lápide vista pela curtida e pelo
+comentário, o formato do id de post e de comentário, e o `get` no autor do alvo
+— saíram de uma **revisão adversarial das regras**, cinco lentes independentes
+mais um refutador por achado, tudo verificado contra o emulador. Duas delas
+eram bugs já em produção desde a entrega do mural. Os 84 casos de
+`firestore-tests` cobrem cada uma.
 
 ### O que isso custa de verdade
 
@@ -1165,8 +1419,12 @@ escreve; quem é comentado não escolheu.
   Function, não tem cold start. **Fazer antes de o app sair do seu celular.**
 - [x] `posts` + espelho + imagem no Storage + tombstone
 - [x] curtida
-- [ ] **bloqueio e denúncia**, mais a Function que limpa subcoleção e objeto
-- [ ] comentário
+- [x] **bloqueio e denúncia** — entregues em 09/08/2026, sem Function: ver
+  **Bloqueio** e **Denúncia** abaixo. A Function que limpa subcoleção e objeto
+  **não** entrou, e o que ela faria hoje é economia de cota, não correção: o
+  tombstone já apaga a foto do Storage, e o que sobra são curtidas e
+  comentários de post apagado, que nenhuma tela lê.
+- [x] comentário — 09/08/2026
 - [ ] abrir o feed para quem você não conhece
 
 E cada um dos doze ataques desta revisão vira caso em
@@ -1335,6 +1593,28 @@ veículo.
     `lib/widget/postCard.dart`, `lib/widget/feedTab.dart`,
     `lib/widget/profileDialog.dart`, `lib/screens/friendsScreen.dart`,
     `pubspec.yaml`, `ios/Runner/Info.plist`
+
+- [x] **13. Bloqueio, denúncia e comentário**
+  - Aceite: `blocks/{uid}/list` com o convite exigindo `!bloqueioEntre` nas
+    duas matches; bloquear apaga a amizade e os quatro marcadores no mesmo
+    commit; `reports/{alvo}__{quem}` fechado para leitura, com motivo de lista
+    fechada e o alvo conferido por `exists`; `posts/{id}/comments` com
+    `update: if false`, moderação do dono do post e bloqueado recusado pela
+    regra; o menu do card passa a existir no post alheio; seção BLOQUEADOS na
+    aba Amigos.
+  - Verificar: `cd firestore-tests && npm test` (84 casos, 37 novos);
+    `flutter test test/unit/comment_test.dart test/unit/report_test.dart
+    test/unit/relativeTime_test.dart test/widget/postCard_test.dart
+    test/widget/moderacao_test.dart`
+  - Arquivos: `firestore.rules`, `firestore-tests/rules.test.mjs`,
+    `lib/model/comment.dart`, `lib/model/report.dart`,
+    `lib/controller/blockController.dart`,
+    `lib/controller/reportController.dart`,
+    `lib/controller/postController.dart`, `lib/controller/friendController.dart`,
+    `lib/Utils/relativeTime.dart`, `lib/widget/commentsSheet.dart`,
+    `lib/widget/reportSheet.dart`, `lib/widget/blockDialog.dart`,
+    `lib/widget/postCard.dart`, `lib/widget/feedTab.dart`,
+    `lib/widget/profileDialog.dart`, `lib/screens/friendsScreen.dart`
 
 - [ ] **10. Verificação em aparelho e fechamento**
   - Aceite: os critérios de sucesso, com duas contas reais; `CLAUDE.md`

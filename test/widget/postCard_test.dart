@@ -33,9 +33,13 @@ Future<void> _pump(
   bool imageLoading = false,
   int likes = 0,
   bool liked = false,
+  int comments = 0,
   bool isMine = false,
   ValueChanged<bool>? onLike,
+  VoidCallback? onComment,
   VoidCallback? onDelete,
+  VoidCallback? onReport,
+  VoidCallback? onBlock,
 }) {
   return tester.pumpWidget(
     MaterialApp(
@@ -47,13 +51,25 @@ Future<void> _pump(
           imageLoading: imageLoading,
           likes: likes,
           liked: liked,
+          comments: comments,
           isMine: isMine,
           onLike: onLike ?? (_) {},
+          onComment: onComment ?? () {},
           onDelete: onDelete,
+          onReport: onReport,
+          onBlock: onBlock,
         ),
       ),
     ),
   );
+}
+
+/// Abre o menu do card. Os itens de um `PopupMenuButton` só existem na árvore
+/// depois do toque — asserção sobre eles com o menu fechado passa sozinha e não
+/// prova nada.
+Future<void> _abreMenu(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('menu-p1')));
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -119,19 +135,68 @@ void main() {
     expect(find.text('4'), findsOneWidget);
   });
 
-  testWidgets('só o dono vê a ação de apagar', (tester) async {
-    await _pump(tester, isMine: false, onDelete: () {});
-    expect(find.byKey(const ValueKey('apagar-p1')), findsNothing);
-
+  testWidgets('no post próprio o menu só apaga', (tester) async {
+    // Ninguém se denuncia nem se bloqueia.
     await _pump(tester, isMine: true, onDelete: () {});
-    expect(find.byKey(const ValueKey('apagar-p1')), findsOneWidget);
+    await _abreMenu(tester);
+
+    expect(find.text('Apagar publicação'), findsOneWidget);
+    expect(find.text('Denunciar publicação'), findsNothing);
+    expect(find.text('Bloquear'), findsNothing);
+  });
+
+  testWidgets('no post alheio o menu denuncia e bloqueia, e não apaga', (
+    tester,
+  ) async {
+    // Antes desta entrega o post alheio não tinha menu nenhum: num mural
+    // global, isso é dizer que ninguém tem o que reclamar.
+    await _pump(
+      tester,
+      isMine: false,
+      onDelete: () {},
+      onReport: () {},
+      onBlock: () {},
+    );
+    await _abreMenu(tester);
+
+    expect(find.text('Denunciar publicação'), findsOneWidget);
+    expect(find.text('Bloquear'), findsOneWidget);
+    expect(find.text('Apagar publicação'), findsNothing);
+  });
+
+  testWidgets('sem ação nenhuma, o menu não aparece', (tester) async {
+    await _pump(tester, isMine: false);
+    expect(find.byKey(const ValueKey('menu-p1')), findsNothing);
+  });
+
+  testWidgets('denunciar e bloquear avisam quem pediu', (tester) async {
+    var denunciou = false;
+    var bloqueou = false;
+    await _pump(
+      tester,
+      isMine: false,
+      onReport: () => denunciou = true,
+      onBlock: () => bloqueou = true,
+    );
+
+    await _abreMenu(tester);
+    await tester.tap(find.text('Denunciar publicação'));
+    await tester.pumpAndSettle();
+    expect(denunciou, isTrue);
+    expect(bloqueou, isFalse);
+
+    await _abreMenu(tester);
+    await tester.tap(find.text('Bloquear'));
+    await tester.pumpAndSettle();
+    expect(bloqueou, isTrue);
   });
 
   testWidgets('apagar pergunta antes', (tester) async {
     var apagou = false;
     await _pump(tester, isMine: true, onDelete: () => apagou = true);
 
-    await tester.tap(find.byKey(const ValueKey('apagar-p1')));
+    await _abreMenu(tester);
+    await tester.tap(find.text('Apagar publicação'));
     await tester.pumpAndSettle();
     expect(find.text('Apagar publicação?'), findsOneWidget);
 
@@ -139,11 +204,29 @@ void main() {
     await tester.pumpAndSettle();
     expect(apagou, isFalse);
 
-    await tester.tap(find.byKey(const ValueKey('apagar-p1')));
+    await _abreMenu(tester);
+    await tester.tap(find.text('Apagar publicação'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Apagar'));
     await tester.pumpAndSettle();
     expect(apagou, isTrue);
+  });
+
+  testWidgets('comentar avisa, e zero comentário não mostra o número', (
+    tester,
+  ) async {
+    var abriu = false;
+    await _pump(tester, comments: 0, onComment: () => abriu = true);
+
+    // "0" ao lado do balão é ruído, exatamente como ao lado do coração.
+    expect(find.text('0'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('comentar-p1')));
+    await tester.pumpAndSettle();
+    expect(abriu, isTrue);
+
+    await _pump(tester, comments: 3);
+    expect(find.text('3'), findsOneWidget);
   });
 
   testWidgets('post sem texto não desenha texto vazio', (tester) async {

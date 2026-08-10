@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:iter/Utils/relativeTime.dart';
 import 'package:iter/Utils/routeStyle.dart';
 import 'package:iter/model/post.dart';
 import 'package:iter/Utils/profileDisplay.dart';
@@ -20,9 +21,13 @@ class PostCard extends StatelessWidget {
     required this.imageLoading,
     required this.likes,
     required this.liked,
+    required this.comments,
     required this.isMine,
     required this.onLike,
+    required this.onComment,
     this.onDelete,
+    this.onReport,
+    this.onBlock,
   });
 
   final Post post;
@@ -38,9 +43,21 @@ class PostCard extends StatelessWidget {
 
   final int likes;
   final bool liked;
+
+  /// Quantos comentários, na abertura da tela. Corrige-se quando a folha da
+  /// thread fecha: o `count()` do servidor não sabe descontar quem você
+  /// bloqueou, e a lista da folha sabe.
+  final int comments;
+
   final bool isMine;
   final ValueChanged<bool> onLike;
+  final VoidCallback onComment;
+
+  /// As três ações do menu. `null` esconde a linha — o dono não se denuncia
+  /// nem se bloqueia, e ninguém apaga o post do outro.
   final VoidCallback? onDelete;
+  final VoidCallback? onReport;
+  final VoidCallback? onBlock;
 
   @override
   Widget build(BuildContext context) {
@@ -108,7 +125,7 @@ class PostCard extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  _when(post.createdAt),
+                  relativeWhen(post.createdAt),
                   style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
                 ),
               ],
@@ -130,16 +147,58 @@ class PostCard extends StatelessWidget {
                 ),
               ),
             ),
-          if (isMine && onDelete != null)
-            IconButton(
-              key: ValueKey('apagar-${post.id}'),
-              tooltip: 'Apagar',
-              iconSize: 18,
-              icon: Icon(Icons.more_horiz, color: Colors.grey.shade600),
-              onPressed: () => _confirmDelete(context),
-            ),
+          _menu(context),
         ],
       ),
+    );
+  }
+
+  /// O menu do card.
+  ///
+  /// Antes desta entrega ele só existia no post **próprio**, e só para apagar:
+  /// num post alheio não havia gesto nenhum. Num mural global isso é o mesmo
+  /// que dizer que ninguém tem o que reclamar — por isso denunciar e bloquear
+  /// nascem aqui, e nascem antes do comentário.
+  Widget _menu(BuildContext context) {
+    final items = <PopupMenuEntry<String>>[
+      if (isMine && onDelete != null)
+        const PopupMenuItem(
+          key: ValueKey('apagar-post'),
+          value: 'apagar',
+          child: Text('Apagar publicação'),
+        ),
+      if (!isMine && onReport != null)
+        const PopupMenuItem(
+          key: ValueKey('denunciar-post'),
+          value: 'denunciar',
+          child: Text('Denunciar publicação'),
+        ),
+      if (!isMine && onBlock != null)
+        const PopupMenuItem(
+          key: ValueKey('bloquear-post'),
+          value: 'bloquear',
+          child: Text('Bloquear'),
+        ),
+    ];
+
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    return PopupMenuButton<String>(
+      key: ValueKey('menu-${post.id}'),
+      tooltip: 'Opções',
+      iconSize: 18,
+      icon: Icon(Icons.more_horiz, color: Colors.grey.shade600),
+      itemBuilder: (_) => items,
+      onSelected: (action) {
+        switch (action) {
+          case 'apagar':
+            _confirmDelete(context);
+          case 'denunciar':
+            onReport?.call();
+          case 'bloquear':
+            onBlock?.call();
+        }
+      },
     );
   }
 
@@ -205,6 +264,21 @@ class PostCard extends StatelessWidget {
               '$likes',
               style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
             ),
+          IconButton(
+            key: ValueKey('comentar-${post.id}'),
+            tooltip: 'Comentários',
+            icon: Icon(
+              Icons.mode_comment_outlined,
+              color: Colors.grey.shade600,
+              size: 19,
+            ),
+            onPressed: onComment,
+          ),
+          if (comments > 0)
+            Text(
+              '$comments',
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+            ),
         ],
       ),
     );
@@ -230,19 +304,5 @@ class PostCard extends StatelessWidget {
     );
 
     if (ok == true) onDelete?.call();
-  }
-
-  /// `agora`, `há 3h`, `06/08` — a data cheia só quando o post sai da semana.
-  static String _when(DateTime at) {
-    final diff = DateTime.now().difference(at);
-
-    if (diff.inMinutes < 1) return 'agora';
-    if (diff.inMinutes < 60) return 'há ${diff.inMinutes}min';
-    if (diff.inHours < 24) return 'há ${diff.inHours}h';
-    if (diff.inDays < 7) return 'há ${diff.inDays}d';
-
-    final day = at.day.toString().padLeft(2, '0');
-    final month = at.month.toString().padLeft(2, '0');
-    return '$day/$month';
   }
 }

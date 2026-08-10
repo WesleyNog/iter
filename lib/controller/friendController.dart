@@ -128,12 +128,25 @@ class FriendController {
     required String other,
   }) async {
     final batch = _db.batch();
+    severTies(batch, me: me, other: other);
+    await batch.commit();
+  }
 
+  /// Desfaz tudo entre duas pessoas: as duas arestas e os quatro marcadores.
+  ///
+  /// Público e recebendo o batch de fora porque **bloquear é exatamente isto
+  /// mais o próprio marcador**, num commit só (`BlockController.block`). Duas
+  /// implementações dos mesmos seis caminhos divergiriam na primeira mexida, e
+  /// a que ficasse para trás deixaria marcador vivo — que continua autorizando
+  /// recriar a aresta depois do bloqueio.
+  static void severTies(
+    WriteBatch batch, {
+    required String me,
+    required String other,
+  }) {
     batch.delete(friendsOf(me).doc(other));
     batch.delete(friendsOf(other).doc(me));
     _clearRequests(batch, me: me, other: other);
-
-    await batch.commit();
   }
 
   /// Os quatro caminhos que um convite entre duas pessoas pode ocupar.
