@@ -92,8 +92,14 @@ Este é o coração da entrega e o que mudou depois da primeira versão da spec.
 
 ### Quando é calculada
 
-Quando a rota é salva **com status `concluido` ou `pago`**. Rota `agendado` ou
-`andamento` não tem provisão — ela ainda não rodou, e não há KM para multiplicar.
+Quando a rota é salva **e ela rodou**. Rota `agendado` ou `andamento` não tem
+provisão — ela ainda não rodou, e não há KM para multiplicar.
+
+> Desde `sem-rota.md`, "rodou" são **três** status e não dois: `concluido`,
+> `pago` e `semRota`. A regra virou o getter `NewRouteModal.hasRun`, porque
+> estava escrita em três arquivos e a cópia de `addIter._withProvision` roda
+> primeiro. A ida ao CD queimou gasolina de verdade — provisiona como qualquer
+> outra. Leia `concluido`/`pago` como `hasRun` na tabela abaixo.
 
 ### É um retrato, não uma fórmula
 

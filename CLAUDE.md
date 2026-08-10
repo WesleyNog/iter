@@ -219,6 +219,70 @@ Vehicle card shows the **lifetime** number, the summary's expense card the
 different questions. `periodEconomy()` returns `null` unless every fill in the
 period belongs to one vehicle, a missing `vehicleId` included.
 
+## Sem Rota: money and kilometres, but not a route
+
+Sometimes Mercado Livre or Amazon offer a route, the driver accepts, drives to
+the CD — and the route is gone. They pay anyway, each by its own rule.
+`StatusRoute.semRota` records that, and `norouterule/{company}` holds the
+percentage (`{percent: 40}` for ML, `100` for Amazon; the id is `Company.name`).
+See `docs/specs/sem-rota.md`.
+
+**`NewRouteModal.value` stores the net**, percentage already applied, plus a
+frozen `NoRoutePayment {grossValue, percent, appliedAt}`. Both halves earn their
+place: the net is what makes `summarize`, `companySummary`, `valuePerCompany` and
+the profit work without any of them knowing the rule exists — and the gross is
+what lets the form reopen without applying the percentage **again**, turning
+R$ 250 into R$ 100 and then R$ 40, once per edit, silently. `paid` is derived, and
+`route.value == payment.paid` is exact-equality: both sides go through
+`NoRoutePayment.paidValue`, which works in integer cents because
+`gross * (percent/100)` and `(x*100).round()/100` each round wrong in cases the
+screen hides behind `toStringAsFixed(2)`.
+
+`resolveNoRoutePayment` is `resolveProvision`'s sibling and freezes for the same
+reason — **same company keeps the stored percentage**, even after the console
+changes it. Only switching company reloads: the ML percentage does not describe
+an Amazon trip.
+
+### Two rulers, and `realized` is not one of them
+
+`realized()` is still `concluido + pago` and **was not touched**. That is how the
+trip stays out of the route count, the bairro rankings, the packages, the friends'
+ranking and the career numbers — without a line of new code in `monthStats`,
+`profileStats` or the analysis carousels. What needs the money uses
+`noRouteTrips()`; `receivedPayment()` includes it because it was already paid.
+
+The trip **is** kilometres, though: `NewRouteModal.hasRun` (`concluido + pago +
+semRota`) gates the provision, so the fuel burned driving to the CD is charged
+like any other. That getter exists because the condition used to be written three
+times — and `addIter._withProvision`'s copy runs *first*, so fixing only
+`vehicleCost.dart` provisioned nothing, with the unit test green.
+
+**No average may divide money from one population by the count of another.** With
+the trip in `total` and out of `count`, `total / count` inflates — the side that
+flatters. Hence `PeriodSummary.routeTotal` (route money) beside `total`
+(everything), and `receivedTotal` (paid + trips) beside `received` (paid only).
+`CompanySummary.isEmpty` checks both counts for the same reason: a month of only
+CD trips has money and KM, and `routes == 0` alone made the whole Summary tab say
+"Nenhuma rota entre 01/08 e 31/08".
+
+`norouterule` is `get` + `list: false` + **`write: if false`**. It is the first
+collection in the app that is *business configuration* rather than user data:
+`gastop` is writable because whoever passes the station reports the price, and
+the worst case is one wrong price the median dilutes. Here a writable `percent`
+lets any authenticated account zero everybody's pay. The owner edits it in the
+console — and **the deployed rule creates no data**: until
+`norouterule/mercadolivre` and `/amazon` exist there, every company behaves like
+Shopee, with `npm test` and `flutter test` both green. It is the one step no test
+catches.
+
+Missing rule is refused, never defaulted. 100% overstates the earning, which is
+the side that misleads, and 0% zeroes the value — which drops the provision with
+it, because `provisionFor` bails on `value <= 0`, and the fuel of a real trip
+would vanish. Reading failure is a **different** sentence from missing rule: the
+first read of this collection on a device never comes from cache, so offline is
+the common case, and collapsing the two would tell a driver with no signal to go
+register a rule that is already there.
+
 ## Friends: consent lives in the rules, not in the client
 
 `profiles/{uid}` is the public projection — name, `@nickname`, photo — because
@@ -245,7 +309,7 @@ to `request.time` so a guest cannot sort themselves to the top of your list.
 incremented — `increment` drifts the first time a route is edited. See
 `docs/specs/amigos.md`.
 
-The rules have tests: `cd firestore-tests && npm test` runs 30 cases against
+The rules have tests: `cd firestore-tests && npm test` runs 90 cases against
 the Firestore emulator. It is a Node project on purpose, and deliberately
 **outside `test/`** — `flutter test` globs that directory for `*_test.dart` and
 would walk `node_modules` on every run. The emulator needs **Java 21+** while

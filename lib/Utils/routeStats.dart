@@ -58,41 +58,72 @@ class PeriodSummary {
   const PeriodSummary({
     required this.total,
     required this.count,
+    required this.routeTotal,
     required this.packages,
     required this.failures,
     required this.pending,
     required this.received,
     required this.upcoming,
+    required this.noRoute,
     required this.pendingCount,
     required this.receivedCount,
     required this.scheduledCount,
     required this.runningCount,
+    required this.noRouteCount,
   });
 
-  /// Soma de `value` de **todas** as rotas recebidas — o chamador decide se
-  /// passa o período inteiro ou só as realizadas.
+  /// Soma de `value` de **tudo** que veio no período, idas sem rota inclusas —
+  /// o chamador decide se passa o período inteiro ou só as realizadas.
+  ///
+  /// É o denominador da barra de status, que tem uma fatia por status: um total
+  /// que não incluísse a Sem Rota faria as fatias somarem mais de 100%.
   final double total;
 
+  /// Quantas **rotas**. A ida sem rota não entra: ela não entregou pacote, não
+  /// passou por bairro nenhum e não foi uma rota.
   final int count;
+
+  /// O dinheiro só das rotas — [total] menos [noRoute].
+  ///
+  /// Existe por causa de [average]. Com o total incluindo a Sem Rota e a
+  /// contagem excluindo-a, `total / count` dividiria o dinheiro de uma população
+  /// pela contagem de outra, e o resultado subiria sozinho a cada ida
+  /// registrada — erro para mais, que é o lado que engana.
+  final double routeTotal;
 
   /// Rodado e ainda não pago (`concluido`) — o que falta cair na conta.
   final double pending;
 
-  /// Já pago (`pago`).
+  /// Já pago (`pago`), **sem** as idas sem rota. Quem soma as duas é
+  /// [receivedTotal].
+  ///
+  /// A separação é o que mantém [average] honesta: aqui ficam só rotas, e
+  /// [receivedCount] conta a mesma população.
   final double received;
 
   /// Ainda não rodado (`agendado` + `andamento`) — estimativa.
   final double upcoming;
 
+  /// As idas que não viraram rota (`semRota`), já com o percentual aplicado.
+  final double noRoute;
+
   final int pendingCount;
   final int receivedCount;
   final int scheduledCount;
   final int runningCount;
+  final int noRouteCount;
 
   int get upcomingCount => scheduledCount + runningCount;
 
-  /// O que já aconteceu, em dinheiro: pago mais a receber.
-  double get realizedTotal => received + pending;
+  /// O que caiu na conta: o pago mais as idas sem rota.
+  ///
+  /// É o número do card "Pago no período" — e o denominador dele, senão as
+  /// fatias (que vêm de [receivedPayment], já com a Sem Rota) passam de 100% e,
+  /// num mês só de idas, o card apaga inteiro dizendo "Nada foi pago".
+  double get receivedTotal => received + noRoute;
+
+  /// O que já aconteceu, em dinheiro: o que caiu mais o que falta cair.
+  double get realizedTotal => receivedTotal + pending;
 
   /// Pacotes somados **apenas** das rotas que informaram o campo.
   final int packages;
@@ -101,16 +132,21 @@ class PeriodSummary {
   /// taxa falarem da mesma amostra.
   final int failures;
 
-  double get average => count == 0 ? 0 : total / count;
+  /// Quanto rendeu **uma rota**, em média. [routeTotal] e [count] falam da mesma
+  /// população de propósito — ver [routeTotal].
+  double get average => count == 0 ? 0 : routeTotal / count;
 
   /// Fração do que já aconteceu que foi paga.
   ///
   /// O denominador é [realizedTotal], e não [total]: rota agendada ainda nem
   /// podia ter sido paga, e contá-la faria a taxa cair sozinha toda vez que o
   /// usuário marcasse uma rota nova na agenda.
+  ///
+  /// [receivedTotal] nos **dois** lados. Com a Sem Rota só no denominador, cada
+  /// ida registrada derrubaria a taxa de recebimento — e ela já nasceu paga.
   double? get receivedRate {
     if (realizedTotal <= 0) return null;
-    return (received / realizedTotal).clamp(0.0, 1.0);
+    return (receivedTotal / realizedTotal).clamp(0.0, 1.0);
   }
 
   /// Fração entregue: `(pacotes - insucessos) / pacotes`.
@@ -155,6 +191,12 @@ List<NewRouteModal> inPeriod(
 /// "rodado" numa rota que ainda não saiu não é verdade, e insucesso de rota
 /// que não aconteceu não existe. Os cards de dinheiro do topo trabalham com o
 /// período inteiro, de propósito: lá interessa quanto ainda vai entrar.
+///
+/// **`semRota` fica de fora, e esta função não muda por causa dela.** É de
+/// propósito: `monthStats`, `profileStats`, `companySummary` e os carrosséis de
+/// análise leem daqui, e é assim que a ida ao CD fica fora da contagem de rotas,
+/// do ranking dos amigos e dos rankings de bairro sem uma linha de código nova
+/// em nenhum deles. Quem precisa do dinheiro dela usa [noRouteTrips].
 List<NewRouteModal> realized(List<NewRouteModal> routes) => routes
     .where(
       (route) =>
@@ -178,8 +220,30 @@ List<NewRouteModal> realizedInPeriod(
 List<NewRouteModal> pendingPayment(List<NewRouteModal> routes) =>
     routes.where((route) => route.status == StatusRoute.concluido).toList();
 
-List<NewRouteModal> receivedPayment(List<NewRouteModal> routes) =>
-    routes.where((route) => route.status == StatusRoute.pago).toList();
+/// O que já caiu na conta: `pago` **e** as idas que não viraram rota.
+///
+/// A Sem Rota nasce paga — a empresa credita a fração assim que a rota some do
+/// aplicativo dela —, então perguntar "o que eu já recebi" e não incluí-la seria
+/// esconder dinheiro que está no extrato.
+List<NewRouteModal> receivedPayment(List<NewRouteModal> routes) => routes
+    .where(
+      (route) =>
+          route.status == StatusRoute.pago ||
+          route.status == StatusRoute.semRota,
+    )
+    .toList();
+
+/// As idas que não viraram rota (`semRota`).
+///
+/// A segunda régua do arquivo, e ela existe porque a Sem Rota é **dinheiro e
+/// quilômetro rodado, mas não é uma rota**: entra no valor, no lucro e no custo
+/// por km, e fica fora da contagem, das médias, dos pacotes e dos bairros.
+///
+/// [realized] continua sendo `concluido + pago` e não foi tocada — é dela que
+/// `monthStats`, `profileStats` e todos os carrosséis de análise herdam a
+/// exclusão, sem nenhum deles precisar saber que este status existe.
+List<NewRouteModal> noRouteTrips(List<NewRouteModal> routes) =>
+    routes.where((route) => route.status == StatusRoute.semRota).toList();
 
 /// Rotas que ainda não aconteceram: `agendado` e `andamento`.
 ///
@@ -214,15 +278,19 @@ List<({StatusRoute status, double value})> valueByStatus(
 
 PeriodSummary summarize(List<NewRouteModal> routes) {
   var total = 0.0;
+  var routeTotal = 0.0;
+  var count = 0;
   var packages = 0;
   var failures = 0;
   var pending = 0.0;
   var received = 0.0;
   var upcoming = 0.0;
+  var noRoute = 0.0;
   var pendingCount = 0;
   var receivedCount = 0;
   var scheduledCount = 0;
   var runningCount = 0;
+  var noRouteCount = 0;
 
   for (final route in routes) {
     total += route.value;
@@ -240,11 +308,29 @@ PeriodSummary summarize(List<NewRouteModal> routes) {
       case StatusRoute.andamento:
         upcoming += route.value;
         runningCount++;
+      // Não cai em `received`: o card soma as duas por `receivedTotal`, e
+      // misturar aqui faria `average` dividir dinheiro de duas populações pela
+      // contagem de uma.
+      case StatusRoute.semRota:
+        noRoute += route.value;
+        noRouteCount++;
+    }
+
+    // Acumulado, e não `total - noRoute` no fim: subtrair dois `double` que
+    // vieram de somas diferentes introduz erro onde a conta deveria ser exata.
+    if (route.status != StatusRoute.semRota) {
+      routeTotal += route.value;
+      count++;
     }
 
     // Pacotes e insucessos só contam de rota que aconteceu: uma agendada com
     // pacotes estimados inflaria o denominador e faria a taxa de entrega subir
     // sem ninguém ter entregue nada.
+    //
+    // A guarda é por **inclusão** de propósito. Escrita por exclusão ("pula
+    // agendado e andamento"), a Sem Rota entraria — e uma rota editada de
+    // `concluido` para `semRota` mantém `packages` e o insucesso gravados, que
+    // voltariam para a taxa de entrega sem ninguém ter entregado nada.
     if (route.status != StatusRoute.concluido &&
         route.status != StatusRoute.pago) {
       continue;
@@ -261,16 +347,22 @@ PeriodSummary summarize(List<NewRouteModal> routes) {
 
   return PeriodSummary(
     total: total,
-    count: routes.length,
+    // `count` e não `routes.length`: a lista carrega as idas sem rota, e elas
+    // não são rotas. Deixar `routes.length` aqui é a regressão mais barata de
+    // cometer — compila, e toda média e todo "ROTAS" da tela voltam a contá-las.
+    count: count,
+    routeTotal: routeTotal,
     packages: packages,
     failures: failures,
     pending: pending,
     received: received,
     upcoming: upcoming,
+    noRoute: noRoute,
     pendingCount: pendingCount,
     receivedCount: receivedCount,
     scheduledCount: scheduledCount,
     runningCount: runningCount,
+    noRouteCount: noRouteCount,
   );
 }
 

@@ -53,7 +53,8 @@ dos mesmos logos.
 | `company` | `'mercadolivre' \| 'amazon' \| 'shopee'` | logo em `assets/logo/` |
 | `dateRoute` | string `dd/MM/yyyy` | data exibida e ordenação |
 | `weekday` | int 1–7 | ícone do dia (`Utils/calendar.dart`) |
-| `status` | `'agendado' \| 'andamento' \| 'concluido' \| 'pago'` | cor + rótulo |
+| `status` | `'agendado' \| 'andamento' \| 'concluido' \| 'pago' \| 'semRota'` | cor + rótulo |
+| `noRoutePayment` | `{grossValue, percent, appliedAt}?` | só em `semRota`; ver `sem-rota.md` |
 | `value` | double | `CurrencyFormatterHelper.formatDoubleToMoney` |
 | `createdAt` | ISO 8601 | desempate na ordenação |
 

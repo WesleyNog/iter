@@ -224,17 +224,34 @@ class _GraficsScreenState extends State<GraficsScreen> {
         stats: [
           ChartStat('TOTAL', _money(summary.total)),
           ChartStat('ROTAS', '${summary.count}'),
-          ChartStat('MÉDIA/ROTA', _average(summary.total, summary.count)),
+          // `routeTotal` e não `total`: o total inclui as idas sem rota e a
+          // contagem não, então dividir um pelo outro seria dinheiro de uma
+          // população sobre a contagem de outra — e sempre para mais, que é o
+          // lado que engana.
+          ChartStat('MÉDIA/ROTA', _average(summary.routeTotal, summary.count)),
         ],
         extra: DeliveryRateBar(summary: summary),
       ),
       MoneyBreakdownCard(
         title: 'Pago no período',
         slices: _companySlices(receivedPayment(routes)),
-        total: summary.received,
+        // `receivedTotal` e não `received`. As fatias vêm de `receivedPayment`,
+        // que já traz as idas sem rota: com o denominador só do pago, as
+        // porcentagens da legenda passariam de 100% — e, num mês só de idas, o
+        // card apagaria inteiro dizendo "Nada foi pago", com o dinheiro na
+        // conta.
+        total: summary.receivedTotal,
         emptyNote: 'Nada foi pago neste período ainda.',
+        // A MÉDIA/ROTA abaixo é só das rotas pagas, então ela e o PAGO falam de
+        // populações diferentes de propósito. A nota é o que impede a diferença
+        // de parecer erro — e só aparece quando existe o que explicar.
+        footnote: summary.noRoute > 0
+            ? 'Inclui ${_money(summary.noRoute)} de '
+                  '${summary.noRouteCount == 1 ? '1 ida' : '${summary.noRouteCount} idas'}'
+                  ' sem rota.'
+            : null,
         stats: [
-          ChartStat('PAGO', _money(summary.received)),
+          ChartStat('PAGO', _money(summary.receivedTotal)),
           ChartStat('ROTAS', '${summary.receivedCount}'),
           ChartStat(
             'MÉDIA/ROTA',

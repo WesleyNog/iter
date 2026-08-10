@@ -47,6 +47,11 @@ Color companyColor(Company company) {
 /// Não é [statusColor]: aquelas foram escolhidas para fundo branco, e o azul do
 /// agendado com o teal do pago somem no gradiente do card. Aqui verde é pago —
 /// dinheiro na conta — e o resto clareia na ordem do ciclo.
+///
+/// A Sem Rota é o **mesmo verde, mais claro**, e é a única cor deste arquivo
+/// escolhida por parentesco: na barra do Resumo ela aparece colada no Pago, e no
+/// card seguinte as duas somam num número só. Família igual diz isso sem
+/// legenda; uma cor de outra matiz diria o contrário do que a conta faz.
 Color statusChartColor(StatusRoute status) {
   switch (status) {
     case StatusRoute.agendado:
@@ -57,6 +62,8 @@ Color statusChartColor(StatusRoute status) {
       return const Color(0xFFCE93D8);
     case StatusRoute.pago:
       return const Color(0xFF69F0AE);
+    case StatusRoute.semRota:
+      return const Color(0xFFB9F6CA);
   }
 }
 
@@ -70,9 +77,17 @@ String statusLabel(StatusRoute status) {
       return 'Concluído';
     case StatusRoute.pago:
       return 'Pago';
+    case StatusRoute.semRota:
+      return 'Sem Rota';
   }
 }
 
+/// Cor do status no card branco da lista.
+///
+/// Aqui a Sem Rota **não** acompanha o verde do Pago, ao contrário de
+/// [statusChartColor]: no gráfico o que importa é que as duas somam, e no card o
+/// que importa é ler "esta não aconteceu". O cinza-azulado é o único tom apagado
+/// da paleta, e é o ponto.
 Color statusColor(StatusRoute status) {
   switch (status) {
     case StatusRoute.agendado:
@@ -83,6 +98,8 @@ Color statusColor(StatusRoute status) {
       return Colors.purple.shade400;
     case StatusRoute.pago:
       return Colors.teal.shade400;
+    case StatusRoute.semRota:
+      return Colors.blueGrey.shade400;
   }
 }
 
@@ -96,6 +113,8 @@ IconData statusIcon(StatusRoute status) {
       return Icons.check_circle_outline;
     case StatusRoute.pago:
       return Icons.monetization_on_outlined;
+    case StatusRoute.semRota:
+      return Icons.do_not_disturb_on_outlined;
   }
 }
 

@@ -98,16 +98,19 @@ void main() {
     });
 
     test('inPeriod mantém todos os status', () {
+      // Os CINCO. Se `inPeriod` ganhar um filtro de status um dia, as idas ao
+      // CD sumiriam do recorte e com elas o dinheiro, o KM e o lucro em
+      // `summarize` e `companySummary` — e o teste cujo nome promete cobrir
+      // exatamente isto ficaria verde enumerando quatro.
       final routes = [
-        _route(id: 'agendado', status: StatusRoute.agendado),
-        _route(id: 'andamento', status: StatusRoute.andamento),
-        _route(id: 'concluido', status: StatusRoute.concluido),
-        _route(id: 'pago', status: StatusRoute.pago),
+        for (final status in StatusRoute.values)
+          _route(id: status.name, status: status),
       ];
 
       final result = inPeriod(routes, start: _start, end: _end);
 
-      expect(result, hasLength(4));
+      expect(result, hasLength(StatusRoute.values.length));
+      expect(result.map((r) => r.id), containsAll(['pago', 'semRota']));
     });
 
     test('notRunYet é agendado mais em andamento', () {
@@ -274,22 +277,158 @@ void main() {
       final byStatus = valueByStatus([
         _route(status: StatusRoute.pago, value: 500),
         _route(status: StatusRoute.agendado, value: 10),
+        _route(status: StatusRoute.semRota, value: 40),
       ]);
 
       // A barra do resumo é lida como esteira: agendado → andamento →
-      // concluído → pago, mesmo com o pago sendo o maior.
+      // concluído → pago → sem rota, mesmo com o pago sendo o maior.
       expect(byStatus.map((e) => e.status), StatusRoute.values);
       expect(byStatus.first.value, 10);
-      expect(byStatus.last.value, 500);
+      expect(byStatus[3].value, 500);
+      expect(byStatus.last.value, 40);
     });
 
-    test('status sem rota vem zerado', () {
+    test('a Sem Rota é a última fatia, colada no Pago', () {
+      // Não é capricho de ordenação: `statusChartColor` dá à Sem Rota o verde
+      // claro irmão do verde do Pago justamente porque as duas aparecem
+      // vizinhas na barra e somam num número só no card seguinte. Inserir o
+      // valor no meio do enum reordenaria essa barra sem nenhum sinal no
+      // arquivo onde a mudança foi feita.
+      expect(StatusRoute.values.last, StatusRoute.semRota);
+      expect(
+        StatusRoute.values[StatusRoute.values.length - 2],
+        StatusRoute.pago,
+      );
+    });
+
+    test('status sem nenhuma rota vem zerado', () {
       final byStatus = valueByStatus([
         _route(status: StatusRoute.pago, value: 500),
       ]);
 
       expect(byStatus.where((e) => e.value > 0), hasLength(1));
-      expect(byStatus, hasLength(4));
+      expect(byStatus, hasLength(5));
+    });
+  });
+
+  group('Sem Rota: dinheiro e quilômetro, mas não é rota', () {
+    test('realized não a devolve — e é daí que vem toda a exclusão', () {
+      // `monthStats`, `profileStats`, `companySummary` e os carrosséis de
+      // análise leem de `realized`. Enquanto este teste passar, nenhum deles
+      // precisa saber que o status existe.
+      final result = realized([
+        _route(id: 'concluida', status: StatusRoute.concluido),
+        _route(id: 'paga', status: StatusRoute.pago),
+        _route(id: 'ida', status: StatusRoute.semRota),
+      ]);
+
+      expect(result.map((r) => r.id), ['concluida', 'paga']);
+    });
+
+    test('noRouteTrips devolve só ela', () {
+      final result = noRouteTrips([
+        _route(id: 'concluida', status: StatusRoute.concluido),
+        _route(id: 'ida', status: StatusRoute.semRota),
+        _route(id: 'agendada', status: StatusRoute.agendado),
+      ]);
+
+      expect(result.map((r) => r.id), ['ida']);
+    });
+
+    test('entra no recebido: ela já nasce paga', () {
+      final result = receivedPayment([
+        _route(id: 'paga', status: StatusRoute.pago),
+        _route(id: 'ida', status: StatusRoute.semRota),
+        _route(id: 'concluida', status: StatusRoute.concluido),
+      ]);
+
+      expect(result.map((r) => r.id), ['paga', 'ida']);
+    });
+
+    test('não é "a receber" nem "pendente"', () {
+      final routes = [_route(status: StatusRoute.semRota)];
+
+      expect(pendingPayment(routes), isEmpty);
+      expect(notRunYet(routes), isEmpty);
+    });
+
+    test('soma no total e no recebido, mas não na contagem de rotas', () {
+      final summary = summarize([
+        _route(status: StatusRoute.pago, value: 200),
+        _route(status: StatusRoute.concluido, value: 100),
+        _route(status: StatusRoute.semRota, value: 40),
+      ]);
+
+      expect(summary.total, 340);
+      expect(summary.noRoute, 40);
+      expect(summary.noRouteCount, 1);
+      // A ida não foi uma rota: fora da contagem e fora do dinheiro que a média
+      // divide.
+      expect(summary.count, 2);
+      expect(summary.routeTotal, 300);
+      // `received` é só o pago; quem soma as duas é `receivedTotal`.
+      expect(summary.received, 200);
+      expect(summary.receivedCount, 1);
+      expect(summary.receivedTotal, 240);
+    });
+
+    test('a média divide dinheiro de rota por contagem de rota', () {
+      // O erro que esta asserção existe para pegar: com `total` incluindo a
+      // ida e `count` excluindo-a, `total / count` daria 170 — para mais, que é
+      // o lado que engana, e indistinguível de um mês melhor.
+      final summary = summarize([
+        _route(status: StatusRoute.pago, value: 200),
+        _route(status: StatusRoute.concluido, value: 100),
+        _route(status: StatusRoute.semRota, value: 40),
+      ]);
+
+      expect(summary.average, 150);
+    });
+
+    test('a ida não derruba a taxa de recebimento', () {
+      // Ela entra nos dois lados: já aconteceu e já foi paga. Só no
+      // denominador, cada ida registrada faria a taxa cair sozinha.
+      final summary = summarize([
+        _route(status: StatusRoute.pago, value: 100),
+        _route(status: StatusRoute.semRota, value: 40),
+      ]);
+
+      expect(summary.realizedTotal, 140);
+      expect(summary.receivedRate, 1);
+    });
+
+    test('pacotes e insucesso gravados nela não entram na taxa de entrega', () {
+      // Editar uma rota de `concluido` para `semRota` **mantém** `packages` e o
+      // insucesso no documento — o formulário não limpa nada. A guarda de
+      // `summarize` é por inclusão justamente por isso.
+      final summary = summarize([
+        _route(status: StatusRoute.pago, packages: 100),
+        _route(
+          status: StatusRoute.semRota,
+          packages: 500,
+          isInsucesso: true,
+          insucessoQnt: 60,
+        ),
+      ]);
+
+      expect(summary.packages, 100);
+      expect(summary.failures, 0);
+      expect(summary.deliveryRate, 1);
+    });
+
+    test('um mês só de idas tem dinheiro e nenhuma rota', () {
+      final summary = summarize([
+        _route(status: StatusRoute.semRota, value: 40),
+        _route(status: StatusRoute.semRota, value: 60),
+      ]);
+
+      expect(summary.total, 100);
+      expect(summary.receivedTotal, 100);
+      expect(summary.count, 0);
+      expect(summary.noRouteCount, 2);
+      // Sem rota nenhuma não há média de rota — e 0 aqui é ausência de
+      // denominador, não "cada rota rendeu zero".
+      expect(summary.average, 0);
     });
   });
 

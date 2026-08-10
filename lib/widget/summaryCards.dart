@@ -164,12 +164,7 @@ class DeliveryRateBar extends StatelessWidget {
       children: [
         const _MiniLabel('Taxa de entrega'),
         const SizedBox(height: 6),
-        if (rate == null)
-          MiniNote(
-            summary.count == 0
-                ? 'Sem rotas no período.'
-                : 'Preencha "Pacotes" na rota para acompanhar.',
-          )
+        if (rate == null) MiniNote(_emptyNote(summary))
         else
           Row(
             children: [
@@ -199,6 +194,18 @@ class DeliveryRateBar extends StatelessWidget {
       ],
     );
   }
+}
+
+/// O que dizer quando não há taxa de entrega — três casos, três pedidos.
+///
+/// O terceiro nasceu com a Sem Rota: um período em que só houve ida ao CD tem
+/// `count == 0` e dinheiro na barra logo acima, e "Sem rotas no período" ali
+/// pareceria defeito. Mandar preencher "Pacotes" seria pior — a ida não
+/// carregou nenhum.
+String _emptyNote(PeriodSummary summary) {
+  if (summary.count > 0) return 'Preencha "Pacotes" na rota para acompanhar.';
+  if (summary.noRouteCount > 0) return 'Só idas sem rota no período.';
+  return 'Sem rotas no período.';
 }
 
 class _MiniLabel extends StatelessWidget {

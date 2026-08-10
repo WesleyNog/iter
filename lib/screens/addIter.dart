@@ -1,6 +1,5 @@
 import 'dart:async' show unawaited;
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
@@ -10,13 +9,15 @@ import 'package:iter/Utils/currencyFormat.dart';
 import 'package:iter/Utils/insucessoBairro.dart';
 import 'package:iter/Utils/routeTime.dart';
 import 'package:iter/Utils/bairros.dart';
+import 'package:iter/Utils/noRouteRule.dart';
+import 'package:iter/Utils/routeStyle.dart';
 import 'package:iter/Utils/vehicleCost.dart';
+import 'package:iter/controller/noRouteRuleController.dart';
 import 'package:iter/controller/profileController.dart';
 import 'package:iter/controller/routeController.dart';
 import 'package:iter/controller/vehicleController.dart';
 import 'package:iter/model/newRouteModal.dart';
 import 'package:iter/model/vehicle.dart';
-import 'package:iter/services/firebase.dart';
 import 'package:iter/services/openWeather.dart';
 import 'package:iter/Utils/weather.dart';
 import 'package:iter/widget/dataPicker.dart';
@@ -28,12 +29,39 @@ import 'package:uuid/uuid.dart';
 import 'dart:math' as math;
 
 class AddIter extends StatefulWidget {
-  const AddIter({super.key, required this.user, this.route});
+  const AddIter({
+    super.key,
+    required this.uid,
+    this.route,
+    this.ruleLoader,
+    this.saver,
+  });
 
-  final User user;
+  /// Só o `uid` é usado aqui — nunca o resto do `User`.
+  ///
+  /// Mesmo formato de `AddSupply`, e pela mesma razão: um `User` do
+  /// FirebaseAuth é classe abstrata com dezenas de membros, e exigi-lo tornava
+  /// esta tela impossível de pumpar num teste. Ela é a que carrega a armadilha
+  /// do valor cheio × valor líquido, e era a única sem teste nenhum.
+  final String uid;
 
   /// Rota existente = modo edição. `null` = cadastro novo.
   final NewRouteModal? route;
+
+  /// De onde vem o percentual de `norouterule`. `null` = do Firestore.
+  ///
+  /// Injetável só para o teste alcançar as quatro frases da Sem Rota —
+  /// encontrada, ausente, carregando e falhou — sem emulador.
+  final Future<int?> Function(Company company)? ruleLoader;
+
+  /// Para onde a rota é gravada. `null` = `RouteController.save`.
+  ///
+  /// Existe porque o caminho de salvamento não tinha **um** teste, e é onde
+  /// mora a invariante mais cara da feature: `value` recebe o líquido e
+  /// `noRoutePayment` vai junto. Uma revisão adversarial trocou
+  /// `payment?.paid ?? gross` por `gross` neste arquivo e a suíte inteira
+  /// continuou verde — 871 testes sem tocar em `_saveRoute`.
+  final Future<void> Function(String uid, NewRouteModal route)? saver;
 
   bool get isEditing => route != null;
 
@@ -41,14 +69,42 @@ class AddIter extends StatefulWidget {
   State<AddIter> createState() => _AddIterState();
 }
 
+/// Em que pé está a busca de `norouterule/{empresa}`.
+///
+/// Quatro estados e não um `int?`, porque **"sem regra cadastrada" e "não
+/// consegui ler" pedem coisas opostas ao usuário**: um manda cadastrar no
+/// console, o outro manda tentar de novo. E a primeira leitura desta coleção num
+/// aparelho nunca vem do cache, então offline é o caso comum, não o raro.
+enum _RuleState { ocioso, carregando, encontrada, ausente, falhou }
+
 class _AddIterState extends State<AddIter> {
   final _formKey = GlobalKey<FormState>();
   List<String> bairros = fortaleza_bairros;
   List<String> selectedBairros = [];
   int selectedCompanyIndex = 0;
-  String status = 'agendado';
+
+  /// O enum, e não o nome dele em texto.
+  ///
+  /// Antes era `String`, e isso formava um contrato de três pontas em texto
+  /// puro — o `value` do dropdown, o `route.status.name` da edição e um
+  /// `firstWhere` sem `orElse` no salvamento. Qualquer grafia diferente só
+  /// estourava no clique de Salvar, com o formulário inteiro preenchido, e caía
+  /// no catch genérico virando "Não foi possível salvar a rota".
+  StatusRoute status = StatusRoute.agendado;
+
   DateTime selectedDate = DateTime.now();
   bool isInsucessoSelected = false;
+
+  /// O percentual da empresa escolhida, quando a busca encontrou.
+  int? _noRoutePercent;
+  _RuleState _ruleState = _RuleState.ocioso;
+
+  /// Descarta resposta de busca que chegou depois de outra mais nova.
+  ///
+  /// Trocar de empresa duas vezes rápido dispara duas leituras, e a primeira
+  /// pode voltar por último — gravando o percentual da empresa errada no
+  /// documento, sem erro nenhum.
+  int _ruleRequest = 0;
 
   /// `null` = ainda não sei (carregando, sem rede, sem chave). Só o tempo de
   /// verdade preenche isto — antes o valor nascia como `clear` e o sol aparecia
@@ -64,8 +120,6 @@ class _AddIterState extends State<AddIter> {
   /// Em quais bairros os insucessos aconteceram. Pode cobrir só parte deles —
   /// o que sobra é rateado pelo gráfico.
   Map<String, int> insucessoPorBairro = {};
-
-  final firestore = FirestoreService.instance;
 
   TextEditingController valueController = TextEditingController();
   TextEditingController kmInicialController = TextEditingController();
@@ -83,10 +137,89 @@ class _AddIterState extends State<AddIter> {
     // passada seria trocar um dado certo por um errado.
     if (widget.isEditing) {
       _fillFromRoute(widget.route!);
+      // Editar uma ida já gravada **não depende** desta busca: o bloco
+      // congelado já responde qual percentual vale. Ela existe para o caso de o
+      // documento ter vindo sem bloco, e para a linha de baixo poder dizer algo
+      // se ele mudar de empresa. Falhar aqui não impede salvar.
+      if (status == StatusRoute.semRota) _loadNoRouteRule();
     } else {
       _loadWeather();
     }
   }
+
+  /// Busca `norouterule/{empresa}` para a empresa que está selecionada.
+  ///
+  /// Só é chamada quando o status é Sem Rota — nenhum outro precisa da regra, e
+  /// uma leitura por rascunho salvo seria consulta jogada fora.
+  Future<void> _loadNoRouteRule() async {
+    final request = ++_ruleRequest;
+    final company = Company.values[selectedCompanyIndex];
+
+    setState(() {
+      _ruleState = _RuleState.carregando;
+      _noRoutePercent = null;
+    });
+
+    try {
+      final loader = widget.ruleLoader ?? NoRouteRuleController.fetchPercent;
+      final percent = await loader(company);
+      // `_ruleRequest` mudou: outra empresa foi escolhida enquanto esta
+      // resposta vinha, e gravá-la agora carimbaria o percentual errado.
+      if (!mounted || request != _ruleRequest) return;
+
+      setState(() {
+        _noRoutePercent = percent;
+        _ruleState = percent == null
+            ? _RuleState.ausente
+            : _RuleState.encontrada;
+      });
+    } catch (e) {
+      // A leitura falhou — sem rede, sem permissão, regra não deployada. É
+      // **diferente** de não haver regra, e a frase na tela é outra.
+      debugPrint('norouterule: não foi possível ler a regra: $e');
+      if (!mounted || request != _ruleRequest) return;
+
+      setState(() {
+        _noRoutePercent = null;
+        _ruleState = _RuleState.falhou;
+      });
+    }
+  }
+
+  /// Troca a empresa selecionada.
+  ///
+  /// Um método e não `setState` copiado nos três `GestureDetector` do seletor:
+  /// instrumentar dois e esquecer um deixaria o percentual da empresa anterior
+  /// na tela **e no documento gravado**.
+  void _selectCompany(int index) {
+    if (index == selectedCompanyIndex) return;
+
+    setState(() => selectedCompanyIndex = index);
+    if (status == StatusRoute.semRota) _loadNoRouteRule();
+  }
+
+  /// A empresa escolhida agora.
+  Company get _company => Company.values[selectedCompanyIndex];
+
+  bool get _isNoRoute => status == StatusRoute.semRota;
+
+  /// O valor cheio digitado — o que a rota pagaria se tivesse rodado.
+  double get _grossValue =>
+      CurrencyFormatterHelper.parseMoneyToDouble(valueController.text);
+
+  /// O pagamento que **será gravado**, calculado pela mesma função do save.
+  ///
+  /// Uma função só para a prévia e para a gravação: uma segunda implementação
+  /// para a linha da tela mostraria um número e gravaria outro, e o `paid` é
+  /// comparado com igualdade exata contra `value`.
+  NoRoutePayment? get _noRoutePreview => resolveNoRoutePayment(
+    status: status,
+    company: _company,
+    grossValue: _grossValue,
+    existing: widget.route?.noRoutePayment,
+    existingCompany: widget.route?.company,
+    currentPercent: _noRoutePercent,
+  );
 
   /// Reidrata o formulário com a rota que está sendo editada.
   void _fillFromRoute(NewRouteModal route) {
@@ -96,7 +229,7 @@ class _AddIterState extends State<AddIter> {
         : WeatherType.fromString(weather);
 
     selectedCompanyIndex = Company.values.indexOf(route.company);
-    status = route.status.name;
+    status = route.status;
     selectedDate = route.startAt;
     selectedBairros = [...?route.adress];
     isInsucessoSelected = route.isInsucesso ?? false;
@@ -104,8 +237,13 @@ class _AddIterState extends State<AddIter> {
     insucessoPorBairro = {...route.insucessoPorBairro};
 
     // O campo espera o texto já formatado, igual ao que o formatador produz.
+    //
+    // Numa Sem Rota, `route.value` é o **líquido**: reabrir uma rota de R$ 250
+    // mostraria R$ 100 e salvar sem tocar em nada gravaria R$ 40 — composto,
+    // uma vez por edição, sem exceção e sem log. O campo fala sempre em valor
+    // cheio, e o líquido aparece na linha de baixo.
     valueController.text = CurrencyFormatterHelper.formatDoubleToMoney(
-      route.value,
+      route.noRoutePayment?.grossValue ?? route.value,
     );
     kmInicialController.text = route.kmInitial?.toString() ?? '';
     kmFinalController.text = route.kmFinal?.toString() ?? '';
@@ -178,21 +316,51 @@ class _AddIterState extends State<AddIter> {
     });
   }
 
-  Widget _getStatusIcon(String statusValue) {
-    switch (statusValue) {
-      case 'agendado':
+  /// Ícone do status dentro do campo fechado.
+  ///
+  /// `switch` sobre o **enum** e sem `default`, ao contrário da versão que
+  /// existia aqui: com `default`, um status novo compilava limpo, passava no
+  /// `flutter analyze` e entregava uma interrogação cinza no dropdown.
+  ///
+  /// Os tons são mais claros que os de `statusColor` porque aqui o ícone fica
+  /// dentro do campo, sobre o cinza do formulário.
+  Widget _statusIcon(StatusRoute value) {
+    switch (value) {
+      case StatusRoute.agendado:
         return Icon(Icons.calendar_today, color: Colors.blue.shade100);
-      case 'andamento':
+      case StatusRoute.andamento:
         return Icon(Icons.directions_car, color: Colors.orange.shade100);
-      case 'concluido':
+      case StatusRoute.concluido:
         return Icon(Icons.check_circle_outline, color: Colors.purple.shade100);
-      case 'pago':
+      case StatusRoute.pago:
         return Icon(
           Icons.monetization_on_outlined,
           color: Colors.teal.shade100,
         );
-      default:
-        return Icon(Icons.help_outline, color: Colors.grey.shade100);
+      case StatusRoute.semRota:
+        return Icon(
+          Icons.do_not_disturb_on_outlined,
+          color: Colors.blueGrey.shade200,
+        );
+    }
+  }
+
+  /// Cor do botão de salvar. Também exaustivo: o encadeado ternário que existia
+  /// aqui terminava em `Colors.grey` e usava aspas **duplas**, então um status
+  /// novo deixava o botão cinza sem avisar — e um `grep` pelas outras listas,
+  /// escritas com aspas simples, não achava esta cópia.
+  Color _buttonColor(StatusRoute value) {
+    switch (value) {
+      case StatusRoute.agendado:
+        return Colors.blue.shade300;
+      case StatusRoute.andamento:
+        return Colors.orange.shade300;
+      case StatusRoute.concluido:
+        return Colors.purple.shade300;
+      case StatusRoute.pago:
+        return Colors.teal.shade300;
+      case StatusRoute.semRota:
+        return Colors.blueGrey.shade300;
     }
   }
 
@@ -235,18 +403,22 @@ class _AddIterState extends State<AddIter> {
     });
   }
 
-  String _getButtonName(String statusValue) {
-    switch (statusValue) {
-      case 'agendado':
+  /// O verbo do botão. Exaustivo pelo mesmo motivo: com `default`, o status novo
+  /// entregava um botão escrito "Desconhecido Rota".
+  String _getButtonName(StatusRoute value) {
+    switch (value) {
+      case StatusRoute.agendado:
         return 'Agendar';
-      case 'andamento':
+      case StatusRoute.andamento:
         return 'Iniciar';
-      case 'concluido':
+      case StatusRoute.concluido:
         return 'Finalizar';
-      case 'pago':
+      case StatusRoute.pago:
         return 'Receber';
-      default:
-        return 'Desconhecido';
+      // A ida já aconteceu e já foi paga quando ela é cadastrada: não há o que
+      // agendar, iniciar nem receber. Só registrar que houve.
+      case StatusRoute.semRota:
+        return 'Registrar';
     }
   }
 
@@ -289,11 +461,7 @@ class _AddIterState extends State<AddIter> {
           children: [
             Expanded(
               child: GestureDetector(
-                onTap: () {
-                  setState(() {
-                    selectedCompanyIndex = 0;
-                  });
-                },
+                onTap: () => _selectCompany(0),
                 child: Container(
                   height: 40.0,
                   width: double.infinity,
@@ -310,11 +478,7 @@ class _AddIterState extends State<AddIter> {
             ),
             Expanded(
               child: GestureDetector(
-                onTap: () {
-                  setState(() {
-                    selectedCompanyIndex = 1;
-                  });
-                },
+                onTap: () => _selectCompany(1),
                 child: Container(
                   height: 40.0,
                   width: double.infinity,
@@ -334,11 +498,7 @@ class _AddIterState extends State<AddIter> {
             ),
             Expanded(
               child: GestureDetector(
-                onTap: () {
-                  setState(() {
-                    selectedCompanyIndex = 2;
-                  });
-                },
+                onTap: () => _selectCompany(2),
                 child: Container(
                   height: 40.0,
                   width: double.infinity,
@@ -468,11 +628,26 @@ class _AddIterState extends State<AddIter> {
                     inputFormatters:
                         CurrencyFormatterHelper.getCurrencyFormatter(),
                     decoration: InputDecoration(
-                      labelText: 'Valor',
+                      // Na Sem Rota o campo continua sendo o valor **cheio** —
+                      // o que a rota pagaria se tivesse rodado. O que entra no
+                      // bolso é a linha logo abaixo.
+                      labelText: status == StatusRoute.semRota
+                          ? 'Valor cheio'
+                          : 'Valor',
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
+                    // Sem isto a linha do valor líquido nasce certa e fica
+                    // permanentemente um caractere atrás: o controller não tem
+                    // listener e nada reconstrói a tela enquanto se digita.
+                    //
+                    // `onChanged` e não `addListener`: esta `State` não tem
+                    // `dispose`, e os oito controllers já vazam — não vale
+                    // acrescentar o nono.
+                    onChanged: (_) {
+                      if (status == StatusRoute.semRota) setState(() {});
+                    },
                     validator: (value) {
                       if (value == null || value.isEmpty) {
                         return 'Por favor, insira um valor';
@@ -483,7 +658,7 @@ class _AddIterState extends State<AddIter> {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: DropdownButtonFormField<String>(
+                  child: DropdownButtonFormField<StatusRoute>(
                     value: status,
                     // Sem isto o dropdown se dimensiona pelo **maior item do
                     // menu** ("Concluído") em vez da largura que recebeu, e
@@ -500,40 +675,39 @@ class _AddIterState extends State<AddIter> {
                         vertical: 14,
                       ),
                     ),
-                    selectedItemBuilder: (BuildContext context) {
-                      return const [
-                        'agendado',
-                        'andamento',
-                        'concluido',
-                        'pago',
-                      ].map((String value) {
-                        return _getStatusIcon(value);
-                      }).toList();
-                    },
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'agendado',
-                        child: Text('Agendado'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'andamento',
-                        child: Text('Em Rota'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'concluido',
-                        child: Text('Concluído'),
-                      ),
-                      DropdownMenuItem(value: 'pago', child: Text('Pago')),
+                    // As duas listas saem do **mesmo** `StatusRoute.values`, e
+                    // não de dois literais paralelos. O Flutter cruza uma com a
+                    // outra por índice: com o status novo só em `items`, o
+                    // debug estourava um assert e o **release** — onde o assert
+                    // some — desenhava o ícone do status anterior. Bug que só
+                    // existiria no build que vai para o usuário.
+                    selectedItemBuilder: (context) => [
+                      for (final value in StatusRoute.values)
+                        _statusIcon(value),
+                    ],
+                    items: [
+                      for (final value in StatusRoute.values)
+                        DropdownMenuItem(
+                          value: value,
+                          child: Text(statusLabel(value)),
+                        ),
                     ],
                     onChanged: (value) {
-                      setState(() {
-                        status = value!;
-                      });
+                      if (value == null) return;
+
+                      setState(() => status = value);
+                      // A regra só é buscada quando ela passa a valer.
+                      if (value == StatusRoute.semRota) _loadNoRouteRule();
                     },
                   ),
                 ),
               ],
             ),
+            // Emitido **sempre**, devolvendo um espaço vazio fora da Sem Rota.
+            // Um `if` que acrescenta ou remove um filho muda a contagem da
+            // Column e desloca todos os irmãos abaixo: o `TextFormField`
+            // recriado perde o foco e a mensagem de validação em exibição.
+            _noRouteLine(),
             SizedBox(height: 10),
             Row(
               children: [
@@ -859,19 +1033,75 @@ class _AddIterState extends State<AddIter> {
                       : '${_getButtonName(status)} Rota',
                   style: TextStyle(fontSize: 16, color: Colors.white),
                 ),
-                color: status == "agendado"
-                    ? Colors.blue.shade300
-                    : status == "andamento"
-                    ? Colors.orange.shade300
-                    : status == "concluido"
-                    ? Colors.purple.shade300
-                    : status == "pago"
-                    ? Colors.teal.shade300
-                    : Colors.grey,
+                color: _buttonColor(status),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// A linha que diz quanto vai ser gravado numa Sem Rota — e por quê.
+  ///
+  /// Fora da Sem Rota devolve um espaço vazio em vez de sumir: ver o comentário
+  /// na chamada. As quatro frases são quatro pedidos diferentes, e colapsá-las
+  /// mandaria o entregador sem sinal cadastrar no console uma regra que já está
+  /// lá.
+  Widget _noRouteLine() {
+    if (status != StatusRoute.semRota) return const SizedBox(height: 0);
+
+    final payment = _noRoutePreview;
+
+    final (String message, bool isProblem) = switch (payment) {
+      // O percentual pode ser o da regra de hoje ou o congelado na rota que
+      // está sendo editada — `_noRoutePreview` decide, e é a mesma função que o
+      // save usa, então o número aqui é literalmente o que vai para o banco.
+      final NoRoutePayment p => (
+        'Sem rota: a ${companyLabel(_company)} paga ${p.percent}% → '
+            '${CurrencyFormatterHelper.formatMoney(p.paid)}',
+        false,
+      ),
+      _ when _grossValue <= 0 => (
+        'Informe o valor cheio da rota para calcular o pagamento.',
+        false,
+      ),
+      _ when _ruleState == _RuleState.carregando => (
+        'Buscando a regra de pagamento…',
+        false,
+      ),
+      _ when _ruleState == _RuleState.falhou => (
+        'Não foi possível ler a regra de pagamento. Tente de novo.',
+        true,
+      ),
+      _ => (
+        'Sem regra de pagamento cadastrada para a ${companyLabel(_company)}.',
+        true,
+      ),
+    };
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isProblem ? Icons.error_outline : Icons.do_not_disturb_on_outlined,
+            size: 15,
+            color: isProblem ? Colors.red.shade600 : Colors.blueGrey.shade400,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              message,
+              key: const Key('no-route-line'),
+              style: TextStyle(
+                fontSize: 12,
+                color: isProblem ? Colors.red.shade700 : Colors.blueGrey,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -935,14 +1165,14 @@ class _AddIterState extends State<AddIter> {
   /// já estava gravado quando o KM e o veículo não mudaram, que é o que impede
   /// uma correção de hoje reescrever o lucro de junho.
   Future<NewRouteModal> _withProvision(NewRouteModal draft) async {
-    final done =
-        draft.status == StatusRoute.concluido ||
-        draft.status == StatusRoute.pago;
-    if (!done) return draft.withProvision(null);
+    // `hasRun` e não a condição repetida: esta linha roda **antes** de
+    // `resolveProvision` e curto-circuita, então enquanto ela não conhecesse a
+    // Sem Rota, corrigir só o `vehicleCost.dart` não provisionava uma sequer.
+    if (!draft.hasRun) return draft.withProvision(null);
 
     Vehicle? vehicle;
     try {
-      vehicle = await VehicleController.fetchActive(widget.user.uid);
+      vehicle = await VehicleController.fetchActive(widget.uid);
     } catch (e) {
       // Falha ao ler o veículo não pode impedir de salvar a rota: o dado da
       // rota é do usuário, a provisão é conveniência.
@@ -977,15 +1207,55 @@ class _AddIterState extends State<AddIter> {
   /// mais lá.
   Future<void> _republishStats(NewRouteModal saved) async {
     try {
-      final routes = await RouteController.fetchAll(widget.user.uid);
+      final routes = await RouteController.fetchAll(widget.uid);
       await ProfileController.refreshAfterRoute(
-        uid: widget.user.uid,
+        uid: widget.uid,
         routes: routes,
         months: {saved.startAt, ?widget.route?.startAt},
       );
     } catch (e) {
       debugPrint('profiles: números públicos não republicados: $e');
     }
+  }
+
+  /// Se a Sem Rota pode ser gravada — e, quando não pode, diz o que falta.
+  ///
+  /// O guarda é **"não há pagamento resolvido"**, e não "não tem percentual em
+  /// mãos": corrigir uma ida de junho chega ao formulário sem a regra carregada
+  /// (o `initState` só a busca, e offline nunca chega), e o bloco congelado já
+  /// responde qual percentual vale. Recusar pela falta do percentual tornaria
+  /// impossível editar uma rota antiga.
+  bool _noRouteIsSavable(NoRoutePayment? payment, double gross) {
+    String? problem;
+
+    if (gross <= 0) {
+      problem = 'Informe o valor cheio da rota — o que ela pagaria se tivesse '
+          'rodado.';
+    } else if (payment == null) {
+      problem = switch (_ruleState) {
+        _RuleState.carregando => 'Ainda buscando a regra de pagamento. Aguarde '
+            'um instante.',
+        _RuleState.falhou =>
+          'Não foi possível ler a regra de pagamento. Tente de novo.',
+        // Sem regra cadastrada é o caso da Shopee. Um default de 100%
+        // superestimaria o ganho e um de 0% apagaria a provisão junto — o app
+        // diz o que falta em vez de inventar o número.
+        _ => 'Sem regra de pagamento cadastrada para a '
+            '${companyLabel(_company)}. Cadastre o percentual antes de '
+            'registrar esta rota.',
+      };
+    } else if (payment.paid <= 0) {
+      // Só alcançável com valor de centavos e percentual baixo. Deixar passar
+      // gravaria uma rota de R$ 0,00, que perde a provisão junto — a gasolina
+      // da ida sumiria do custo.
+      problem = 'Com ${payment.percent}% o valor pago sairia R\$ 0,00. '
+          'Confira o valor da rota.';
+    }
+
+    if (problem == null) return true;
+
+    showNotification(context: context, type: 'error', msg: problem);
+    return false;
   }
 
   Future<void> _saveRoute() async {
@@ -999,28 +1269,51 @@ class _AddIterState extends State<AddIter> {
       return;
     }
 
+    // O campo é formatado como moeda ("R$ 1.234,56"), então precisa do parse
+    // que remove o símbolo e o separador de milhar.
+    final gross = _grossValue;
+
+    // O pagamento da Sem Rota, congelado. `null` em qualquer outro status.
+    final payment = _noRoutePreview;
+
+    if (status == StatusRoute.semRota && !_noRouteIsSavable(payment, gross)) {
+      return;
+    }
+
+    // O que vai para `value`: o líquido na Sem Rota, o valor cheio no resto. É
+    // isto que faz `summarize`, `companySummary` e o lucro funcionarem sem
+    // nenhum deles conhecer a regra de pagamento.
+    final value = payment?.paid ?? gross;
+
     final String now = DateTime.now().toIso8601String();
 
     final draft = NewRouteModal(
       // Mesmo id = o `set` substitui o documento em vez de criar outro.
       id: widget.route?.id ?? Uuid().v4(),
-      company: Company.values[selectedCompanyIndex],
+      company: _company,
       dateRoute:
           '${selectedDate.day.toString().padLeft(2, '0')}/${selectedDate.month.toString().padLeft(2, '0')}/${selectedDate.year}',
       weekday: selectedDate.weekday,
-      status: StatusRoute.values.firstWhere(
-        (e) => e.toString() == 'StatusRoute.$status',
-      ),
-      // O campo é formatado como moeda ("R$ 1.234,56"), então precisa do
-      // parse que remove o símbolo e o separador de milhar.
-      value: CurrencyFormatterHelper.parseMoneyToDouble(valueController.text),
+      status: status,
+      value: value,
+      noRoutePayment: payment,
       kmInitial:
           double.tryParse(kmInicialController.text.replaceAll(',', '.')) ?? 0.0,
       kmFinal:
           double.tryParse(kmFinalController.text.replaceAll(',', '.')) ?? 0.0,
-      packages: int.tryParse(pctInicialController.text),
-      stops: int.tryParse(pctFinalController.text),
-      adress: selectedBairros,
+      // Uma ida que não virou rota não carregou pacote, não fez parada e não
+      // passou por bairro nenhum — então esses campos **não são gravados**
+      // nela, mesmo que estejam preenchidos na tela.
+      //
+      // O caso que isto conserta: reabrir uma rota Concluída com 120 pacotes e
+      // trocar o status para Sem Rota. `_fillFromRoute` deixou os controllers
+      // cheios, e sem esta guarda o card passaria a exibir "Pacotes: 120" e
+      // "Bairros: Aldeota" embaixo do chip "Sem Rota". Os agregados já estavam
+      // protegidos (`realized` e a guarda por inclusão de `summarize`); o que
+      // sobrava era o card afirmando o que não aconteceu.
+      packages: _isNoRoute ? null : int.tryParse(pctInicialController.text),
+      stops: _isNoRoute ? null : int.tryParse(pctFinalController.text),
+      adress: _isNoRoute ? const <String>[] : selectedBairros,
       // O validator já garante a hora de início; o `??` só existe porque o
       // tipo é nullable.
       startAt:
@@ -1035,9 +1328,9 @@ class _AddIterState extends State<AddIter> {
       // Sem isto o campo nunca era gravado: o modelo tem `weather` e o card da
       // lista sabe desenhá-lo, mas nenhuma rota chegava a guardar um.
       weather: currentWeather?.name,
-      isInsucesso: isInsucessoSelected,
-      insucessoQnt: isInsucessoSelected ? insucessoQnt : null,
-      insucessoPorBairro: _distributionToSave(),
+      isInsucesso: _isNoRoute ? false : isInsucessoSelected,
+      insucessoQnt: _isNoRoute || !isInsucessoSelected ? null : insucessoQnt,
+      insucessoPorBairro: _isNoRoute ? const {} : _distributionToSave(),
       provision: widget.route?.provision,
       createdAt: widget.route?.createdAt ?? now,
     );
@@ -1047,7 +1340,7 @@ class _AddIterState extends State<AddIter> {
     EasyLoading.show(status: 'Salvando rota...').ignore();
 
     try {
-      await RouteController.save(widget.user.uid, newRoute);
+      await (widget.saver ?? RouteController.save)(widget.uid, newRoute);
 
       // Os números públicos do dono mudaram. Sem `await`: quem está salvando
       // espera a tela fechar, não uma escrita que é conveniência para os

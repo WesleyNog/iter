@@ -57,6 +57,13 @@ Tudo sobre as rotas **realizadas** (`concluido` + `pago`) dentro do período —
 `realized(inPeriod(...))`, o mesmo recorte que os gráficos usam. Rota agendada
 não entregou pacote, não rodou quilômetro e não passou por bairro nenhum.
 
+> **Desde `sem-rota.md` são dois recortes, não um.** `realized` continua mandando
+> em tudo que descreve uma rota — contagem, pacotes, paradas, insucessos e
+> bairros. As idas `semRota` entram só no que é dinheiro e quilômetro: `value`,
+> `profit`, `km` e `costPerKm`, mais os campos `noRouteCount`/`noRouteValue`. E
+> `isEmpty` passou a olhar as duas contagens: um mês só de idas ao CD tem dinheiro
+> e não pode aparecer como período vazio.
+
 | campo | conta | `null` quando |
 |---|---|---|
 | Rotas | contagem | nunca (zero é zero) |

@@ -320,9 +320,156 @@ void main() {
       expect(byCompany[Company.shopee]!.isEmpty, isTrue);
     });
   });
+
+  group('Sem Rota: dinheiro e quilômetro entram; a contagem, não', () {
+    test('o valor e o lucro somam; a contagem de rotas não sobe', () {
+      final summary = companySummary([
+        _route(
+          status: StatusRoute.pago,
+          value: 200,
+          kmInitial: 1000,
+          kmFinal: 1046.9,
+          provision: _provision(),
+        ),
+        _route(
+          id: 'ida',
+          status: StatusRoute.semRota,
+          value: 40,
+          kmInitial: 2000,
+          kmFinal: 2020,
+          provision: _provision(km: 20, fuel: 14, totalParts: 2.38),
+        ),
+      ]);
+
+      expect(summary.routes, 1);
+      expect(summary.noRouteCount, 1);
+      expect(summary.noRouteValue, 40);
+      expect(summary.value, 240);
+      // 200 − 38,426733 + 40 − 16,38.
+      expect(summary.profit, closeTo(185.193267, 1e-6));
+      expect(summary.km, closeTo(66.9, 1e-9));
+    });
+
+    test('o custo por km inclui a gasolina da ida', () {
+      // Somar o KM de uma e o custo da outra erraria sempre para o mesmo lado —
+      // mais KM no divisor sem custo no dividendo baixa o R$/km, e um custo
+      // baixo demais é o que faz o entregador achar que lucra mais.
+      final summary = companySummary([
+        _route(
+          status: StatusRoute.pago,
+          kmInitial: 1000,
+          kmFinal: 1100,
+          provision: _provision(km: 100, fuel: 70, totalParts: 10),
+        ),
+        _route(
+          id: 'ida',
+          status: StatusRoute.semRota,
+          value: 40,
+          kmInitial: 2000,
+          kmFinal: 2100,
+          provision: _provision(km: 100, fuel: 70, totalParts: 10),
+        ),
+      ]);
+
+      // (80 + 80) ÷ (100 + 100).
+      expect(summary.costPerKm, closeTo(0.8, 1e-9));
+    });
+
+    test('bairro, pacote, parada e insucesso dela ficam de fora', () {
+      // Uma rota editada de `concluido` para `semRota` **mantém** esses campos
+      // gravados: o formulário não limpa nenhum deles. É o teste que impede
+      // alguém de "simplificar" a segunda passada ampliando a lista `done`.
+      final summary = companySummary([
+        _route(
+          status: StatusRoute.pago,
+          packages: 100,
+          stops: 80,
+          adress: const ['Aldeota'],
+        ),
+        _route(
+          id: 'ida',
+          status: StatusRoute.semRota,
+          value: 40,
+          packages: 500,
+          stops: 400,
+          adress: const ['Messejana'],
+          isInsucesso: true,
+          insucessoQnt: 60,
+        ),
+      ]);
+
+      expect(summary.packages, 100);
+      expect(summary.stops, 80);
+      expect(summary.failures, 0);
+      expect(summary.failureRate, 0);
+      expect(summary.topBairro, 'Aldeota');
+      expect(summary.bottomBairro, 'Aldeota');
+    });
+
+    test('um período só de idas NÃO é um período vazio', () {
+      // `isEmpty` governa a tela inteira do Resumo e cada card de empresa. Com
+      // `routes == 0` sozinho, um mês fraco — que é o mês em que a ida ao CD
+      // acontece — diria "Nenhuma rota entre 01/08 e 31/08" e esconderia o
+      // dinheiro que esta feature existe para registrar.
+      final summary = companySummary([
+        _route(
+          id: 'ida',
+          status: StatusRoute.semRota,
+          value: 40,
+          kmInitial: 2000,
+          kmFinal: 2020,
+        ),
+      ]);
+
+      expect(summary.isEmpty, isFalse);
+      expect(summary.routes, 0);
+      expect(summary.noRouteCount, 1);
+      expect(summary.value, 40);
+      expect(summary.km, closeTo(20, 1e-9));
+    });
+
+    test('sem rota e sem ida continua vazio', () {
+      expect(companySummary(const []).isEmpty, isTrue);
+      expect(
+        companySummary([_route(status: StatusRoute.agendado)]).isEmpty,
+        isTrue,
+      );
+    });
+
+    test('a ida sem provisão entra bruta e é contada como não calculada', () {
+      final summary = companySummary([
+        _route(id: 'ida', status: StatusRoute.semRota, value: 40),
+      ]);
+
+      expect(summary.profit, 40);
+      expect(summary.uncalculatedValue, 40);
+      expect(summary.hasUncalculated, isTrue);
+    });
+
+    test('a ida vai para o card da empresa dela', () {
+      final byCompany = summaryByCompany([
+        _route(status: StatusRoute.pago, value: 100),
+        _route(
+          id: 'ida',
+          status: StatusRoute.semRota,
+          value: 40,
+        ).copyForCompany(Company.mercadolivre),
+      ]);
+
+      expect(byCompany[Company.amazon]!.noRouteCount, 0);
+      expect(byCompany[Company.mercadolivre]!.noRouteCount, 1);
+      expect(byCompany[Company.mercadolivre]!.noRouteValue, 40);
+      expect(byCompany[Company.mercadolivre]!.isEmpty, isFalse);
+    });
+  });
 }
 
 /// Açúcar só para o teste de agrupamento.
+///
+/// Descarta de propósito `provision`, `noRoutePayment` e o resto: os testes que
+/// a usam olham só empresa e valor. Não copie este padrão para código de
+/// produção — é exatamente a forma de `withProvision`, onde omitir um campo
+/// apaga dado gravado sem erro de compilação.
 extension on NewRouteModal {
   NewRouteModal copyForCompany(Company company) => NewRouteModal(
     id: id,

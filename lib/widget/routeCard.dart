@@ -170,6 +170,7 @@ class RouteCard extends StatelessWidget {
     final duration = RouteTime.formatDuration(route.startAt, end);
     final bairros = route.adress ?? const <String>[];
     final weather = route.weather;
+    final payment = route.noRoutePayment;
 
     final rows = <Widget>[
       if (km != null)
@@ -186,6 +187,15 @@ class RouteCard extends StatelessWidget {
             : '$start às ${RouteTime.formatTime(end)}'
                   '${duration == null ? '' : ' ($duration)'}',
       ),
+      // De onde saiu o valor desta rota. Só a Sem Rota tem essa pergunta: nas
+      // outras, o que aparece no cabeçalho é o que a empresa pagou, e ponto.
+      if (payment != null)
+        _detailRow(
+          Icons.do_not_disturb_on_outlined,
+          'Pagamento',
+          '${payment.percent}% de '
+              '${CurrencyFormatterHelper.formatMoney(payment.grossValue)}',
+        ),
       if (bairros.isNotEmpty)
         _detailRow(Icons.streetview_outlined, 'Bairros', bairros.join(', ')),
       if (route.isInsucesso == true)
@@ -237,10 +247,7 @@ class RouteCard extends StatelessWidget {
     final provision = route.provision;
 
     if (provision == null) {
-      final done =
-          route.status == StatusRoute.concluido ||
-          route.status == StatusRoute.pago;
-      if (!done || _totalKm != null) return const SizedBox.shrink();
+      if (!route.hasRun || _totalKm != null) return const SizedBox.shrink();
 
       return Padding(
         padding: const EdgeInsets.only(top: 4),

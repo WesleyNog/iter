@@ -50,6 +50,38 @@ void main() {
       expect(monthStatsOf(rotas, DateTime(2026, 8)).routes, 2);
     });
 
+    test('a ida sem rota não entra nos números públicos', () {
+      // Este arquivo é o balde que os **amigos** leem em
+      // `profiles/{uid}/stats/{yyyy-MM}`, e nenhuma linha dele mudou por causa
+      // da Sem Rota — o filtro é `realized`, que continua sendo `concluido` +
+      // `pago`. O teste existe para que "consertar" `monthStatsOf` para usar
+      // `receivedPayment` fique vermelho aqui, e não errado na tela de outra
+      // pessoa.
+      final rotas = [
+        _route(startAt: '2026-08-01T08:00:00', endAt: '2026-08-01T16:00:00'),
+        _route(
+          startAt: '2026-08-02T08:00:00',
+          // Uma ida curta, e é justamente a duração que ela distorceria: 40
+          // minutos entrando na média puxaria "tempo médio por rota" para
+          // baixo e faria parecer que as rotas ficaram mais rápidas.
+          endAt: '2026-08-02T08:40:00',
+          status: StatusRoute.semRota,
+          packages: 500,
+          isInsucesso: true,
+          insucessoQnt: 60,
+        ),
+      ];
+
+      final stats = monthStatsOf(rotas, DateTime(2026, 8));
+
+      expect(stats.routes, 1);
+      expect(stats.timedRoutes, 1);
+      expect(stats.totalMinutes, 480);
+      expect(stats.minutesPerRoute, 480);
+      expect(stats.packages, 0);
+      expect(stats.failures, 0);
+    });
+
     test('só rota realizada entra', () {
       // Uma agendada com pacotes estimados inflaria o denominador sem ninguém
       // ter entregado nada — a mesma régua de `realized`.

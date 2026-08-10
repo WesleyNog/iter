@@ -58,7 +58,10 @@ class CompanySummaryCard extends StatelessWidget {
               ),
             )
           else ...[
-            _money('Rotas', summary.value, key: 'summary-value'),
+            // "Ganhos" e não "Rotas": desde a Sem Rota este número soma
+            // dinheiro que não veio de rota nenhuma, e o rótulo antigo passaria
+            // a descrever errado o que está do lado dele.
+            _money('Ganhos', summary.value, key: 'summary-value'),
             const SizedBox(height: 6),
             _money(
               'Lucro',
@@ -67,11 +70,48 @@ class CompanySummaryCard extends StatelessWidget {
               bold: true,
               color: _isTotal ? Colors.white : Colors.green.shade700,
             ),
+            if (summary.noRouteCount > 0) _noRouteNote(),
             if (summary.hasUncalculated) _uncalculatedWarning(),
             _divider(),
             _metrics(),
             if (summary.topBairro != null) ...[_divider(), _bairros()],
           ],
+        ],
+      ),
+    );
+  }
+
+  /// Quanto dos ganhos veio de ida que não virou rota.
+  ///
+  /// A parcela aparece porque ela **está dentro** de "Ganhos" e de "Lucro", não
+  /// ao lado: sem a linha, um mês com muita ida ao CD pareceria um mês de
+  /// rotas. Some sozinha quando não houve nenhuma — e esse silêncio é o caso
+  /// normal.
+  Widget _noRouteNote() {
+    final count = summary.noRouteCount;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.do_not_disturb_on_outlined,
+            size: 13,
+            color: _isTotal ? Colors.white70 : Colors.blueGrey.shade400,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              '${CurrencyFormatterHelper.formatMoney(summary.noRouteValue)}'
+              ' de ${count == 1 ? '1 ida' : '$count idas'} sem rota',
+              key: const Key('summary-no-route'),
+              style: TextStyle(
+                fontSize: 11,
+                color: _isTotal ? Colors.white70 : Colors.blueGrey,
+              ),
+            ),
+          ),
         ],
       ),
     );

@@ -156,7 +156,7 @@ class _ListIterScreenState extends State<ListIterScreen> {
   void _editRoute(NewRouteModal route) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => AddIter(user: widget.user, route: route),
+        builder: (_) => AddIter(uid: widget.user.uid, route: route),
       ),
     );
   }

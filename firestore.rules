@@ -69,7 +69,14 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Postos e preços — a ÚNICA coleção compartilhada do app.
+    // Postos e preços — a única coleção do app **sem dono**: qualquer
+    // autenticado grava por cima do que outro gravou.
+    //
+    // Já não é a única compartilhada (`posts`, `reports` e `norouterule` vieram
+    // depois), e a frase anterior, que dizia isso, envelheceu sem que nenhum
+    // teste ou compilador reclamasse. O que continua verdade é a parte que
+    // importa: nas outras, ou a regra prende cada documento ao `uid` de quem
+    // escreve, ou ninguém escreve.
     //
     // Existe para um dia indicar preços por perto: quem passa num posto relata
     // quanto pagou, e todos leem. Por isso a leitura é de qualquer autenticado
@@ -97,6 +104,40 @@ service cloud.firestore {
                       && request.resource.data.uid == request.auth.uid;
         allow update, delete: if false;
       }
+    }
+
+    // ── Regra de pagamento da rota que acabou antes de começar ────────────
+    //
+    // `norouterule/{empresa}` guarda quanto cada empresa paga quando a rota
+    // some do aplicativo depois de aceita: o Mercado Livre paga 40% do valor, a
+    // Amazon paga 100%. O id do documento é o nome do valor de `Company`
+    // (`mercadolivre`, `amazon`, `shopee`), o mesmo texto que a rota grava em
+    // `company` — leitura por id conhecido, sem query e sem índice.
+    //
+    // É a primeira coleção do app que é **configuração de negócio**, e não dado
+    // de usuário. Essa é a diferença que decide a escrita: `gastop` é gravável
+    // porque quem passa no posto relata o preço, e o pior caso é um preço
+    // errado que a mediana dilui. Aqui não há o que relatar, e um `create`
+    // liberado deixa qualquer conta autenticada gravar `{percent: 0}` em
+    // `amazon` — zerando o pagamento de **todo mundo** — ou `{percent: 100}` em
+    // uma que paga 40, inflando o ganho de todos. Quem edita é o dono, no
+    // console, onde a escrita de admin não passa por estas regras.
+    //
+    // O percentual lido fica **congelado dentro da rota** (`noRoutePayment`),
+    // então trocar o número aqui não reescreve nada que já aconteceu. Ver
+    // `docs/specs/sem-rota.md`.
+    match /norouterule/{company} {
+      // `get` e não `read`: `read` é `get` + `list`, e uma condição que não
+      // olha `resource` autoriza baixar a coleção inteira. Aqui o estrago seria
+      // pequeno — três documentos com um inteiro dentro —, mas a regra da casa
+      // veio de `nicknames`, que entregou o mapa apelido → uid da base toda até
+      // ser fechada, e exceção é como a próxima coleção volta a ficar aberta.
+      //
+      // `list` não tem consumidor: o app busca `norouterule/{empresa}` por id e
+      // guarda o resultado no estado da tela.
+      allow get: if request.auth != null;
+      allow list: if false;
+      allow write: if false;
     }
 
     // Reserva de apelidos: o apelido é o ID do documento, então a unicidade

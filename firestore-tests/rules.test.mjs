@@ -985,3 +985,79 @@ describe('denúncia — sem servidor, o documento é o canal', () => {
     await assertFails(deleteDoc(doc(bia, 'reports', `p_p1__${BIA}`)))
   })
 })
+
+describe('regra de pagamento — configuração de negócio, não dado de usuário', () => {
+  before(async () => {
+    // `seed()` começa com `clearFirestore()`. Semear antes dele apagaria isto
+    // em silêncio — e, combinado com a armadilha do `getDoc` abaixo, o teste de
+    // leitura continuaria verde sem documento nenhum no banco.
+    await seed()
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'norouterule', 'mercadolivre'), { percent: 40 })
+      await setDoc(doc(db, 'norouterule', 'amazon'), { percent: 100 })
+    })
+  })
+
+  it('qualquer autenticado lê a regra da empresa, por id', async () => {
+    // `assertSucceeds(getDoc(...))` sozinho NÃO prova nada: um `get`
+    // autorizado sobre documento inexistente devolve um snapshot com
+    // `exists() === false`, não um erro. Sem afirmar o valor, este teste
+    // passaria com o seed esquecido, com o nome da coleção digitado errado, ou
+    // com o `clearFirestore` apagando antes.
+    const ml = await getDoc(doc(bia, 'norouterule', 'mercadolivre'))
+    assert.equal(ml.exists(), true)
+    assert.equal(ml.data().percent, 40)
+
+    const amazon = await getDoc(doc(zeca, 'norouterule', 'amazon'))
+    assert.equal(amazon.data().percent, 100)
+  })
+
+  it('empresa sem regra é documento ausente, não erro de permissão', async () => {
+    // A Shopee não tem documento, e o app precisa distinguir isso de "não
+    // consegui ler": um é "cadastre a regra", o outro é "tente de novo". Se
+    // esta leitura fosse negada, o entregador offline e o entregador da Shopee
+    // veriam a mesma frase.
+    const shopee = await getDoc(doc(bia, 'norouterule', 'shopee'))
+    assert.equal(shopee.exists(), false)
+  })
+
+  it('anônimo NÃO lê', async () => {
+    // Primeiro teste anônimo do arquivo. Escrito com
+    // `env.authenticatedContext('qualquer')` ele testaria a asserção errada:
+    // `request.auth != null` é satisfeito por qualquer uid, então passaria sem
+    // dizer nada sobre quem está de fora.
+    const anonimo = env.unauthenticatedContext().firestore()
+    await assertFails(getDoc(doc(anonimo, 'norouterule', 'mercadolivre')))
+  })
+
+  it('NÃO lista a coleção', async () => {
+    // `get` e não `read`, como em `nicknames` e `profiles`. Não há consumidor
+    // de `list`: o app busca por id conhecido.
+    await assertFails(getDocs(collection(bia, 'norouterule')))
+  })
+
+  it('NINGUÉM grava pelo cliente — nem criando, nem alterando', async () => {
+    // A linha que mais protege desta feature. Com `create` liberado, uma conta
+    // autenticada grava `{percent: 0}` em `amazon` e zera o pagamento de todo
+    // mundo; com `update`, troca 40 por 100 e infla o ganho de todos.
+    //
+    // Os três casos rodam contra ids **semeados**. Um `updateDoc` sobre id que
+    // nunca existiu volta `not-found`, e `assertFails` só aceita
+    // `permission-denied`: o teste quebraria pelo motivo errado e mandaria o
+    // próximo leitor investigar a regra em vez do seed.
+    await assertFails(
+      setDoc(doc(bia, 'norouterule', 'amazon'), { percent: 0 }),
+    )
+    await assertFails(
+      updateDoc(doc(bia, 'norouterule', 'mercadolivre'), { percent: 100 }),
+    )
+    await assertFails(deleteDoc(doc(bia, 'norouterule', 'mercadolivre')))
+  })
+
+  it('NÃO cria empresa nova pelo cliente', async () => {
+    await assertFails(
+      setDoc(doc(ana, 'norouterule', 'shopee'), { percent: 100 }),
+    )
+  })
+})

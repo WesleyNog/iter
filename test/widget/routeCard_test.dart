@@ -18,6 +18,7 @@ NewRouteModal buildRoute({
   int? insucessoQnt,
   Map<String, int> insucessoPorBairro = const {},
   RouteProvision? provision,
+  NoRoutePayment? noRoutePayment,
 }) {
   return NewRouteModal(
     id: 'rota-1',
@@ -37,6 +38,7 @@ NewRouteModal buildRoute({
     insucessoQnt: insucessoQnt,
     insucessoPorBairro: insucessoPorBairro,
     provision: provision,
+    noRoutePayment: noRoutePayment,
     createdAt: '2026-08-01T09:00:00.000',
   );
 }
@@ -100,6 +102,91 @@ void main() {
 
     await pumpCard(tester, buildRoute(status: StatusRoute.pago));
     expect(find.text('Pago'), findsOneWidget);
+
+    await pumpCard(tester, buildRoute(status: StatusRoute.semRota));
+    expect(find.text('Sem Rota'), findsOneWidget);
+  });
+
+  group('Sem Rota', () {
+    NewRouteModal ida({
+      double grossValue = 250,
+      int percent = 40,
+      double? kmInitial,
+      double? kmFinal,
+      RouteProvision? provision,
+    }) {
+      final payment = NoRoutePayment(
+        grossValue: grossValue,
+        percent: percent,
+        appliedAt: '2026-08-01T10:00:00.000',
+      );
+
+      return buildRoute(
+        status: StatusRoute.semRota,
+        value: payment.paid,
+        kmInitial: kmInitial,
+        kmFinal: kmFinal,
+        provision: provision,
+        noRoutePayment: payment,
+      );
+    }
+
+    testWidgets('o cabeçalho mostra o que entrou, não o valor cheio', (
+      tester,
+    ) async {
+      await pumpCard(tester, ida());
+
+      expect(find.text('R\$ 100,00'), findsOneWidget);
+      expect(find.text('R\$ 250,00'), findsNothing);
+    });
+
+    testWidgets('aberto, explica de onde saiu o número', (tester) async {
+      // Sem esta linha, R$ 100,00 numa rota que valia R$ 250,00 é um número
+      // sem procedência, e refazer a conta de cabeça toda vez é o que o app
+      // existe para evitar.
+      await pumpCard(tester, ida(), isExpanded: true);
+      await tester.pumpAndSettle();
+
+      expect(find.text('40% de R\$ 250,00'), findsOneWidget);
+    });
+
+    testWidgets('a linha só aparece nela', (tester) async {
+      await pumpCard(
+        tester,
+        buildRoute(status: StatusRoute.pago),
+        isExpanded: true,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('% de R\$'), findsNothing);
+    });
+
+    testWidgets('o lucro da ida aparece como em qualquer rota', (tester) async {
+      // O KM até o CD e de volta queimou gasolina de verdade: sem o bloco de
+      // lucro, esse custo não existiria em lugar nenhum da tela.
+      await pumpCard(
+        tester,
+        ida(
+          kmInitial: 1000,
+          kmFinal: 1046.9,
+          provision: buildProvision(),
+        ),
+        isExpanded: true,
+      );
+      await tester.pumpAndSettle();
+
+      expect(_money(tester, 'route-fuel'), 'R\$ 32,83');
+      expect(_money(tester, 'route-provision'), 'R\$ 5,60');
+      // 100,00 − 32,83 − 5,596733.
+      expect(_money(tester, 'route-profit'), 'R\$ 61,57');
+    });
+
+    testWidgets('sem KM, pede o KM em vez de ficar muda', (tester) async {
+      await pumpCard(tester, ida(), isExpanded: true);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('route-profit-hint')), findsOneWidget);
+    });
   });
 
   testWidgets('esconde os detalhes quando fechado', (tester) async {

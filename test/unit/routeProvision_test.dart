@@ -94,6 +94,45 @@ void main() {
       expect(resolved, isNotNull);
     });
 
+    test('a ida sem rota provisiona: o KM até o CD é KM rodado', () {
+      // 20 km de ida e volta ao CD, a R$ 0,70/km de gasolina.
+      final resolved = resolveProvision(
+        route: _route(
+          status: StatusRoute.semRota,
+          value: 40,
+          kmInitial: 2000,
+          kmFinal: 2020,
+        ),
+        existing: null,
+        vehicle: _fiorino(),
+        now: _fixedNow,
+      )!;
+
+      expect(resolved.km, closeTo(20, 1e-9));
+      expect(resolved.fuel, closeTo(14.0, 0.001));
+      // Ela pagou R$ 40 e custou R$ 16,38: sobraram R$ 23,62. Sem provisão, a
+      // gasolina dessa viagem simplesmente não existiria em lugar nenhum.
+      expect(resolved.profitFrom(40), closeTo(23.6132, 0.001));
+    });
+
+    test('o congelamento vale para a ida também', () {
+      final junho = provisionFor(
+        _fiorino(),
+        _route(status: StatusRoute.semRota, kmInitial: 2000, kmFinal: 2020),
+        now: _fixedNow,
+      );
+
+      final resolved = resolveProvision(
+        route: _route(status: StatusRoute.semRota, kmInitial: 2000, kmFinal: 2020),
+        existing: junho,
+        // A gasolina subiu de R$ 7,00 para R$ 9,00 desde então.
+        vehicle: _fiorino(fuelPrice: 9.0),
+      )!;
+
+      expect(identical(resolved, junho), isTrue);
+      expect(resolved.fuel, closeTo(14.0, 0.001));
+    });
+
     test(
       'O TESTE QUE PROTEGE O HISTÓRICO: preço mudou, KM igual → mantém',
       () {

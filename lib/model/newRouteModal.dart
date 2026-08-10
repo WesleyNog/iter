@@ -4,7 +4,98 @@ import 'package:iter/Utils/routeTime.dart';
 
 enum Company { mercadolivre, amazon, shopee }
 
-enum StatusRoute { agendado, andamento, concluido, pago }
+/// O ciclo de uma rota. A ordem é lida como esteira: `valueByStatus` itera
+/// `StatusRoute.values` e a barra do Resumo desenha nessa sequência.
+///
+/// [semRota] vai no **fim** por isso — inserir no meio reordenaria um gráfico de
+/// outra tela sem nenhum sinal aqui. É a rota que a empresa ofereceu, foi aceita
+/// e acabou antes de começar: ela paga uma fração do valor, e o que fica gravado
+/// em `value` já é essa fração. Ver [NoRoutePayment] e `docs/specs/sem-rota.md`.
+enum StatusRoute { agendado, andamento, concluido, pago, semRota }
+
+/// O pagamento de uma ida que não virou rota, **congelado**.
+///
+/// Mesma escolha de [RouteProvision], pelo mesmo motivo: o percentual mora numa
+/// coleção global (`norouterule/{empresa}`) que o dono edita no console, e uma
+/// taxa guardada é uma taxa que alguém muda. Se o valor cheio ficasse na rota e
+/// o percentual fosse aplicado na leitura, trocar 40 por 30 hoje reescreveria o
+/// lucro de junho — que é o que a planilha faz e o que este app existe para não
+/// fazer.
+///
+/// O que vai para `NewRouteModal.value` é [paid], já descontado. É isso que faz
+/// `summarize`, `companySummary`, `valuePerCompany` e o lucro funcionarem sem
+/// nenhum deles conhecer a regra — e o primeiro que a esquecesse mostraria 100%
+/// de uma rota de 40%.
+///
+/// [grossValue] e [percent] existem para as outras duas perguntas: o formulário
+/// reabre com o valor **cheio** (sem ele, cada edição aplicaria o percentual de
+/// novo, e R$ 250 viraria R$ 100 e depois R$ 40) e o card consegue dizer "40% de
+/// R$ 250,00" em vez de um número sem procedência.
+class NoRoutePayment {
+  const NoRoutePayment({
+    required this.grossValue,
+    required this.percent,
+    required this.appliedAt,
+  });
+
+  /// O que a rota valia cheia — o que o entregador digita no campo Valor.
+  final double grossValue;
+
+  /// Quanto a empresa paga por ela, em pontos percentuais (40 = 40%).
+  final int percent;
+
+  final String appliedAt;
+
+  /// O que entrou no bolso. **Derivado, nunca gravado dentro deste bloco** —
+  /// valor derivado que se grava é valor que um dia discorda da origem.
+  ///
+  /// Ele já está gravado uma vez, em `NewRouteModal.value`, porque é de lá que
+  /// todos os agregados leem. A invariante `route.value == payment.paid` é
+  /// comparação exata de `double`, e só se sustenta porque os dois lados passam
+  /// por [paidValue].
+  double get paid => paidValue(grossValue, percent);
+
+  /// A conta, em **centavos inteiros**, sem float no meio.
+  ///
+  /// Duas armadilhas evitadas aqui, e as duas passam despercebidas na tela
+  /// porque `toStringAsFixed(2)` esconde um `double` sujo:
+  ///
+  /// - `gross * (percent / 100)` dá `99.96000000000001` para `249,90 × 40%`,
+  ///   enquanto `gross * percent / 100` dá `99,96` exato. Ou seja, o caso óbvio
+  ///   de teste passa **por sorte**, e o defeito aparece só em outro par
+  ///   (`1.234,56 × 40% = 493.82399999999996`).
+  /// - `(x * 100).round() / 100` arredonda duas vezes, e os meios centavos são
+  ///   alcançáveis: `87,45 × 30%` dá exatamente `26,235`. Pior, `1.005 * 100`
+  ///   vira `100.49999999999999` em `double`, então a direção do arredondamento
+  ///   passaria a ser decidida por ruído de float em vez de por regra.
+  ///
+  /// Com inteiros, `+ 50` antes da divisão é meio-centavo-para-cima, sempre.
+  static double paidValue(double grossValue, int percent) {
+    // Nunca negativo: o `+ 50` só é "para cima" do lado positivo, e o formulário
+    // não tem como produzir valor negativo.
+    if (grossValue <= 0 || percent <= 0) return 0;
+
+    final grossCents = (grossValue * 100).round();
+    return (grossCents * percent + 50) ~/ 100 / 100;
+  }
+
+  Map<String, dynamic> toMap() => {
+    'grossValue': grossValue,
+    'percent': percent,
+    'appliedAt': appliedAt,
+  };
+
+  /// Leitura defensiva, como [RouteProvision.fromMap] e ao contrário de
+  /// `NewRouteModal.value`, que é a exceção da casa: o Firestore devolve `int`
+  /// para número sem casa decimal, um cast cru lança, e o `try/catch` por
+  /// documento de `RouteController._parseAll` faria a rota **sumir da lista sem
+  /// log nenhum**.
+  factory NoRoutePayment.fromMap(Map<String, dynamic> map) => NoRoutePayment(
+    grossValue: readDouble(map['grossValue']) ?? 0,
+    percent: readInt(map['percent']) ?? 0,
+    appliedAt: map['appliedAt'] as String? ?? '',
+  );
+}
 
 /// O custo de uma rota, **congelado** no momento em que ela foi concluída.
 ///
@@ -123,6 +214,13 @@ class NewRouteModal {
   /// quando faltou KM ou veículo para calcular. Ver [RouteProvision].
   final RouteProvision? provision;
 
+  /// Como o valor desta rota foi calculado, quando ela é [StatusRoute.semRota].
+  ///
+  /// `null` em toda rota normal. Ver [NoRoutePayment] — e note que `value` já
+  /// vem descontado, então quem só lê `value` está certo sem saber que isto
+  /// existe.
+  final NoRoutePayment? noRoutePayment;
+
   final String createdAt;
 
   /// A mesma rota com outra provisão.
@@ -150,8 +248,30 @@ class NewRouteModal {
     insucessoQnt: insucessoQnt,
     insucessoPorBairro: insucessoPorBairro,
     provision: provision,
+    // Esta linha é a única defesa contra apagar o bloco congelado no mesmo save
+    // que o criou: os parâmetros são nomeados e opcionais, então omiti-la não
+    // gera erro de compilação nem teste vermelho — e o estrago só apareceria na
+    // edição seguinte, aplicando o percentual sobre um valor já descontado.
+    noRoutePayment: noRoutePayment,
     createdAt: createdAt,
   );
+
+  /// Esta rota **rodou**: queimou combustível e tem custo a provisionar.
+  ///
+  /// Não é o mesmo que "foi uma rota". A ida sem rota entra aqui e fica de fora
+  /// de `realized` — é a distinção que a feature inteira sustenta: dinheiro e
+  /// quilômetro de um lado, contagem e pacotes do outro.
+  ///
+  /// É getter, e não a condição repetida, porque ela estava escrita em **três**
+  /// arquivos: `vehicleCost.resolveProvision`, `addIter._withProvision` e
+  /// `routeCard._profitBlock`. A de `addIter` roda **primeiro** e curto-circuita
+  /// com `withProvision(null)`, então corrigir só a de `vehicleCost` deixava
+  /// toda Sem Rota salvando sem provisão — o teste unitário verde, o KM até o CD
+  /// nunca virando gasolina, e nenhum erro de compilação.
+  bool get hasRun =>
+      status == StatusRoute.concluido ||
+      status == StatusRoute.pago ||
+      status == StatusRoute.semRota;
 
   /// Coluna O da planilha: `valor − gasolina − peças`.
   ///
@@ -179,6 +299,7 @@ class NewRouteModal {
     this.insucessoQnt,
     this.insucessoPorBairro = const {},
     this.provision,
+    this.noRoutePayment,
     required this.createdAt,
   });
 
@@ -213,6 +334,13 @@ class NewRouteModal {
               Map<String, dynamic>.from(map['provision'] as Map),
             )
           : null,
+      // Mesma guarda `is Map` da provisão: ausente em toda rota que não é
+      // `semRota`, e um documento corrompido não pode derrubar a leitura.
+      noRoutePayment = map['noRoutePayment'] is Map
+          ? NoRoutePayment.fromMap(
+              Map<String, dynamic>.from(map['noRoutePayment'] as Map),
+            )
+          : null,
       createdAt = map['createdAt'];
 
   Map<String, dynamic> toMap() => {
@@ -234,6 +362,7 @@ class NewRouteModal {
     'insucessoQnt': insucessoQnt,
     'insucessoPorBairro': distributionToList(insucessoPorBairro),
     'provision': provision?.toMap(),
+    'noRoutePayment': noRoutePayment?.toMap(),
     'createdAt': createdAt,
   };
 

@@ -145,7 +145,9 @@ fim inclusive), **em qualquer status**. Os gráficos de análise usam esse mesmo
 período restrito a `concluido` ou `pago`.
 
 **1. Total do período.** `Σ value`. O card resumo mostra também a quantidade de
-rotas e a média por rota (total ÷ quantidade), além de uma barra de proporção
+rotas e a média por rota (`routeTotal ÷ count` — **não** `total ÷ quantidade`:
+desde `sem-rota.md` o total inclui as idas sem rota e a contagem não, e dividir
+um pelo outro cruzaria populações, sempre para mais), além de uma barra de proporção
 por empresa com a legenda `Empresa (xx%) · R$ y`, no lugar da barra de métodos
 de pagamento da referência. Onde a referência mostrava "Meta atingida", aqui vai
 **taxa de entrega**: `(Σ packages − Σ insucessos) ÷ Σ packages`, considerando só
@@ -389,7 +391,7 @@ O carrossel do topo tem quatro páginas, e cobre o **período inteiro**:
 | Página | Status | Para quê |
 |---|---|---|
 | Resumo do período | todos | quanto o período vale, dividido por status |
-| Pago no período | `pago` | o que já caiu na conta |
+| Pago no período | `pago` + `semRota` | o que já caiu na conta |
 | A receber no período | `concluido` | rodado e não pago |
 | Pendentes no período | `agendado` + `andamento` | estimativa do que falta rodar |
 

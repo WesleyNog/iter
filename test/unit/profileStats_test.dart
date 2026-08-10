@@ -50,6 +50,36 @@ void main() {
       expect(stats.routes, 2);
     });
 
+    test('a ida sem rota fica fora da carreira', () {
+      // `profileStats` alimenta `profiles/{uid}/stats/all`, que outro
+      // entregador lê. Ninguém fica mais produtivo por uma rota que não teve —
+      // e, como `monthStats`, este arquivo não mudou uma linha: quem exclui é
+      // `realized`.
+      final stats = profileStats([
+        _route(
+          status: StatusRoute.pago,
+          packages: 100,
+          stops: 80,
+          endAt: DateTime(2026, 8, 10, 16),
+        ),
+        _route(
+          id: 'ida',
+          status: StatusRoute.semRota,
+          packages: 500,
+          stops: 400,
+          endAt: DateTime(2026, 8, 10, 8, 40),
+          isInsucesso: true,
+          insucessoQnt: 60,
+        ),
+      ]);
+
+      expect(stats.routes, 1);
+      expect(stats.deliveredPackages, 100);
+      expect(stats.stops, 80);
+      expect(stats.failureRate, 0);
+      expect(stats.averageDuration, const Duration(hours: 8));
+    });
+
     test('lista vazia devolve zeros e nulos, sem lançar', () {
       final stats = profileStats([]);
 

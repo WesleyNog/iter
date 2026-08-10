@@ -150,25 +150,26 @@ const _kmEpsilon = 0.001;
 ///
 /// | situação | resultado |
 /// |---|---|
-/// | rota não está concluída nem paga | `null` — ela voltou a não ter rodado |
-/// | concluída, ainda sem provisão | calcula agora |
-/// | concluída, mesmo KM e mesmo veículo | **mantém** o que já estava |
-/// | concluída, KM ou veículo mudou | recalcula |
+/// | rota não rodou (ver `NewRouteModal.hasRun`) | `null` — ela voltou a não ter rodado |
+/// | rodou, ainda sem provisão | calcula agora |
+/// | rodou, mesmo KM e mesmo veículo | **mantém** o que já estava |
+/// | rodou, KM ou veículo mudou | recalcula |
 /// | sem veículo cadastrado | mantém o que havia; `null` se não havia |
 ///
 /// A terceira linha é a que importa: corrigir o endereço de uma rota de junho
 /// não pode reescrever a provisão dela com o preço de gasolina de hoje.
+///
+/// A ida sem rota **provisiona como qualquer outra**: o KM até o CD e de volta é
+/// quilômetro rodado, e a gasolina dele saiu do bolso do mesmo jeito.
 RouteProvision? resolveProvision({
   required NewRouteModal route,
   required RouteProvision? existing,
   required Vehicle? vehicle,
   DateTime? now,
 }) {
-  final done =
-      route.status == StatusRoute.concluido || route.status == StatusRoute.pago;
   // Rota que voltou para agendada não rodou: manter o custo seria contabilizar
   // gasolina de uma viagem que não aconteceu.
-  if (!done) return null;
+  if (!route.hasRun) return null;
 
   // Veículo excluído não apaga o que já foi calculado — a provisão é um valor
   // em reais, não um ponteiro para o veículo.

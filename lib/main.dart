@@ -51,7 +51,7 @@ class MyApp extends StatelessWidget {
       routes: {
         '/addIter': (context) {
           final user = ModalRoute.of(context)!.settings.arguments as User;
-          return AddIter(user: user);
+          return AddIter(uid: user.uid);
         },
       },
       // Obrigatório: instala o overlay usado pelo EasyLoading.

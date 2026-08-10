@@ -10,6 +10,8 @@ CompanySummary _summary({
   double profit = 1446.24,
   double uncalculatedValue = 0,
   int failures = 12,
+  int noRouteCount = 0,
+  double noRouteValue = 0,
   double? km = 428.5,
   int? packages = 512,
   int? stops = 390,
@@ -20,6 +22,8 @@ CompanySummary _summary({
 }) {
   return CompanySummary(
     routes: routes,
+    noRouteCount: noRouteCount,
+    noRouteValue: noRouteValue,
     value: value,
     profit: profit,
     uncalculatedValue: uncalculatedValue,
@@ -167,12 +171,72 @@ void main() {
     });
   });
 
+  group('idas sem rota', () {
+    testWidgets('a parcela aparece, porque está DENTRO dos ganhos', (
+      tester,
+    ) async {
+      // Sem a linha, um mês com muita ida ao CD pareceria um mês de rotas: o
+      // dinheiro delas já está somado em "Ganhos" e em "Lucro".
+      await _pump(
+        tester,
+        _summary(routes: 10, noRouteCount: 2, noRouteValue: 140),
+      );
+
+      expect(_text(tester, 'summary-no-route'), 'R\$ 140,00 de 2 idas sem rota');
+    });
+
+    testWidgets('uma ida é "1 ida", não "1 idas"', (tester) async {
+      await _pump(
+        tester,
+        _summary(noRouteCount: 1, noRouteValue: 100),
+      );
+
+      expect(_text(tester, 'summary-no-route'), 'R\$ 100,00 de 1 ida sem rota');
+    });
+
+    testWidgets('sem ida nenhuma, a linha não existe', (tester) async {
+      await _pump(tester, _summary());
+
+      expect(find.byKey(const Key('summary-no-route')), findsNothing);
+    });
+
+    testWidgets('um mês SÓ de idas não é um mês vazio', (tester) async {
+      // `isEmpty` governa este card e a aba Resumo inteira. Com `routes == 0`
+      // sozinho, o mês fraco — que é justamente quando a ida ao CD acontece —
+      // escondia o dinheiro que a feature existe para registrar.
+      await _pump(
+        tester,
+        _summary(
+          routes: 0,
+          value: 140,
+          profit: 120,
+          failures: 0,
+          noRouteCount: 2,
+          noRouteValue: 140,
+          km: 40,
+          packages: null,
+          stops: null,
+          failureRate: null,
+          topBairro: null,
+          bottomBairro: null,
+        ),
+      );
+
+      expect(find.byKey(const Key('summary-empty')), findsNothing);
+      expect(_text(tester, 'summary-value'), 'R\$ 140,00');
+      expect(_text(tester, 'summary-km'), '40,0 km');
+      expect(_text(tester, 'summary-no-route'), 'R\$ 140,00 de 2 idas sem rota');
+    });
+  });
+
   group('empresa sem rota no período', () {
     testWidgets('o card continua na tela, com o rótulo', (tester) async {
       await _pump(
         tester,
         const CompanySummary(
           routes: 0,
+          noRouteCount: 0,
+          noRouteValue: 0,
           value: 0,
           profit: 0,
           uncalculatedValue: 0,

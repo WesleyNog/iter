@@ -22,6 +22,8 @@ class CompanySummary {
     required this.profit,
     required this.uncalculatedValue,
     required this.failures,
+    required this.noRouteCount,
+    required this.noRouteValue,
     this.km,
     this.packages,
     this.stops,
@@ -32,9 +34,20 @@ class CompanySummary {
   });
 
   /// Quantas rotas realizadas (`concluido` + `pago`) no recorte.
+  ///
+  /// A ida sem rota **não** entra: ela está em [noRouteCount]. Ela não entregou
+  /// pacote, não passou por bairro e não foi uma rota — mas o dinheiro e o KM
+  /// dela estão em [value], [profit], [km] e [costPerKm].
   final int routes;
 
-  /// `Σ value` — o que a empresa pagou pelas rotas.
+  /// Quantas idas que não viraram rota (`semRota`).
+  final int noRouteCount;
+
+  /// Quanto delas veio, já com o percentual aplicado. Faz parte de [value] — é a
+  /// parcela, não uma soma à parte.
+  final double noRouteValue;
+
+  /// `Σ value` — o que a empresa pagou, pelas rotas **e** pelas idas sem rota.
   final double value;
 
   /// Lucro **misto**: líquido nas rotas que já têm custo calculado, bruto nas
@@ -78,7 +91,14 @@ class CompanySummary {
   /// o card.
   final String? bottomBairro;
 
-  bool get isEmpty => routes == 0;
+  /// Não há **nada** para mostrar.
+  ///
+  /// As duas contagens, e não só [routes]: um mês só de idas ao CD tem dinheiro,
+  /// KM e lucro, e `routes == 0` sozinho faria a aba Resumo inteira dizer
+  /// "Nenhuma rota entre 01/08 e 31/08" escondendo tudo — o mesmo "some o
+  /// dinheiro e o KM" que esta feature existe para consertar, reproduzido
+  /// dentro do app.
+  bool get isEmpty => routes == 0 && noRouteCount == 0;
 
   /// Há lucro bruto misturado, então a ressalva precisa aparecer.
   bool get hasUncalculated => uncalculatedValue > 0;
@@ -86,16 +106,24 @@ class CompanySummary {
 
 /// Resume a lista **já filtrada** por período e empresa.
 ///
-/// O recorte de status é feito aqui: só `concluido` e `pago` entram, o mesmo
-/// que os gráficos usam. Rota agendada não entregou pacote, não rodou
-/// quilômetro e não passou por bairro nenhum.
+/// O recorte de status é feito aqui, e são **dois** recortes, não um:
+///
+/// - `realized` (`concluido` + `pago`) manda em tudo que descreve uma rota —
+///   a contagem, os pacotes, as paradas, os insucessos e os bairros. Rota
+///   agendada não entregou pacote, não rodou quilômetro e não passou por bairro
+///   nenhum.
+/// - `noRouteTrips` (`semRota`) entra só no que é dinheiro e quilômetro: valor,
+///   lucro, KM e custo por km. A ida ao CD queimou gasolina de verdade, mas não
+///   foi uma rota.
 CompanySummary companySummary(List<NewRouteModal> all) {
   final done = realized(all);
+  final trips = noRouteTrips(all);
 
   var value = 0.0;
   var profit = 0.0;
   var uncalculated = 0.0;
   var failures = 0;
+  var noRouteValue = 0.0;
 
   double? km;
   int? packages;
@@ -105,7 +133,13 @@ CompanySummary companySummary(List<NewRouteModal> all) {
   var provisionedCost = 0.0;
   var provisionedKm = 0.0;
 
-  for (final route in done) {
+  // Dinheiro, lucro e quilômetro — o que a rota e a ida sem rota têm em comum.
+  //
+  // Uma função e não o corpo copiado: somar o KM de uma e o custo da outra erra
+  // o custo por km sem nenhum sinal, e sempre para o mesmo lado — mais KM no
+  // divisor sem custo no dividendo baixa o R$/km, que é a direção que faz o
+  // entregador achar que lucra mais.
+  void addMoney(NewRouteModal route) {
     value += route.value;
 
     final routeProfit = route.profit;
@@ -127,6 +161,10 @@ CompanySummary companySummary(List<NewRouteModal> all) {
     // provisão e o card da rota usam, com a guarda de diferença não positiva.
     final routeKm = kmOf(route);
     if (routeKm != null) km = (km ?? 0) + routeKm;
+  }
+
+  for (final route in done) {
+    addMoney(route);
 
     final routePackages = route.packages;
     if (routePackages != null) packages = (packages ?? 0) + routePackages;
@@ -137,10 +175,22 @@ CompanySummary companySummary(List<NewRouteModal> all) {
     failures += failuresOf(route);
   }
 
+  // Passada separada, e **nunca** ampliando a lista `done` acima: todo o corpo
+  // daquele laço — pacotes, paradas, insucessos — e o `routesPerBairro` logo
+  // abaixo iteram `done`. Uma rota editada de `concluido` para `semRota` mantém
+  // `adress`, `packages` e o insucesso gravados, então bastaria alargar aquela
+  // linha para a ida ao CD entrar em cinco métricas que ela não tem.
+  for (final trip in trips) {
+    addMoney(trip);
+    noRouteValue += trip.value;
+  }
+
   final ranking = routesPerBairro(done);
 
   return CompanySummary(
     routes: done.length,
+    noRouteCount: trips.length,
+    noRouteValue: noRouteValue,
     value: value,
     profit: profit,
     uncalculatedValue: uncalculated,
