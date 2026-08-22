@@ -34,21 +34,69 @@ class SegmentOption<T> {
 /// Todos os segmentos são `Expanded` — dividem a largura igualmente e não
 /// rolam. Com quatro ou cinco isso é confortável; acima disso, o rótulo de
 /// texto começa a apertar antes de o trilho ficar feio.
+///
+/// Dois modos e um desenho só: o construtor padrão acende exatamente um
+/// segmento, [SegmentedSelector.multi] acende quantos o chamador mandar. Quem
+/// decide isso é [_isOn], e só ele — desenhar cada modo do seu jeito é a mesma
+/// cópia de superfície registrada no parágrafo acima, agora dentro de um
+/// arquivo só.
 class SegmentedSelector<T> extends StatelessWidget {
+  /// Escolha única: [selected] é o valor aceso, e só ele.
   const SegmentedSelector({
     super.key,
     required this.keyPrefix,
     required this.segments,
-    required this.selected,
+    required T selected,
     required this.onChanged,
-  });
+  }) : _single = selected,
+       _multiple = null;
 
-  /// Prefixo das `ValueKey` dos segmentos: `'filtro'` vira `filtro-todas`.
+  /// Múltipla escolha: [selected] é o conjunto do que está aceso.
+  ///
+  /// [onChanged] muda de sentido aqui — passa a ser "o usuário tocou NESTE", e
+  /// nunca "este acabou de ser marcado". Quem alterna é o chamador
+  /// (`RouteFilter.toggleCompany`), porque é ele quem sabe se marcar a Amazon
+  /// soma ou substitui. O trilho não guarda estado: tocar num segmento aceso o
+  /// devolve aceso, até chegar um conjunto novo.
+  ///
+  /// Conjunto vazio deixa **todos apagados**. No filtro de empresa vazio quer
+  /// dizer "passa tudo", então o trilho sozinho parece filtro que não deixa
+  /// nada passar — quem desfaz isso é a tela, não este widget: `filtros.md`
+  /// resolve no estado vazio da lista, que nunca fica em branco sem dizer por
+  /// quê.
+  const SegmentedSelector.multi({
+    super.key,
+    required this.keyPrefix,
+    required this.segments,
+    required Set<T> selected,
+    required this.onChanged,
+  }) : _single = null,
+       _multiple = selected;
+
+  /// Prefixo das `ValueKey` dos segmentos: `'filtro'` vira `filtro-amazon`.
   final String keyPrefix;
 
   final List<SegmentOption<T>> segments;
-  final T selected;
   final ValueChanged<T> onChanged;
+
+  /// O valor aceso na escolha única. Só é lido quando [_multiple] é `null`.
+  final T? _single;
+
+  /// O conjunto aceso na múltipla escolha, e o discriminador entre os modos.
+  final Set<T>? _multiple;
+
+  /// O único juiz de "este segmento está aceso", nos dois modos.
+  ///
+  /// A escolha única compara, em vez de guardar `{_single}` e perguntar
+  /// `contains`, porque `T` pode ser anulável. Com um conjunto só, "modo único
+  /// com `null` selecionado" e "múltipla escolha sem nada marcado" precisariam
+  /// ser distinguidos, e `{null}` não separa os dois. Por isso o discriminador
+  /// é [_multiple], nulo apenas fora da múltipla escolha: o predicado continua
+  /// certo quando o valor selecionado é `null`.
+  bool _isOn(T value) {
+    final multiple = _multiple;
+    return multiple == null ? value == _single : multiple.contains(value);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -66,7 +114,7 @@ class SegmentedSelector<T> extends StatelessWidget {
   }
 
   Widget _segment(SegmentOption<T> option) {
-    final isSelected = option.value == selected;
+    final isOn = _isOn(option.value);
 
     Widget tappable = GestureDetector(
       key: ValueKey('$keyPrefix-${option.keySuffix}'),
@@ -76,9 +124,9 @@ class SegmentedSelector<T> extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         margin: const EdgeInsets.symmetric(horizontal: 2),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white : Colors.transparent,
+          color: isOn ? Colors.white : Colors.transparent,
           borderRadius: BorderRadius.circular(9),
-          boxShadow: isSelected
+          boxShadow: isOn
               ? [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.08),
@@ -88,15 +136,15 @@ class SegmentedSelector<T> extends StatelessWidget {
                 ]
               : null,
         ),
-        // Apagar o não selecionado deixa claro qual está ativo sem precisar de
-        // fundo colorido em cada opção.
+        // Apagar o que não está aceso deixa claro o que está ativo sem precisar
+        // de fundo colorido em cada opção.
         //
         // Um `Opacity` por segmento e nenhum fora deles: o teste do
         // `CompanyFilter` conta os da árvore inteira. `AnimatedOpacity`
         // também não serve — ele não é um `Opacity`.
         child: Center(
           child: Opacity(
-            opacity: isSelected ? 1 : 0.45,
+            opacity: isOn ? 1 : 0.45,
             child: option.child ?? _label(option.label),
           ),
         ),

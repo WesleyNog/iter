@@ -447,6 +447,47 @@ thread and drops back a second later. `count()` gives the card's comment
 badge and cannot discount blocked authors — the sheet reports the number it
 actually drew when it closes.
 
+## Filters: empty and complete are the same answer
+
+The company rail on the route list is multi-select and has **no "all" segment**,
+because an empty set and a full one both mean *show everything*. That rule lives
+**once**, in `_passes` of `Utils/routeFilter.dart`, and serves both the company
+rail and the status chips — written twice, one copy falls behind on the first
+adjustment. Tapping a lit segment emits *that* segment: the widget never toggles
+itself, because two places toggling on their own is how one tap ends up marking
+on one half of the screen and unmarking on the other.
+
+`RouteOrder.pertoDeHoje` is the default and **returns the list untouched**.
+Ordering by distance from today belongs to `RouteController.watchAll` and to
+nowhere else — see `docs/specs/lista-iter.md`. A second implementation would be
+two lists disagreeing about what "today" is.
+
+**A saved money range and freshly computed bounds are not the same era.** The
+filter stores reais, the bounds come from the current list, and between one
+opening and the next the list changed — the very screen that opens the sheet
+deletes routes by swiping and edits values in the form. A 300–500 range over a
+list whose ceiling dropped to 250 makes `RangeSlider` **throw**
+(`assert(values.start >= min)`). The range is *discarded*, never squeezed: a
+filter that rewrites itself misleads more than one that switches off, and it
+leaves the badge with it. `valueBounds` compares the **raw** values, before
+rounding — written after it, a single R$ 123 route produced a perfectly valid,
+perfectly useless 120–130 band.
+
+**`home.dart` is `body: screens[current]`, not an `IndexedStack`.** Switching
+tabs unmounts the screen and disposes its `State`, so nothing a screen holds in
+`setState` survives — the filter, the expanded card, the last snapshot. Holding
+the *widget* in a `late final` field preserves the widget and never the state.
+The first version of `docs/specs/filtros.md` claimed the opposite and was on its
+way to becoming a code comment; the fix was reading `home.dart`, which is the
+only thing that ever settles it.
+
+Week arithmetic goes through the `DateTime` constructor, never `Duration`:
+`DateTime(y, m, d - (weekday - 1))` for Monday, `d + 6` for Sunday. `add(const
+Duration(days: 7))` adds 168 hours, which in a DST zone lands on the wrong hour
+of the right day and moves a period's edge by a day. Brazil dropped DST in 2019
+and Fortaleza never had it, so both spell the same result today — the
+constructor is chosen because it stays right elsewhere and costs nothing.
+
 ## Widget tests cannot tell you whether text fits
 
 Two traps, both hit for real in this project:

@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:iter/Utils/currencyFormat.dart';
+import 'package:iter/Utils/periodPreset.dart';
 import 'package:iter/Utils/routeStats.dart';
 import 'package:iter/Utils/routeStyle.dart';
 import 'package:iter/controller/routeController.dart';
@@ -12,6 +13,7 @@ import 'package:iter/widget/chartCarousel.dart';
 import 'package:iter/widget/failureRateCard.dart';
 import 'package:iter/widget/lineChartCard.dart';
 import 'package:iter/widget/periodFilter.dart';
+import 'package:iter/widget/periodPresetFilter.dart';
 import 'package:iter/widget/summaryCards.dart';
 
 /// Painel de gráficos das rotas do período.
@@ -37,6 +39,11 @@ class _GraficsScreenState extends State<GraficsScreen> {
 
   late DateTime _start;
   late DateTime _end;
+
+  /// Qual atalho está aceso. As datas continuam sendo a fonte do recorte — o
+  /// preset só diz qual chip acende e se as roletas aparecem.
+  PeriodPreset _preset = PeriodPreset.esteMes;
+
   Shift _shift = Shift.manha;
 
   @override
@@ -82,10 +89,20 @@ class _GraficsScreenState extends State<GraficsScreen> {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           // Fora do StreamBuilder: o filtro continua visível carregando, vazio
           // ou em erro — senão o usuário fica sem como sair de um período seco.
-          child: PeriodFilter(
+          child: PeriodPresetFilter(
+            preset: _preset,
             start: _start,
             end: _end,
-            onChanged: (start, end) => setState(() {
+            // `allowAll` fica no padrão (`false`): aqui o período é
+            // obrigatório, todo gráfico fala de um recorte.
+            //
+            // O preset chega anulável porque o mesmo widget serve a folha de
+            // filtros da lista, onde existe o chip "Todo o período" e `null` é
+            // o recorte aberto. Com `allowAll` desligado ele nunca chega nulo —
+            // o `??` é o que mantém esta tela num recorte se alguém ligar a
+            // flag um dia sem olhar para cá.
+            onChanged: (preset, start, end) => setState(() {
+              _preset = preset ?? PeriodPreset.esteMes;
               _start = start;
               _end = end;
             }),

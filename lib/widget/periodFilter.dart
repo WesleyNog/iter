@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:iter/Utils/periodPreset.dart' as period;
 import 'package:iter/widget/dataPicker.dart';
 
 /// Seleção do período dos gráficos: uma data de início e uma de fim.
@@ -20,14 +21,15 @@ class PeriodFilter extends StatelessWidget {
   final void Function(DateTime start, DateTime end) onChanged;
 
   /// Primeiro ao último dia do mês corrente — o recorte que o entregador olha
-  /// no dia a dia. Dia 0 do mês seguinte é o último do atual.
-  static ({DateTime start, DateTime end}) currentMonth([DateTime? reference]) {
-    final now = reference ?? DateTime.now();
-    return (
-      start: DateTime(now.year, now.month, 1),
-      end: DateTime(now.year, now.month + 1, 0),
-    );
-  }
+  /// no dia a dia.
+  ///
+  /// A conta mudou de casa: ela é um dos cinco atalhos de
+  /// `Utils/periodPreset.dart` desde que o seletor de período passou a
+  /// oferecê-los prontos. O nome continua aqui porque `periodLabel` do Resumo e
+  /// `test/unit/periodLabel_test.dart` apontam para ele — uma implementação,
+  /// dois nomes, como `VehicleController.activeFrom`.
+  static period.DateRange currentMonth([DateTime? reference]) =>
+      period.currentMonth(reference);
 
   static String formatDate(DateTime date) =>
       '${date.day.toString().padLeft(2, '0')}/'

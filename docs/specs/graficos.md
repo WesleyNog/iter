@@ -56,6 +56,12 @@ lib/widget/chartCard.dart          → moldura gradiente + título + infoCards (
 lib/widget/barRankChart.dart       → gráfico de barras top-4 (novo)
 lib/widget/lineChartCard.dart      → gráfico de linha fl_chart (novo)
 lib/widget/periodFilter.dart       → seletor de início/fim (novo)
+                                     desde 2026-08-22 ele não é mais o
+                                     cabeçalho da tela: virou filho do
+                                     periodPresetFilter, que oferece Este Mês,
+                                     Mês Anterior, Esta Semana, Semana Anterior
+                                     e Personalizado, e só mostra as duas
+                                     roletas no último. Ver filtros.md
 lib/widget/chartCarousel.dart      → PageView + indicadores de bolinha (novo)
 lib/screens/graficsScreen.dart     → a tela (hoje stub)
 lib/screens/home.dart              → passa o User para GraficsScreen (1 linha)

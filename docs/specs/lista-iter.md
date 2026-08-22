@@ -139,12 +139,18 @@ o que também exige preencher os documentos já existentes.
 gravado e não cabe no resumo: KM rodado, pacotes, paradas, bairros, horários,
 insucesso e clima. Um card aberto por vez. Não há tela de detalhe.
 
-**3. Filtro por empresa** (adicionado depois da primeira entrega). Controle
-segmentado acima da lista: "todas" (padrão) + uma opção por `Company`. Fica
-**fora** do `StreamBuilder`, para continuar visível durante carregamento, vazio
-e erro. Filtra em memória a lista que já veio do stream — nenhuma consulta nova
-ao Firestore. Quando existem rotas mas nenhuma da empresa escolhida, a mensagem
-é diferente da de lista vazia.
+**3. Filtro por empresa** (adicionado depois da primeira entrega, e
+**reescrito** em 2026-08-22 — ver `docs/specs/filtros.md`). Controle segmentado
+acima da lista, de **múltipla escolha**: uma opção por `Company` e nenhum
+segmento "todas", porque conjunto vazio *ou* com as três já quer dizer todas.
+Ao lado dele, um ícone abre a folha com os outros cinco eixos: status, período,
+veículo, faixa de valor e ordenação, com um badge contando quantos estão
+ligados.
+
+Fica **fora** do `StreamBuilder`, para continuar visível durante carregamento,
+vazio e erro. Filtra em memória a lista que já veio do stream — nenhuma consulta
+nova ao Firestore. Quando existem rotas mas nenhuma passa nos filtros, a
+mensagem é diferente da de lista vazia e traz um botão que limpa tudo.
 
 **4. Editar e excluir** (adicionado depois da primeira entrega). Deslizar o
 card da direita para a esquerda revela as duas ações (`flutter_slidable` —
@@ -155,4 +161,5 @@ o **mesmo id**, então o `set` substitui o documento em vez de criar outro.
 
 ## Fora de escopo
 
-Filtro por status, separador por mês e paginação.
+Separador por mês e paginação. *(Filtro por status saiu daqui em 2026-08-22:
+mora na folha de filtros, em `docs/specs/filtros.md`.)*
