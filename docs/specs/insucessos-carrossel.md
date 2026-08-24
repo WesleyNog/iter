@@ -131,8 +131,18 @@ Não há rateio como em bairro: uma rota tem **um** clima, então a atribuição
 exata. Bairro precisa ratear porque uma rota passa por vários.
 
 Clima sem insucesso aparecendo zerado segue a mesma decisão de
-`failuresPerCompany`: são poucos climas (sete), e "no sol não deu problema
-nenhum" é informação. Bairro é que fica de fora quando zerado — são mais de cem.
+`failuresPerCompany`: são poucos climas e "no sol não deu problema nenhum" é
+informação. Bairro é que fica de fora quando zerado: são mais de cem.
+
+O eixo é o **céu, não a hora**. Desde 2026-08-22 o app grava Noite limpa e
+Noite nublada, mas `_weatherLabelOf` passa o tipo por `daytimeOf` antes de
+rotular, então elas somam com Sol e Nublado num degrau só. O motivo é este
+gráfico: rota noturna cadastrada antes daquela data está gravada como `clouds`
+e o clima gravado nunca é reinterpretado, de modo que separar os rótulos
+partiria uma população em dois degraus menores por data de cadastro — e com
+`maxBars: 4` aqui e só o primeiro colocado no card de índice, o pior clima podia
+sumir da tela por ter sido dividido. A lua continua no card da rota, onde a hora
+é informação.
 
 O rótulo sai de `weatherLabel(WeatherType.fromString(weather))`, então o gráfico
 mostra "Chuva forte" e não `heavyRain`.

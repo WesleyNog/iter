@@ -636,7 +636,14 @@ String? _weatherLabelOf(NewRouteModal route) {
   final weather = route.weather;
   if (weather == null || weather.isEmpty) return null;
 
-  return weatherLabel(WeatherType.fromString(weather));
+  // `daytimeOf`: o eixo deste gráfico é o **céu**, não a hora. "Nublado" e
+  // "Noite nublada" são a mesma condição física, e separá-los partiria uma
+  // população em dois degraus — metade das rotas noturnas está gravada como
+  // `clouds` porque foi cadastrada antes de o app saber distinguir noite, e o
+  // clima gravado nunca é reinterpretado. Com `maxBars: 4` aqui e só o
+  // primeiro colocado no card de índice, o pior clima podia sair da tela por
+  // ter sido dividido.
+  return weatherLabel(daytimeOf(WeatherType.fromString(weather)));
 }
 
 /// Soma de `value` por dia da semana, sempre com os 7 dias.

@@ -6,6 +6,10 @@ String weatherLabel(WeatherType type) {
   switch (type) {
     case WeatherType.clear:
       return 'Sol';
+    case WeatherType.clearNight:
+      return 'Noite limpa';
+    case WeatherType.cloudsNight:
+      return 'Noite nublada';
     case WeatherType.fewClouds:
       return 'Poucas nuvens';
     case WeatherType.clouds:
@@ -56,6 +60,12 @@ String getWeatherIcon(WeatherType weatherType) {
   switch (weatherType) {
     case WeatherType.clear:
       iconPath = 'assets/images/SOL.png';
+      break;
+    case WeatherType.clearNight:
+      iconPath = 'assets/images/NOITE.png';
+      break;
+    case WeatherType.cloudsNight:
+      iconPath = 'assets/images/NUBLADO-NOITE.png';
       break;
     case WeatherType.clouds:
       iconPath = 'assets/images/NUBLADO.png';

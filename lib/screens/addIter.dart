@@ -115,6 +115,16 @@ class _AddIterState extends State<AddIter> {
   /// depois de o usuário já ter escolhido — desfaria a escolha dele.
   bool _weatherChosenByUser = false;
 
+  /// O que a busca automática trouxe, guardado **inteiro**.
+  ///
+  /// A busca roda ao abrir a tela, quando a rota ainda não tem hora — o usuário
+  /// escolhe data e horário depois. Só o `WeatherType` não bastaria: ele
+  /// descreve o instante da consulta, e foi assim que uma rota das 08h às 14h,
+  /// cadastrada às 21h, ganhou um ícone de lua ao lado do próprio horário que a
+  /// desmentia. Com o nascer e o pôr do sol junto, `CurrentWeather.at` responde
+  /// sobre o horário da rota.
+  CurrentWeather? _fetched;
+
   int insucessoQnt = 1;
 
   /// Em quais bairros os insucessos aconteceram. Pode cobrir só parte deles —
@@ -298,8 +308,30 @@ class _AddIterState extends State<AddIter> {
     if (!mounted || _weatherChosenByUser) return;
 
     setState(() {
-      currentWeather = weather;
+      _fetched = weather;
+      currentWeather = weather?.at(_routeStart);
     });
+  }
+
+  /// O início da rota como está na tela agora, ou o dia escolhido quando a hora
+  /// ainda não foi preenchida — a mesma conta que o salvamento faz.
+  DateTime get _routeStart =>
+      RouteTime.combine(selectedDate, hrInicioController.text) ?? selectedDate;
+
+  /// Redesenha o tempo automático para o horário que a rota passou a ter.
+  ///
+  /// A busca já aconteceu — ela roda ao abrir a tela —, então isto não vai à
+  /// rede: `CurrentWeather.at` só compara o horário novo com o nascer e o pôr
+  /// do sol que vieram junto. Escolha manual manda, e edição não mexe: ali o
+  /// tempo é o que está gravado.
+  void _syncWeatherWithTime() {
+    final fetched = _fetched;
+    if (fetched == null || _weatherChosenByUser) return;
+
+    final adjusted = fetched.at(_routeStart);
+    if (adjusted == currentWeather) return;
+
+    setState(() => currentWeather = adjusted);
   }
 
   /// Deixa o usuário corrigir o tempo.
@@ -397,9 +429,13 @@ class _AddIterState extends State<AddIter> {
     // Grava já o valor inicial: fechar a roleta sem girar deixaria o campo
     // vazio mesmo com uma hora aparecendo na tela.
     setState(() => controller.text = RouteTime.formatTime(initial));
+    if (isStart) _syncWeatherWithTime();
 
     showCupertinoTimePicker(context, initial, (time) {
       setState(() => controller.text = RouteTime.formatTime(time));
+      // Só a hora de início: é ela que o `startAt` guarda e a que decide se a
+      // rota rodou de dia ou de noite.
+      if (isStart) _syncWeatherWithTime();
     });
   }
 
@@ -556,6 +592,10 @@ class _AddIterState extends State<AddIter> {
                         setState(() {
                           selectedDate = newDate;
                         });
+                        // A data mudou: o dia da rota pode ter deixado de ser
+                        // o da consulta, e com ele o nascer e o pôr do sol que
+                        // decidem se aquele horário é noite.
+                        _syncWeatherWithTime();
                       },
                     ),
                     borderRadius: BorderRadius.circular(10),

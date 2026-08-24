@@ -778,6 +778,38 @@ void main() {
   });
 
   group('rankings por clima', () {
+    test('noite entra no mesmo degrau do dia', () {
+      // O eixo é o **céu**, não a hora. Metade das rotas noturnas está gravada
+      // como `clouds` porque foi cadastrada antes de o app saber distinguir
+      // noite, e o clima gravado nunca é reinterpretado: manter os dois
+      // rótulos partiria uma população em dois degraus menores.
+      final ranking = failuresPerWeather([
+        _route(weather: 'clouds', isInsucesso: true, insucessoQnt: 3),
+        _route(weather: 'cloudsNight', isInsucesso: true, insucessoQnt: 4),
+        _route(weather: 'clear', isInsucesso: true, insucessoQnt: 1),
+        _route(weather: 'clearNight', isInsucesso: true, insucessoQnt: 2),
+      ]);
+
+      expect(_valueOf(ranking, 'Nublado'), 7);
+      expect(_valueOf(ranking, 'Sol'), 3);
+      expect(_has(ranking, 'Noite nublada'), isFalse);
+      expect(_has(ranking, 'Noite limpa'), isFalse);
+    });
+
+    test('o índice por clima soma as duas metades no mesmo denominador', () {
+      final rates = failureRatePerWeather([
+        _route(weather: 'clouds', packages: 100, isInsucesso: true, insucessoQnt: 5),
+        _route(weather: 'cloudsNight', packages: 100, isInsucesso: true, insucessoQnt: 5),
+      ]);
+
+      // 10 insucessos em 200 pacotes, e não dois degraus de 5% cada.
+      final nublado = _rateOf(rates, 'Nublado');
+      expect(nublado.packages, 200);
+      expect(nublado.failures, 10);
+      expect(nublado.rate, closeTo(5, 0.01));
+      expect(_hasRate(rates, 'Noite nublada'), isFalse);
+    });
+
     test('o insucesso da rota é inteiro do clima dela, sem rateio', () {
       final ranking = failuresPerWeather([
         _route(weather: 'rain', isInsucesso: true, insucessoQnt: 3),

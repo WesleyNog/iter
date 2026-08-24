@@ -99,6 +99,48 @@ One Call 3.0 — the only endpoint that would give the weather of a **past** dat
 
 The key comes from `.env` (gitignored, holds `OPEN-WEATHER`, declared as an asset) via `dotenv.load()` in `main()`, wrapped in try/catch: a clone without the file still boots, the weather just reads "unknown". Coordinates are still hardcoded to Fortaleza in `addIter.dart`.
 
+`weather[0].main` does not distinguish day from night — `weather[0].icon` does,
+with a `d`/`n` suffix OpenWeather computes from that point's sunrise and sunset.
+Reading the suffix costs nothing and depends on no timezone, season or latitude;
+a cut-off hour hardcoded here would be wrong twice a year and wrong always for
+anyone outside Fortaleza. `clearNight` and `cloudsNight` are the **only** two
+types derived from it, because they are the only two with a drawing: rain at
+night stays `rain`, and a type without an asset throws inside `Image.asset` in
+the route list. A missing or non-string `icon` never becomes night — the daytime
+type is the one that invents nothing. The two exist because Amazon routes run
+past 19:00 and the only honest option for a clear night sky used to be
+"Nublado", which is the opposite of what the sky was.
+
+That suffix describes the **moment of the request**, and the fetch runs when the
+form opens — before the driver has picked the route's date and time. So
+`getWeather` returns a `CurrentWeather` carrying `sys.sunrise`/`sys.sunset` as
+minutes of the local day, and `CurrentWeather.at(startAt)` re-decides day or
+night for the route's own hour; `addIter` calls it again whenever the date or
+the start time changes. Without that, a route run 08:00–14:00 and registered at
+21:00 got a moon next to the very times that disproved it — and the app already
+had a second, disagreeing definition of night in `Shift.noite` (18h–23h). When
+the response carries no sun times, `at` returns the daytime type: the suffix
+describes an hour that is not this route's, and promoting by it is the bug
+itself.
+
+Adding a `WeatherType` value is safe for documents already written —
+`fromString` falls back to `clear` for anything it does not know — but it does
+**not** reinterpret them: a night route recorded as `clouds` before these values
+existed stays `clouds`, the same frozen past the provision rule protects.
+
+That is precisely why the charts group by **sky, not by hour**. `_weatherLabelOf`
+runs the stored type through `daytimeOf` before labelling, so "Nublado" and
+"Noite nublada" are one bar in `failuresPerWeather` and `failureRatePerWeather`.
+Keeping them apart would split one population into two smaller steps purely by
+registration date — and with `maxBars: 4` in the chart and only the leader shown
+in the rate card, the worst weather could vanish from the screen because it had
+been divided in half. The moon still shows on the route card, where the hour is
+information; in the ranking it is noise.
+
+`nightVariantOf` and `daytimeOf` share **one** map, the reverse derived rather
+than written twice: a pair that existed on only one side would promote a sky on
+the way in and never undo it on the way out.
+
 `NewRouteModal.weather` is written **only when creating** a route. Editing keeps whatever is stored (`_fillFromRoute` restores it) — the API only knows the sky of *now*, so refetching would stamp today's weather onto a route from last week.
 
 ## Vehicles and cost per KM

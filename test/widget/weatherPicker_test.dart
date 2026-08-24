@@ -50,6 +50,11 @@ void main() {
     expect(find.text('Chuva forte'), findsOneWidget);
     expect(find.text('Trovoada'), findsOneWidget);
     expect(find.text('Vento forte'), findsOneWidget);
+    // As duas noturnas: sem estas linhas, tirá-las de `selectableWeather` ou
+    // errar um rótulo deixaria a suíte inteira verde — e o único jeito de
+    // registrar céu noturno à mão sumiria calado.
+    expect(find.text('Noite limpa'), findsOneWidget);
+    expect(find.text('Noite nublada'), findsOneWidget);
     expect(find.text('Sem informar'), findsOneWidget);
 
     // Nada de opções que a API traz mas repetiriam ícone.

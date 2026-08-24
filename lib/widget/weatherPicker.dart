@@ -13,7 +13,11 @@ class WeatherChoice {
 }
 
 /// Os tempos que dá para escolher à mão — um por ícone desenhado em
-/// `assets/images/`, na ordem do céu mais limpo para o mais fechado.
+/// `assets/images/`.
+///
+/// As diurnas vêm na ordem do céu mais limpo para o mais fechado; as duas
+/// noturnas ficam no fim, e não coladas nas suas versões de dia, para não
+/// empurrar as sete de cima de posição.
 ///
 /// Não é a lista inteira do enum de propósito: `mist`, `haze`, `dust` e
 /// companhia vêm da API e reaproveitam ícones, então apareceriam aqui como
@@ -26,6 +30,11 @@ const List<WeatherType> selectableWeather = [
   WeatherType.heavyRain,
   WeatherType.thunderstorm,
   WeatherType.tornado,
+  // As duas noturnas vão no fim, e não junto das suas versões diurnas, para
+  // não empurrar as sete de cima de posição: "Nublado" é a terceira célula há
+  // meses, e quem cadastra rota todo dia acerta nela sem ler o rótulo.
+  WeatherType.clearNight,
+  WeatherType.cloudsNight,
 ];
 
 /// Abre o seletor de tempo. `null` = fechou sem escolher.
@@ -64,9 +73,9 @@ class WeatherPicker extends StatelessWidget {
           ],
         ),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        // Rolável: são sete opções em duas linhas, e com a fonte do sistema
-        // ampliada — ou num aparelho baixo — elas não cabem na altura que o
-        // bottom sheet recebe.
+        // Rolável: são nove opções, que fecham em três linhas num iPhone e em
+        // mais num aparelho estreito. Com a fonte do sistema ampliada — ou num
+        // aparelho baixo — elas não cabem na altura que o bottom sheet recebe.
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
