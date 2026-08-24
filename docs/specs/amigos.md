@@ -903,8 +903,11 @@ todo o resto do app — "não dá para calcular" nunca vira um número —, e a 
   Decisão 9 recusa, com razão, no cliente, e que no servidor volta a ser
   defensável porque a trigger vê o `before` e o `after` do documento.
 - **Feed (aba 3)** — tem esboço próprio logo abaixo, em **O Feed, em esboço**.
-- **Anúncios entre posts** — a monetização. Reservar o slot no builder do feed
-  desde o primeiro dia (um a cada N posts) e ligar o AdMob depois.
+- **Anúncios entre posts** — a monetização. **Virou spec própria em 24/08/2026:
+  `docs/specs/anuncios-no-feed.md`**, com a etapa 1 entregue (cadência irregular
+  e slot reservado) e a etapa 2 pausada até a publicação em loja. A cadência
+  "um a cada N posts" que este item propunha foi **descartada** lá: número fixo
+  vira cenário em duas rolagens.
   `google_mobile_ads` é dependência nova, quer `APPLICATION_ID` no
   `AndroidManifest.xml`, `NSUserTrackingUsageDescription` e o fluxo de ATT no
   iOS — e o `release` do Android ainda assina com a chave de debug, então não

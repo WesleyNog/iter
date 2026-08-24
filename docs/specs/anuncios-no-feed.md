@@ -1,7 +1,40 @@
 # Spec: Anúncios entre os posts do feed
 
-Status: **etapa 1 aprovada em 24/08/2026** · Criada em 2026-08-24 · A etapa 2
-(AdMob de verdade) segue bloqueada pela publicação em loja
+Status: **etapa 1 entregue em 24/08/2026** (commit `c47fc8c`) · O **portão do
+protótipo passou** no mesmo dia: o formato banner está aprovado por medição em
+aparelho · A **etapa 2 está pausada, e não por falta de trabalho** — ver
+"O que destrava a etapa 2"
+
+## O que destrava a etapa 2
+
+Nada aqui é código deste repositório, e é por isso que a spec para. Em ordem de
+dependência:
+
+1. **O `release` do Android precisa parar de assinar com a chave de debug.** É o
+   que impede publicar na Play, e está registrado no `CLAUDE.md` desde antes
+   desta spec.
+2. **O app precisa estar numa loja suportada.** Sem isso o AdMob não faz o *app
+   readiness review* e o app fica em *limited ad serving* — nenhum anúncio de
+   verdade é servido, por mais correto que o código esteja.
+3. **App Check e um orçamento de faturamento**, que a `amigos.md` já marca como
+   "faça antes do app sair do seu celular". Publicar sem isso expõe uma coleção
+   globalmente gravável num projeto Blaze.
+4. **`app-ads.txt`**, que exige um domínio de site de desenvolvedor declarado na
+   ficha da loja. Não bloqueia servir anúncio; a ausência custa receita por
+   inventário não autorizado.
+5. **A escolha LGPD no console**: público 100% brasileiro exige oferecer a
+   escolha entre anúncio personalizado e não personalizado, ou servir só não
+   personalizado.
+
+**O que já está pronto esperando esses cinco**, e não precisa ser redescoberto:
+o desenho da etapa 2 inteiro (cache de `BannerAd` por âncora, `AdWidget` com
+objeto único, formato inline adaptativo), as duas regras que o protótipo
+produziu, o contorno de build sem o qual o plugin não compila, os quatro
+identificadores do AdMob, e a branch `prototipo-banners` com tudo isso rodando.
+
+Retomar é: `git checkout prototipo-banners`, trocar as unidades demo pelas
+reais **só em release**, e cadastrar os dois iPhones como test devices antes da
+primeira requisição real.
 
 ## Objetivo
 
