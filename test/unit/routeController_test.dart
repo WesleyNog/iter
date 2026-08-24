@@ -124,4 +124,44 @@ void main() {
       expect(original.map((r) => r.id), ['a', 'b']);
     });
   });
+
+  group('storedStatus', () {
+    test('grava o que o fromMap sabe ler de volta', () {
+      // Dois caminhos escrevem este campo agora: o `toMap` do documento inteiro
+      // e a troca rápida de status na lista. Se as duas formas divergirem, o
+      // app passa a ler um status desconhecido de um documento que ele mesmo
+      // escreveu — e `fromMap` só reclama em execução.
+      for (final status in StatusRoute.values) {
+        final lido = NewRouteModal.fromMap({
+          'id': 'r1',
+          'company': 'mercadolivre',
+          'dateRoute': '10/08/2026',
+          'weekday': 1,
+          'status': storedStatus(status),
+          'value': 100.0,
+          'startAt': '2026-08-10T08:00:00.000',
+          'createdAt': '2026-08-10T08:00:00.000',
+        });
+
+        expect(lido.status, status, reason: status.name);
+      }
+    });
+
+    test('é exatamente o que o toMap escreve', () {
+      for (final status in StatusRoute.values) {
+        final rota = NewRouteModal(
+          id: 'r1',
+          company: Company.mercadolivre,
+          dateRoute: '10/08/2026',
+          weekday: 1,
+          status: status,
+          value: 100,
+          startAt: DateTime(2026, 8, 10, 8),
+          createdAt: '2026-08-10T08:00:00.000',
+        );
+
+        expect(rota.toMap()['status'], storedStatus(status));
+      }
+    });
+  });
 }

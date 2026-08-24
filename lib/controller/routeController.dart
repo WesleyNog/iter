@@ -28,6 +28,29 @@ class RouteController {
     return collectionOf(uid).doc(route.id).set(route.toMap());
   }
 
+  /// Troca **só** o status da rota, sem tocar em mais nenhum campo.
+  ///
+  /// É `update` e não `set` de propósito, e a diferença é a garantia: o que não
+  /// é enviado não pode ser sobrescrito. A provisão congelada, o
+  /// `noRoutePayment` e o valor ficam fora do pacote, então nem um erro deste
+  /// arquivo consegue reescrevê-los — enquanto um `set` a partir de um objeto
+  /// remontado depende de dezoito campos estarem todos certos, que é o ovo e a
+  /// galinha que `withProvision` já documenta.
+  ///
+  /// Por isso mesmo, isto vale **apenas** para a troca que não implica
+  /// recálculo: concluído ↔ pago, os dois `hasRun` com a mesma provisão. Quem
+  /// precisa de qualquer outra usa o formulário, que recalcula o que tem de
+  /// recalcular — ver `RouteSlidable.canMarkPaid`.
+  static Future<void> updateStatus(
+    String uid,
+    String routeId,
+    StatusRoute status,
+  ) {
+    return collectionOf(uid).doc(routeId).update({
+      'status': storedStatus(status),
+    });
+  }
+
   static Future<void> delete(String uid, String routeId) {
     return collectionOf(uid).doc(routeId).delete();
   }

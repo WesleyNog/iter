@@ -13,6 +13,19 @@ enum Company { mercadolivre, amazon, shopee }
 /// em `value` já é essa fração. Ver [NoRoutePayment] e `docs/specs/sem-rota.md`.
 enum StatusRoute { agendado, andamento, concluido, pago, semRota }
 
+/// Como [StatusRoute] é gravado no Firestore — e a **única** forma.
+///
+/// Existe porque agora há dois caminhos escrevendo esse campo: o `toMap` do
+/// documento inteiro e a troca rápida de status na lista, que grava só ele.
+/// Duas expressões `split('.')` soltas divergiriam no dia em que alguém
+/// renomeasse um valor do enum, e `fromMap` só reclamaria em execução — lendo
+/// um status desconhecido de um documento que este mesmo app escreveu.
+///
+/// O caminho de volta mora em `NewRouteModal.fromMap`, que compara com
+/// `'StatusRoute.${map['status']}'`. Renomear um valor quebra os dois: mude
+/// junto, como o resto dos enums gravados como texto neste arquivo.
+String storedStatus(StatusRoute status) => status.toString().split('.').last;
+
 /// O pagamento de uma ida que não virou rota, **congelado**.
 ///
 /// Mesma escolha de [RouteProvision], pelo mesmo motivo: o percentual mora numa
@@ -349,7 +362,7 @@ class NewRouteModal {
     'dateRoute': dateRoute,
     'weekday': weekday,
     'weather': weather,
-    'status': status.toString().split('.').last,
+    'status': storedStatus(status),
     'value': value,
     'kmInitial': kmInitial,
     'kmFinal': kmFinal,

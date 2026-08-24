@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
-import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:iter/Utils/routeFilter.dart';
 import 'package:iter/controller/routeController.dart';
 import 'package:iter/controller/vehicleController.dart';
@@ -14,6 +13,7 @@ import 'package:iter/widget/companyFilter.dart';
 import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/routeCard.dart';
 import 'package:iter/widget/routeFilterSheet.dart';
+import 'package:iter/widget/routeSlidable.dart';
 
 class ListIterScreen extends StatefulWidget {
   const ListIterScreen({super.key, required this.user});
@@ -248,32 +248,11 @@ class _ListIterScreenState extends State<ListIterScreen> {
             // altura do card + espaço e ficam maiores que ele.
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: Slidable(
-                key: ValueKey(route.id),
-                endActionPane: ActionPane(
-                  motion: const DrawerMotion(),
-                  extentRatio: 0.45,
-                  children: [
-                    SlidableAction(
-                      onPressed: (_) => _editRoute(route),
-                      icon: Icons.edit_outlined,
-                      label: 'Editar',
-                      backgroundColor: Colors.blue.shade400,
-                      foregroundColor: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      padding: EdgeInsets.zero,
-                    ),
-                    SlidableAction(
-                      onPressed: (_) => _confirmDelete(route),
-                      icon: Icons.delete_outline,
-                      label: 'Excluir',
-                      backgroundColor: Colors.red.shade400,
-                      foregroundColor: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      padding: EdgeInsets.zero,
-                    ),
-                  ],
-                ),
+              child: RouteSlidable(
+                route: route,
+                onEdit: () => _editRoute(route),
+                onDelete: () => _confirmDelete(route),
+                onMarkPaid: () => _markPaid(route),
                 child: RouteCard(
                   route: route,
                   isExpanded: _expandedId == route.id,
@@ -299,6 +278,52 @@ class _ListIterScreenState extends State<ListIterScreen> {
         builder: (_) => AddIter(uid: widget.user.uid, route: route),
       ),
     );
+  }
+
+  /// Concluída → paga, sem abrir o formulário.
+  ///
+  /// Grava **só** o campo de status (`RouteController.updateStatus`), então a
+  /// provisão congelada, o valor e o `noRoutePayment` não são nem enviados — o
+  /// atalho não tem como reescrevê-los. Quem decide que a rota pode receber
+  /// isso é `RouteSlidable.canMarkPaid`, e a razão está lá.
+  ///
+  /// O desfazer não é enfeite: é um gesto de deslizar, fácil de disparar sem
+  /// querer, e ele move a rota de "a receber" para "pago" no Resumo. Voltar é a
+  /// mesma troca pura de status na direção contrária, então custa o mesmo e
+  /// dispensa uma confirmação que anularia o ganho de ser rápido.
+  Future<void> _markPaid(NewRouteModal route) =>
+      _changeStatus(route, StatusRoute.pago, 'Rota marcada como paga.');
+
+  Future<void> _changeStatus(
+    NewRouteModal route,
+    StatusRoute status,
+    String message,
+  ) async {
+    final previous = route.status;
+
+    try {
+      await RouteController.updateStatus(widget.user.uid, route.id, status);
+      if (!mounted) return;
+
+      showNotification(
+        context: context,
+        type: 'success',
+        msg: message,
+        learnMoreText: 'Desfazer',
+        onLearnMoreTap: () =>
+            _changeStatus(route, previous, 'Status desfeito.'),
+      );
+    } catch (e) {
+      debugPrint('Erro ao trocar o status da rota: $e');
+      if (!mounted) return;
+      showNotification(
+        context: context,
+        type: 'error',
+        msg: kDebugMode
+            ? 'Falha ao trocar o status: $e'
+            : 'Não foi possível trocar o status da rota.',
+      );
+    }
   }
 
   Future<void> _confirmDelete(NewRouteModal route) async {
