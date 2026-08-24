@@ -242,4 +242,113 @@ void main() {
       expect(stats.averageDuration, isNull);
     });
   });
+
+  group('ritmo da carreira — minutos por parada', () {
+    test('é a soma dos minutos sobre a soma das paradas', () {
+      final stats = profileStats([
+        _route(
+          startAt: DateTime(2026, 8, 10, 8),
+          endAt: DateTime(2026, 8, 10, 16),
+          stops: 100,
+        ),
+        _route(
+          id: 'r2',
+          startAt: DateTime(2026, 8, 11, 8),
+          endAt: DateTime(2026, 8, 11, 12),
+          stops: 50,
+        ),
+      ]);
+
+      // 720 minutos, 150 paradas. **Não** é a média dos dois ritmos (4,8 e
+      // 4,8, que aqui coincidem): o certo é a razão das somas, senão uma rota
+      // de cinco paradas pesaria igual a uma de duzentas.
+      expect(stats.pacedMinutes, 720);
+      expect(stats.pacedStops, 150);
+      expect(stats.minutesPerStop, 4.8);
+    });
+
+    test('rota cronometrada sem paradas fica fora dos dois lados', () {
+      final stats = profileStats([
+        _route(
+          startAt: DateTime(2026, 8, 10, 8),
+          endAt: DateTime(2026, 8, 10, 16),
+          stops: 100,
+        ),
+        _route(
+          id: 'r2',
+          startAt: DateTime(2026, 8, 11, 8),
+          endAt: DateTime(2026, 8, 11, 12),
+        ),
+      ]);
+
+      // A duração média enxerga as duas rotas...
+      expect(stats.averageDuration, const Duration(hours: 6));
+      // ...e o ritmo, só a que tem denominador. Somar os 240 minutos da outra
+      // daria 9,6 min/parada — um ritmo pior do que qualquer uma das rotas.
+      expect(stats.pacedMinutes, 480);
+      expect(stats.minutesPerStop, 4.8);
+    });
+
+    test('parada sem hora de fim não entra no ritmo, mas conta em stops', () {
+      final stats = profileStats([
+        _route(
+          startAt: DateTime(2026, 8, 10, 8),
+          endAt: DateTime(2026, 8, 10, 16),
+          stops: 100,
+        ),
+        _route(id: 'r2', startAt: DateTime(2026, 8, 11, 8), stops: 900),
+      ]);
+
+      // As 900 paradas contam na carreira — elas aconteceram...
+      expect(stats.stops, 1000);
+      // ...e ficam fora do ritmo, que não tem tempo medido para dividir. Com
+      // elas no denominador, o ritmo seria 0,48 min/parada.
+      expect(stats.pacedStops, 100);
+      expect(stats.minutesPerStop, 4.8);
+    });
+
+    test('sem paradas cronometradas o ritmo é nulo, nunca zero', () {
+      final stats = profileStats([
+        _route(
+          startAt: DateTime(2026, 8, 10, 8),
+          endAt: DateTime(2026, 8, 10, 16),
+        ),
+      ]);
+
+      expect(stats.averageDuration, const Duration(hours: 8));
+      expect(stats.minutesPerStop, isNull);
+    });
+
+    test('a travessia leva e traz o ritmo', () {
+      const original = ProfileStats(
+        routes: 17,
+        deliveredPackages: 551,
+        stops: 506,
+        averageDuration: Duration(hours: 2, minutes: 49),
+        pacedMinutes: 2873,
+        pacedStops: 506,
+      );
+
+      final volta = ProfileStats.fromMap(original.toMap());
+
+      expect(volta.pacedMinutes, 2873);
+      expect(volta.pacedStops, 506);
+      expect(volta.minutesPerStop, closeTo(5.68, 0.01));
+    });
+
+    test('carreira publicada antes do ritmo volta sem ritmo', () {
+      // O documento do amigo que ainda não reabriu o app: tem `averageMinutes`
+      // e não tem as paradas cronometradas. `null` é a verdade sobre ele — o
+      // dialog desenha `—` e o número volta sozinho na próxima abertura.
+      final volta = ProfileStats.fromMap(const {
+        'routes': 17,
+        'deliveredPackages': 551,
+        'stops': 506,
+        'averageMinutes': 169,
+      });
+
+      expect(volta.averageDuration, const Duration(minutes: 169));
+      expect(volta.minutesPerStop, isNull);
+    });
+  });
 }

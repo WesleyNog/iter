@@ -6,9 +6,7 @@ import 'package:iter/screens/addFriend.dart';
 /// tocado *dentro* da busca. Os casos aqui são exatamente os que **não**
 /// chegam à rede, e é de propósito: são eles que decidem se a rede é chamada.
 Future<void> _pump(WidgetTester tester) {
-  return tester.pumpWidget(
-    const MaterialApp(home: AddFriend(uid: 'meu-uid')),
-  );
+  return tester.pumpWidget(const MaterialApp(home: AddFriend(uid: 'meu-uid')));
 }
 
 Future<void> _buscar(WidgetTester tester, String texto) async {
@@ -83,5 +81,20 @@ void main() {
     // Enter no teclado busca, sem obrigar a mirar no botão.
     expect(campo.textInputAction, TextInputAction.search);
     expect(campo.onSubmitted, isNotNull);
+  });
+
+  testWidgets('o botão de ler QR está na barra, e não busca sozinho', (
+    tester,
+  ) async {
+    // Não abre a câmera aqui: `tester.tap` levaria ao `MobileScanner`, que é
+    // canal de plataforma e não sobe em teste de widget. O que este teste
+    // garante é o que **não** depende dela — que a entrada existe e que montar
+    // a tela não dispara busca nenhuma. Se disparasse, o Firestore não
+    // inicializado derrubaria o teste, que é o que o torna uma asserção de
+    // verdade.
+    await _pump(tester);
+
+    expect(find.byKey(const ValueKey('ler-qr')), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

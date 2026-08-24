@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:iter/Utils/currencyFormat.dart';
+import 'package:iter/Utils/routePace.dart';
 import 'package:iter/Utils/routeStyle.dart';
 import 'package:iter/Utils/routeTime.dart';
 import 'package:iter/Utils/weather.dart';
@@ -168,6 +169,7 @@ class RouteCard extends StatelessWidget {
     final start = RouteTime.formatTime(route.startAt);
     final end = route.endAt;
     final duration = RouteTime.formatDuration(route.startAt, end);
+    final pace = paceOf(route);
     final bairros = route.adress ?? const <String>[];
     final weather = route.weather;
     final payment = route.noRoutePayment;
@@ -187,6 +189,12 @@ class RouteCard extends StatelessWidget {
             : '$start às ${RouteTime.formatTime(end)}'
                   '${duration == null ? '' : ' ($duration)'}',
       ),
+      // Logo abaixo da duração, e não no lugar dela: "4h05" responde quanto
+      // durou, o ritmo responde se foi rápido. Uma rota de 4h com 28 paradas e
+      // outra de 4h com 5 mostram a mesma duração e não foram o mesmo dia de
+      // trabalho — é a comparação que o Ranking passou a ordenar.
+      if (pace != null)
+        _detailRow(Icons.timer_outlined, 'Ritmo', formatPace(pace)),
       // De onde saiu o valor desta rota. Só a Sem Rota tem essa pergunta: nas
       // outras, o que aparece no cabeçalho é o que a empresa pagou, e ponto.
       if (payment != null)

@@ -1,7 +1,12 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:iter/Utils/profileStats.dart';
+import 'package:iter/Utils/routePace.dart';
+import 'package:iter/Utils/routeStyle.dart';
 import 'package:iter/Utils/routeTime.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 /// Perfil do entregador, quase em tela cheia.
 ///
@@ -18,6 +23,7 @@ Future<void> showProfileDialog(
   required String actionLabel,
   VoidCallback? onAction,
   VoidCallback? onBlock,
+  String? qrPayload,
 }) {
   return showDialog<void>(
     context: context,
@@ -29,11 +35,12 @@ Future<void> showProfileDialog(
       actionLabel: actionLabel,
       onAction: onAction,
       onBlock: onBlock,
+      qrPayload: qrPayload,
     ),
   );
 }
 
-class ProfileDialog extends StatelessWidget {
+class ProfileDialog extends StatefulWidget {
   const ProfileDialog({
     super.key,
     required this.name,
@@ -43,6 +50,7 @@ class ProfileDialog extends StatelessWidget {
     this.onBlock,
     this.nickName,
     this.photoUrl,
+    this.qrPayload,
   });
 
   final String name;
@@ -76,8 +84,59 @@ class ProfileDialog extends StatelessWidget {
   /// recusado reconvida, e o badge acende de novo.
   final VoidCallback? onBlock;
 
+  /// O conteúdo do QR Code — `friendQrPayload(apelido)`. `null` esconde o
+  /// botão e a face de trás inteira.
+  ///
+  /// Vem de fora, como todo o resto: o dialog não sabe quem está logado, e é
+  /// isso que o mantém testável sem Firebase. Só o **próprio** perfil passa
+  /// este parâmetro — o QR é o seu convite, e oferecer o de um amigo seria
+  /// deixar qualquer um distribuir o convite de outra pessoa.
+  final String? qrPayload;
+
+  @override
+  State<ProfileDialog> createState() => _ProfileDialogState();
+}
+
+class _ProfileDialogState extends State<ProfileDialog>
+    with SingleTickerProviderStateMixin {
   static const _bannerHeight = 116.0;
   static const _avatarRadius = 46.0;
+  static const _flipDuration = Duration(milliseconds: 420);
+
+  /// Criado no `initState`, **não** num `late final` inicializado por uso.
+  ///
+  /// Com o `late`, o perfil de um amigo — que não tem QR e portanto nunca lê
+  /// este campo no `build` — só tocava nele dentro do `dispose()`, e aí
+  /// `vsync: this` procura o `TickerMode` num contexto já desativado:
+  /// "Looking up a deactivated widget's ancestor is unsafe" ao **fechar** o
+  /// dialog. O teste do flip é que revelou; o caminho quebrado era o dos
+  /// perfis alheios, que nem flip têm.
+  late final AnimationController _flip;
+
+  @override
+  void initState() {
+    super.initState();
+    _flip = AnimationController(vsync: this, duration: _flipDuration);
+  }
+
+  /// A face de trás só existe depois de meio giro. Antes disso o que se vê é
+  /// a frente girando, e desenhar o QR ali o mostraria espelhado — um QR
+  /// espelhado não é ilegível, é **outro** dado, e o leitor recusa.
+  bool get _showingBack => _flip.value > 0.5;
+
+  @override
+  void dispose() {
+    _flip.dispose();
+    super.dispose();
+  }
+
+  void _toggle() {
+    if (_flip.isCompleted || _flip.velocity > 0) {
+      _flip.reverse();
+    } else {
+      _flip.forward();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -92,55 +151,69 @@ class ProfileDialog extends StatelessWidget {
             _header(context),
             const SizedBox(height: 10),
             Text(
-              name,
+              widget.name,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 21,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
             ),
-            if (nickName != null && nickName!.isNotEmpty) ...[
+            if (widget.nickName != null && widget.nickName!.isNotEmpty) ...[
               const SizedBox(height: 2),
               Text(
-                '@$nickName',
+                '@${widget.nickName}',
                 style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
               ),
             ],
             const SizedBox(height: 22),
+            // Só o miolo gira. O banner, a foto, o nome e o apelido ficam de
+            // fora do `Transform` de propósito: é o que faz o giro ler como
+            // "o mesmo cartão virou", e não como "abriu outra tela". Também é
+            // o que garante que o apelido continue à vista na face do QR —
+            // quando a câmera do outro não coopera, digitar é a saída.
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: _stats(),
+              child: _flipavel(),
             ),
             const SizedBox(height: 22),
             Padding(
-              padding: EdgeInsets.fromLTRB(24, 0, 24, onBlock == null ? 24 : 4),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: onAction,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF1976D2),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
+              padding: EdgeInsets.fromLTRB(
+                24,
+                0,
+                24,
+                widget.onBlock == null ? 24 : 4,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: widget.onAction,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF1976D2),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                      ),
+                      child: Text(
+                        widget.actionLabel.toUpperCase(),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
                     ),
                   ),
-                  child: Text(
-                    actionLabel.toUpperCase(),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
+                  if (widget.qrPayload != null) ...[
+                    const SizedBox(width: 8),
+                    _botaoQr(),
+                  ],
+                ],
               ),
             ),
-            if (onBlock != null)
+            if (widget.onBlock != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: TextButton.icon(
                   key: const ValueKey('bloquear-perfil'),
-                  onPressed: onBlock,
+                  onPressed: widget.onBlock,
                   icon: Icon(
                     Icons.block,
                     size: 17,
@@ -155,6 +228,117 @@ class ProfileDialog extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  /// O botão que vira o cartão.
+  ///
+  /// Fica **ao lado** do compartilhar, e não dentro dele, porque são duas
+  /// ações diferentes: compartilhar manda o convite para longe, o QR resolve
+  /// o caso de estar perto — os dois no galpão, um mostrando a tela para o
+  /// outro. É esse o caso em que digitar apelido no celular alheio é o que
+  /// acontece hoje.
+  Widget _botaoQr() {
+    return AnimatedBuilder(
+      animation: _flip,
+      builder: (context, _) {
+        final voltando = _showingBack;
+        return Container(
+          decoration: BoxDecoration(
+            color: voltando
+                ? const Color(0xFF1976D2)
+                : const Color(0xFF1976D2).withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(30),
+          ),
+          child: IconButton(
+            key: const ValueKey('girar-qr'),
+            tooltip: voltando ? 'Ver os números' : 'Mostrar meu QR Code',
+            onPressed: _toggle,
+            icon: Icon(
+              voltando ? Icons.badge_outlined : Icons.qr_code_2_rounded,
+              color: voltando ? Colors.white : const Color(0xFF1976D2),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// O miolo que gira: os números de um lado, o QR do outro.
+  ///
+  /// `AnimatedSize` porque as duas faces **não** têm a mesma altura, e nenhuma
+  /// das duas tem altura fixa: a dos números muda com o perfil (uma carreira
+  /// sem empresa mede 158 px, uma completa 144). Cravar uma constante aqui
+  /// serviria a um perfil e faria o cartão pular no meio do giro em todos os
+  /// outros — é a mesma armadilha do `_StatsPlaceholder`, e lá ela já custou
+  /// dois números errados. Deixar a altura ser animada junto com a rotação
+  /// resolve sem constante nenhuma.
+  Widget _flipavel() {
+    if (widget.qrPayload == null) return _stats();
+
+    return AnimatedSize(
+      duration: _flipDuration,
+      curve: Curves.easeInOut,
+      alignment: Alignment.topCenter,
+      child: AnimatedBuilder(
+        animation: _flip,
+        builder: (context, _) {
+          final angulo = _flip.value * math.pi;
+
+          return Transform(
+            alignment: Alignment.center,
+            // A perspectiva é o que faz o giro parecer um cartão virando e
+            // não um desenho encolhendo na horizontal.
+            transform: Matrix4.identity()
+              ..setEntry(3, 2, 0.0012)
+              ..rotateY(angulo),
+            child: _showingBack
+                // Desvira o conteúdo: sem esta segunda rotação o QR fica
+                // espelhado, e QR espelhado não é um QR difícil de ler — é
+                // outro dado, que o leitor recusa.
+                ? Transform(
+                    alignment: Alignment.center,
+                    transform: Matrix4.identity()..rotateY(math.pi),
+                    child: _faceQr(),
+                  )
+                : _stats(),
+          );
+        },
+      ),
+    );
+  }
+
+  /// A face de trás: o QR e o que fazer com ele.
+  Widget _faceQr() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          // Branco atrás e uma margem clara em volta não são enfeite: leitor
+          // de QR precisa de contraste e da "zona quieta" da borda para achar
+          // os três quadrados de canto.
+          child: QrImageView(
+            key: const ValueKey('qr-amigo'),
+            data: widget.qrPayload!,
+            version: QrVersions.auto,
+            size: 190,
+            backgroundColor: Colors.white,
+            padding: EdgeInsets.zero,
+            // O apelido é curto e o QR sai com pouca informação; a correção
+            // mais alta cabe de graça e sobrevive a tela suja e foto tremida.
+            errorCorrectionLevel: QrErrorCorrectLevel.H,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _note(
+          'Peça para o colega ler este código em Amigos › Adicionar amigo.',
+        ),
+      ],
     );
   }
 
@@ -204,11 +388,11 @@ class ProfileDialog extends StatelessWidget {
   }
 
   Widget _avatar() {
-    final url = photoUrl;
+    final url = widget.photoUrl;
     final hasPhoto = url != null && url.isNotEmpty;
-    final initial = name.trim().isEmpty
+    final initial = widget.name.trim().isEmpty
         ? '?'
-        : name.trim().characters.first.toUpperCase();
+        : widget.name.trim().characters.first.toUpperCase();
 
     return CircleAvatar(
       radius: _avatarRadius,
@@ -232,7 +416,7 @@ class ProfileDialog extends StatelessWidget {
 
   Widget _stats() {
     return FutureBuilder<ProfileStats?>(
-      future: stats,
+      future: widget.stats,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           debugPrint('Erro ao ler as métricas do perfil: ${snapshot.error}');
@@ -276,18 +460,20 @@ class ProfileDialog extends StatelessWidget {
                       ? '—'
                       : '${data.failureRate!.toStringAsFixed(1)}%',
                 ),
-                _smallStat(
+                _smallStatOf(
                   Icons.local_shipping_outlined,
                   'Mais rodada',
-                  data.topCompany == null
-                      ? '—'
-                      : '${data.topCompany!.label}\n'
-                            '${data.topCompany!.share.toStringAsFixed(0)}%',
+                  _empresa(data.topCompany),
                 ),
-                _smallStat(
+                // Os dois números na mesma linha, e nesta ordem: a duração é
+                // o que o entregador reconhece do próprio dia, o ritmo é o que
+                // o compara com quem pega rota de outro tamanho. Trocar um
+                // pelo outro perderia metade da resposta — quem vê "6,0 m/p"
+                // sozinho não sabe se rodou duas horas ou nove.
+                _smallStatOf(
                   Icons.timer_outlined,
                   'Tempo médio',
-                  _duration(data.averageDuration),
+                  _tempo(data.averageDuration, data.minutesPerStop),
                 ),
               ],
             ),
@@ -305,6 +491,34 @@ class ProfileDialog extends StatelessWidget {
   String _duration(Duration? average) {
     if (average == null) return '—';
     return RouteTime.formatMinutes(average.inMinutes);
+  }
+
+  /// A duração média e o ritmo, numa linha só: `4h26 · 6,0 m/p`.
+  ///
+  /// Ritmo `null` deixa só a duração, em vez de um segundo `—` pendurado
+  /// depois do separador: é a carreira publicada antes deste número existir,
+  /// que não guardou as paradas cronometradas e volta sozinha quando o dono do
+  /// perfil reabrir o app.
+  ///
+  /// `FittedBox` porque o pior caso não cabe. Medido com Roboto em 390 dp, a
+  /// coluna tem ~103 px e `12h30 · 22,4 m/p` pede mais — sem ele, o texto
+  /// quebraria em duas linhas e desalinharia a coluna em relação às vizinhas,
+  /// que é exatamente o defeito que juntar os dois números veio corrigir. O
+  /// mesmo recurso que `_bigStat` já usa neste arquivo, e pela mesma razão:
+  /// encolher um pouco é melhor do que quebrar.
+  Widget _tempo(Duration? average, double? minutesPerStop) {
+    final texto = minutesPerStop == null
+        ? _duration(average)
+        : '${_duration(average)} · ${formatPaceShort(minutesPerStop)}';
+
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Text(
+        texto,
+        maxLines: 1,
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+      ),
+    );
   }
 
   Widget _bigStat(String value, String label) {
@@ -333,6 +547,73 @@ class ProfileDialog extends StatelessWidget {
   }
 
   Widget _smallStat(IconData icon, String label, String value) {
+    return _smallStatOf(
+      icon,
+      label,
+      Text(
+        value,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+
+  /// A logo da empresa e a fatia dela, lado a lado.
+  ///
+  /// Era `Mercado Livre\n60%`, duas linhas — e duas linhas numa coluna só
+  /// desalinham o valor dela em relação às vizinhas, que têm uma. A logo diz a
+  /// mesma coisa em menos espaço e é o que o entregador reconhece primeiro; o
+  /// nome continua alcançável por toque longo e pelo leitor de tela.
+  ///
+  /// Rótulo que este app não conhece cai no texto: `companyFromLabel` devolve
+  /// `null` e não há logo para desenhar. É o caso do documento de carreira
+  /// escrito por uma versão com uma empresa a mais.
+  Widget _empresa(TopCompany? company) {
+    const estilo = TextStyle(fontSize: 12, fontWeight: FontWeight.w600);
+    if (company == null) return const Text('—', style: estilo);
+
+    final pct = '${company.share.toStringAsFixed(0)}%';
+    final empresa = companyFromLabel(company.label);
+    if (empresa == null) {
+      return Text(
+        '${company.label}\n$pct',
+        textAlign: TextAlign.center,
+        style: estilo,
+      );
+    }
+
+    return Tooltip(
+      message: company.label,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Semantics(
+            label: company.label,
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: Image.asset(
+                companyLogo(empresa),
+                fit: BoxFit.contain,
+                // Logo ausente não pode apagar a métrica: sem isto a coluna
+                // ficaria só com o percentual, sem dizer de quem ele é.
+                errorBuilder: (_, _, _) => Icon(
+                  Icons.local_shipping_outlined,
+                  size: 16,
+                  color: Colors.grey.shade500,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(pct, style: estilo),
+        ],
+      ),
+    );
+  }
+
+  Widget _smallStatOf(IconData icon, String label, Widget value) {
     return Expanded(
       child: Column(
         children: [
@@ -344,11 +625,7 @@ class ProfileDialog extends StatelessWidget {
             style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
           ),
           const SizedBox(height: 2),
-          Text(
-            value,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-          ),
+          value,
         ],
       ),
     );
@@ -371,7 +648,23 @@ class _StatsPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 108,
+      // 144 px é a altura **medida** do bloco carregado (390 dp, Roboto de
+      // verdade, perfil completo), e é para isso que esta constante existe: o
+      // dialog não pode mudar de tamanho quando o Firestore responde.
+      //
+      // Quem manda na altura da fileira é a "Mais rodada", com a logo de 20 px
+      // no lugar do valor de 12. As três colunas voltaram a ter uma linha cada
+      // quando a duração e o ritmo passaram a dividir a mesma — e o efeito
+      // colateral bom é que **a carreira sem ritmo mede os mesmos 144**: o
+      // documento publicado antes daquele número existir desenha exatamente a
+      // mesma altura, e não há caso comum contra caso legado aqui.
+      //
+      // É a quarta vez que esta constante muda, e por isso ela não é chutada.
+      // Os valores medidos que sobram, para quem for mexer: 158 com uma
+      // empresa que este app não conhece (volta a ser texto de duas linhas) e
+      // 174 na conta sem rota nenhuma, que ganha a linha do convite a
+      // cadastrar. Nenhuma constante serve às três — fica com o caso comum.
+      height: 144,
       child: Center(
         child: SizedBox(
           width: 22,

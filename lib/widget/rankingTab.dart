@@ -1,13 +1,11 @@
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:iter/Utils/monthStats.dart';
-import 'package:iter/Utils/profileDisplay.dart';
 import 'package:iter/Utils/ranking.dart';
 import 'package:iter/Utils/routeStyle.dart';
-import 'package:iter/Utils/routeTime.dart';
 import 'package:iter/controller/profileController.dart';
 import 'package:iter/model/publicProfile.dart';
+import 'package:iter/widget/rankTile.dart';
 import 'package:iter/widget/segmentedSelector.dart';
 
 /// O ranking entre amigos, mês a mês.
@@ -209,12 +207,16 @@ class _RankingTabState extends State<RankingTab> {
       padding: EdgeInsets.fromLTRB(16, 0, 16, widget.bottomGap),
       children: [
         if (disputa.isEmpty)
+          // O texto nomeia a amostra do critério, não "rotas": desde que a
+          // porta passou a olhar a população da média, alguém pode ter vinte
+          // rotas no mês e nenhuma com hora de fim — e "ninguém tem 5 rotas"
+          // seria falso na cara de quem tem vinte.
           _aviso(
-            'Ninguém tem $minimumRoutes rotas neste mês ainda — sem amostra '
-            'não dá para comparar.',
+            'Ninguém tem $minimumRoutes ${_criterion.sampleName} neste mês '
+            'ainda — sem amostra não dá para comparar.',
           )
         else
-          for (var i = 0; i < disputa.length; i++) _linha(disputa[i], i + 1),
+          for (var i = 0; i < disputa.length; i++) _tile(disputa[i], i + 1),
         if (fora.isNotEmpty) ...[
           const SizedBox(height: 18),
           Text(
@@ -227,116 +229,21 @@ class _RankingTabState extends State<RankingTab> {
             ),
           ),
           const SizedBox(height: 4),
-          for (final row in fora) _linha(row, null),
+          for (final row in fora) _tile(row, null),
         ],
       ],
     );
   }
 
-  Widget _linha(RankRow row, int? position) {
-    final isMe = row.uid == widget.uid;
-    final profile = widget.profiles[row.uid];
-    final name = displayName(profile);
-
-    return Container(
+  RankTile _tile(RankRow row, int? position) {
+    return RankTile(
       key: ValueKey('rank-${row.uid}'),
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        // A própria linha destacada: o usuário pediu para aparecer no ranking,
-        // e achar-se numa lista de vinte não pode depender de ler os nomes.
-        color: isMe ? Colors.blue.shade50 : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 26,
-            child: position != null && position <= 3
-                ? Image.asset(
-                    position == 1
-                        ? 'assets/images/OURO-MEDAL.png'
-                        : position == 2
-                        ? 'assets/images/PRATA-MEDAL.png'
-                        : 'assets/images/BRONZE-MEDAL.png',
-                    width: 25,
-                    height: 25,
-                  )
-                : Text(
-                    position == null ? '—' : '$position',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: position == null
-                          ? Colors.grey.shade400
-                          : Colors.grey.shade700,
-                    ),
-                  ),
-          ),
-          const SizedBox(width: 4),
-          CircleAvatar(
-            radius: 16,
-            backgroundColor: Colors.blue.shade50,
-            // Cacheado em disco: os mesmos avatares reaparecem a cada visita.
-            backgroundImage: hasPhoto(profile?.photoUrl)
-                ? CachedNetworkImageProvider(profile!.photoUrl!)
-                : null,
-            child: hasPhoto(profile?.photoUrl)
-                ? null
-                : Text(
-                    displayInitial(name),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.blue.shade700,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              isMe ? '$name (você)' : name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: isMe ? FontWeight.w700 : FontWeight.w500,
-              ),
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                _format(row.value),
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              // A amostra ao lado do número, sempre: "1,4%" de 40 rotas e de
-              // 2 rotas são o mesmo texto e não são a mesma informação.
-              Text(
-                row.routes == 1 ? '1 rota' : '${row.routes} rotas',
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-              ),
-            ],
-          ),
-        ],
-      ),
+      row: row,
+      criterion: _criterion,
+      profile: widget.profiles[row.uid],
+      position: position,
+      isMe: row.uid == widget.uid,
     );
-  }
-
-  String _format(double? value) {
-    if (value == null) return '—';
-
-    return switch (_criterion) {
-      RankCriterion.rotas => value.toInt().toString(),
-      // O mesmo "4h22" do card da rota e do dialog de perfil.
-      RankCriterion.tempo => RouteTime.formatMinutes(value.round()),
-      RankCriterion.insucesso =>
-        '${value.toStringAsFixed(1).replaceAll('.', ',')}%',
-    };
   }
 
   Widget _aviso(String message) {

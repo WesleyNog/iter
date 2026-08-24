@@ -27,6 +27,24 @@ String companyLabel(Company company) {
   }
 }
 
+/// A empresa de um rótulo, ou `null` quando o rótulo não é de nenhuma.
+///
+/// **Derivada de [companyLabel], nunca de uma segunda tabela** — mesma regra
+/// que `nightVariantOf`/`daytimeOf` seguem no clima: um par que existisse só de
+/// um lado traduziria numa direção e não desfaria na outra.
+///
+/// Existe porque `ProfileStats.topCompany` guarda o **rótulo**, não o enum:
+/// `profiles/{uid}/stats/all` é documento publicado e já tem `topCompanyLabel`
+/// gravado assim na carreira de todo mundo. Recuperar a empresa a partir dele
+/// deixa o dialog desenhar a logo sem migrar documento nenhum — e devolve
+/// `null`, que a tela sabe desenhar, para o rótulo que este app não conhece.
+Company? companyFromLabel(String label) {
+  for (final company in Company.values) {
+    if (companyLabel(company) == label) return company;
+  }
+  return null;
+}
+
 /// Cor da empresa nos gráficos.
 ///
 /// Não são as do seletor de `addIter` (âmbar/azul/laranja): ali o fundo é

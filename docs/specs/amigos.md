@@ -1,10 +1,12 @@
 # Spec: Amigos
 
 Status: **implementada** · Criada, aprovada e implementada em 2026-08-07 ·
-Bloqueio, denúncia e comentário em 2026-08-09 · As três abas verificadas em
-aparelho · Faltam a verificação em aparelho dos fluxos de recusa, cancelamento,
-remoção, convite mútuo, bloqueio e denúncia, e o **App Check** antes de abrir
-para desconhecidos
+Bloqueio, denúncia e comentário em 2026-08-09 · O critério de tempo do Ranking
+virou **Ritmo** (min/parada) em 2026-08-24, e a amostra mínima passou a contar
+a população de cada média · As três abas verificadas em aparelho · Faltam a
+verificação em aparelho dos fluxos de recusa, cancelamento, remoção, convite
+mútuo, bloqueio e denúncia, e o **App Check** antes de abrir para
+desconhecidos
 
 ## Objetivo
 
@@ -161,6 +163,8 @@ e já é o que o dialog consome; falta o `toMap`/`fromMap`.
 | `topCompanyLabel` | String? | de `topCompany.label` |
 | `topCompanyShare` | double? | de `topCompany.share`, em % |
 | `averageMinutes` | int? | de `averageDuration`; `null` sem hora de fim |
+| `pacedMinutes` | int | minutos das rotas com `endAt` **e** `stops > 0` |
+| `pacedStops` | int | paradas dessas mesmas rotas |
 | `updatedAt` | String | ISO 8601 |
 
 A travessia **não é simétrica** e é de propósito: `topCompany` é um record
@@ -173,6 +177,14 @@ não vale o preço da simetria.
 "taxa de insucesso 0%" e "ninguém preencheu pacotes" são coisas diferentes;
 gravar `0` apagaria essa distinção justamente onde ela fica pública.
 
+`pacedMinutes` e `pacedStops` são **o par**, e não o quociente já pronto —
+mesma disciplina do balde do mês. Eles ficam ao lado de `averageMinutes` em vez
+de no lugar dele porque o dialog mostra os dois: `2h49` é o dia que o
+entregador reconhece, `5,7 min/parada` é o que o compara com quem pega rota de
+outro tamanho. E não são deriváveis um do outro — as populações diferem, já que
+uma rota cronometrada sem paradas informadas entra na média de duração e fica
+fora do ritmo.
+
 ### `profiles/{uid}/stats/{yyyy-MM}` — o balde do mês (Ranking)
 
 | campo | tipo | |
@@ -180,21 +192,63 @@ gravar `0` apagaria essa distinção justamente onde ela fica pública.
 | `routes` | int | realizadas no mês |
 | `packages` | int | só de rotas com `packages > 0` |
 | `failures` | int | `failuresOf` somado, mesma população de `packages` |
-| `timedRoutes` | int | quantas têm `endAt` |
-| `totalMinutes` | int | soma das durações dessas |
-| `timedPackages` | int | pacotes das rotas que têm `endAt` **e** `packages > 0` |
+| `packagedRoutes` | int | quantas rotas formam a taxa — a amostra dela |
+| `pacedRoutes` | int | quantas têm `endAt` **e** `stops > 0` — a amostra do ritmo |
+| `pacedMinutes` | int | minutos dessas |
+| `pacedStops` | int | paradas dessas |
 | `updatedAt` | String | ISO 8601 |
 
 **Numerador e denominador, nunca a taxa.** `1 insucesso em 8 pacotes` e `125 em
 1000` dão a mesma porcentagem e não são o mesmo problema — é a mesma razão de
 `FailureRate` carregar os dois números em vez do quociente.
 
-`timedPackages` existe porque `packages` e `totalMinutes` contam **populações
-diferentes**: um é sobre rotas com pacotes informados, o outro sobre rotas com
-hora de fim. Sem um terceiro campo que cruze os dois, "minutos por pacote" —
-que é o único jeito justo de comparar quem pega rota de 200 pacotes com quem
-pega de 30 — seria incomputável, e o ranking de velocidade premiaria a rota
-pequena. Guardar o campo agora custa um int e evita migrar documento depois.
+**Cada média carrega a própria população, e as duas não coincidem.** Rotas com
+pacotes informados de um lado, rotas com hora de fim **e** paradas do outro. Um
+par de contadores por média é o que impede a conta que mistura as duas.
+
+Quem decide se uma rota entra no ritmo é `pacedOf`, em `Utils/routePace.dart`, e
+não o laço do balde: a mesma regra vale para o card da rota e para a carreira, e
+uma cópia em cada lugar divergiria — o card mostrando o ritmo de uma rota que o
+Ranking não contou. São três recusas, e a terceira é a que ninguém veria: rota
+de menos de um minuto tem duração positiva, `inMinutes` trunca para zero, e ela
+levaria as paradas dela para o denominador sem levar minuto nenhum para o
+numerador.
+
+Uma versão anterior deste balde guardava `timedPackages` reservado para esta
+conta, e ele **saiu**, por dois motivos que vale registrar juntos.
+
+O primeiro é o denominador: o ritmo é por **parada**, não por pacote. O tempo de
+uma rota se gasta dirigindo até o ponto, estacionando e subindo; cinco pacotes
+na mesma porta custam quase o mesmo que um, então medir por pacote premiaria
+quem pega parada cheia sem ele ter sido mais rápido em nada. E `stops` é o campo
+mais disponível dos dois: o formulário **exige** "Paradas" sempre que "Pacotes"
+está preenchido (`addIter.dart:866`), então não existe rota com ritmo por pacote
+que não tenha ritmo por parada.
+
+O segundo é que `timedPackages` estava **errado como par**. Ele cruzava as
+populações pelo lado do denominador e deixava o numerador solto: `totalMinutes`
+soma os minutos de *toda* rota cronometrada, inclusive as sem pacotes
+informados. `totalMinutes / timedPackages` divide os minutos de um conjunto
+pelas unidades de outro — um ritmo que não é o de ninguém, e sempre pior que o
+verdadeiro. `pacedMinutes` existe exatamente para isso: é a soma dos minutos
+**das rotas que também entraram no denominador**.
+
+E a economia que justificava guardá-lo — "custa um int e evita migrar documento
+depois" — não existia. A janela de doze meses é reescrita inteira a cada
+abertura do app (`ProfileController.publish`), então campo novo no balde se
+preenche sozinho; não há migração de que fugir. O que reservar o campo comprou
+foi um número errado à mão, esperando para ser usado.
+
+**`timedRoutes` e `totalMinutes` saíram pela outra ponta da mesma régua.** Eles
+eram a média por rota — o número que o Ranking ordenava até 24/08/2026 — e
+ficaram sem nenhum leitor no instante em que ele passou a ordenar ritmo: a
+duração que as telas mostram vem da própria rota (o card) e de `stats/all` (o
+dialog de perfil), nunca daqui. Campo público sem leitor é número que um dia
+discorda da origem sem ninguém perceber, e este documento é lido por outra
+pessoa. O que se perde é a possibilidade de dizer "a rota média do fulano em
+agosto durou 2h49" — só isso, e só sobre **amigo**, porque as suas próprias
+rotas o app tem em memória. Voltam em uma linha, pela mesma razão que o balde
+não precisa de migração.
 
 **O balde é recalculado, nunca incrementado.** `FieldValue.increment` derivaria
 no dia em que uma rota é editada ou apagada, e um número público que discorda da
@@ -570,6 +624,50 @@ normalizam — `normalize()` hoje só roda em `suggestFrom` e `change`. Digitar
 - documento sem `stats` vira zeros com `null` nas taxas — "conta nova" e "não
   dá para calcular" são coisas diferentes.
 
+Arquivos que esta correção acrescentou: `lib/Utils/routePace.dart`,
+`lib/widget/rankTile.dart`, `test/unit/routePace_test.dart` e
+`test/widget/rankTile_test.dart`.
+
+`test/unit/routePace_test.dart` — a divisão, e principalmente o que ela recusa:
+
+- o ritmo da rota da tela (12:21 às 16:26, 28 paradas) dá `8,8 min/parada`;
+- sem paradas, sem hora de fim ou com duração não positiva devolve `null` —
+  **nunca zero**, que num ranking de "menor é melhor" coroaria quem não
+  preencheu nada;
+- rota que virou o dia tem ritmo real, não negativo;
+- `formatPace` usa vírgula e uma casa decimal, sempre — inclusive nos redondos.
+
+`test/unit/monthStats_test.dart` e `test/unit/profileStats_test.dart` — o par de
+cada média:
+
+- **minutos e paradas do ritmo saem da mesma rota**: uma rota cronometrada sem
+  paradas informadas tem duração e não tem denominador, e os minutos dela ficam
+  de fora dos dois lados. É o teste que fica vermelho se alguém "simplificar"
+  somando a duração de toda rota cronometrada;
+- rota de menos de um minuto não leva as paradas dela para o denominador;
+- o `toMap` do balde tem **sete** chaves, e `timedRoutes`/`totalMinutes`/
+  `timedPackages` não estão entre elas — o teste é o que impede que voltem por
+  descuido;
+- a rota grande vence a curta no ritmo e perdia pela duração — os dois números
+  no mesmo teste, para a inversão ficar explícita;
+- balde antigo (sem `paced*`) volta com ritmo `null`, e balde antigo sem
+  `packagedRoutes` cai em `routes`, não em zero.
+
+`test/widget/rankTile_test.dart` — a linha do Ranking, **e a razão de ela
+existir como widget próprio**:
+
+- a amostra desenhada é a do critério, não as rotas do mês. Trocar
+  `row.sampleRoutes` por `row.routes` deixa quatro testes vermelhos; enquanto a
+  linha morava num `State` privado da `RankingTab`, a mesma troca deixava a
+  suíte **inteira** verde, porque aquela tela abre o Firestore no `initState` e
+  nenhum teste de widget a alcança. Foi por isso que a legenda chegou a afirmar
+  "0 pacotes · 17 rotas" sem nada ficar vermelho;
+- sem amostra, a linha cai nas rotas do mês em vez de dois zeros;
+- cada critério formata o próprio número (`17`, `5,7 min/parada`, `1,4%`);
+- **o número nunca é espremido pelo nome** — a causa, não o sintoma: o valor é
+  o filho sem `flex` da `Row`, então nome absurdo encolhe o nome e não o
+  número. A extração seguiu o mesmo caminho de `pendingOnly` e `FriendTile`.
+
 `test/widget/segmentedSelector_test.dart`:
 
 - os três segmentos têm a **mesma largura entre si** — comparar os três `Size`,
@@ -754,6 +852,19 @@ precedente registrado no `polimento-glass.md`.
 que o menu `+` usou quando nasceu — as três entradas de uma vez, as futuras com
 o selo que `CreateAction.comingSoon` desenha.
 
+**13. O Ranking ordena ritmo, e cada média cobra a própria amostra.**
+(24/08/2026.) A duração média por rota media o tamanho da rota, não a
+velocidade de quem a rodou; `min/parada` compara quem pegou 200 pacotes com
+quem pegou 30. A duração continua na tela onde a pergunta é "quanto durou" — o
+card da rota e o dialog de perfil —, com o ritmo embaixo dela.
+
+A amostra mínima veio junto porque era o mesmo defeito de outra forma: a porta
+contava as rotas do mês e o número saía de um subconjunto. Uma consequência
+aceita de propósito: quem cronometra as rotas e não digita as paradas **sai da
+disputa** e vai para o rodapé com um traço. É a mesma disciplina do `null` em
+todo o resto do app — "não dá para calcular" nunca vira um número —, e a saída
+é preencher o campo, não afrouxar a régua.
+
 ## Riscos
 
 | Risco | Mitigação |
@@ -827,51 +938,90 @@ o selo que `CreateAction.comingSoon` desenha.
   desenha `@apelido` e inicial genérica quando `profiles/{friendUid}` falta, em
   vez de linha em branco.
 - **UI para trocar o próprio apelido** — `NicknameController.change()` existe e
-  nunca foi ligado a uma tela. Passa a incomodar agora: para alguém te achar,
-  você precisa saber e conseguir passar o seu apelido. O dialog de perfil já
-  mostra `@apelido` e já tem um botão de ação livre — "Compartilhar" ali
-  resolve o mínimo sem abrir a discussão de troca.
+  nunca foi ligado a uma tela. A metade que incomodava — *para alguém te achar,
+  você precisa conseguir passar o seu apelido* — foi **entregue em 24/08/2026**:
+  o botão "Compartilhar" funciona e ganhou um QR ao lado, com o cartão girando
+  entre os números e o código. Ver `docs/specs/convite-qr.md`. Trocar o apelido
+  continua fora de escopo.
 - **Busca por nome** — fora de escopo por pedido explícito.
 
 ## O Ranking
 
 Três disputas entre os amigos, **incluindo o próprio usuário**, mês a mês.
 
-| critério | número | direção |
-|---|---|---|
-| Rotas | `routes` | maior é melhor |
-| Tempo | `totalMinutes / timedRoutes` | **menor** é melhor |
-| Insucesso | `failures / packages` | **menor** é melhor |
+| critério | número | amostra | direção |
+|---|---|---|---|
+| Rotas | `routes` | o próprio número | maior é melhor |
+| Ritmo | `pacedMinutes / pacedStops` | `pacedRoutes` | **menor** é melhor |
+| Insucesso | `failures / packages` | `packagedRoutes` | **menor** é melhor |
 
-**Tempo é a média, e é o mesmo número que o app já mostra em dois lugares.** O
-card da rota diz `14:53 às 19:15 (4h22)` e o dialog de perfil diz `Tempo médio
-4h22`; o balde reproduz isso recortado no mês. Não é ritmo por pacote — o
-balde guarda `timedPackages` para essa conta caber sem migração se um dia
-mudar de ideia, mas hoje ela não é usada.
+### Ritmo, e não duração — a correção de 24/08/2026
 
-O formato do texto saiu de dentro do `formatDuration` e virou
-`RouteTime.formatMinutes()`. O dialog de perfil somava a média a uma data
-arbitrária só para conseguir formatar; agora os três lugares chamam o mesmo
-primitivo, que é o que garante que `4h22` é `4h22` em todos.
+O segundo critério era a duração da rota média do mês (`totalMinutes /
+timedRoutes`, dois campos que saíram do balde junto com ele), e **isso não é uma
+disputa justa**: ele não distingue tamanho de rota. Quem
+pega 30 pacotes em 2h aparecia na frente de quem pega 200 em 8h, tendo sido bem
+menos produtivo. Nos números reais das duas contas do app, 2h49 contra 4h27
+parecia um abismo; pelo ritmo, 5,7 contra 6,0 min/parada — praticamente o mesmo
+passo. A média por rota não estava medindo velocidade, estava medindo quem
+recebeu a rota menor.
+
+`min/parada` é o número, pelas razões que `Utils/routePace.dart` guarda: o tempo
+se gasta por parada, e `stops` é o campo que o formulário garante.
+
+**A duração cheia não sumiu — mudou de lugar.** Ela é o que o card da rota
+mostra (`12:21 às 16:26 (4h05)`) e o que o dialog de perfil mostra (`Tempo médio
+2h49`), e nos dois o ritmo entrou **embaixo** dela, não no lugar. São perguntas
+diferentes: "quanto durou o meu dia" é a que o dono reconhece, "quão rápido eu
+fui" é a que compara duas pessoas. O ranking é o único lugar que compara, e é o
+único que ordena pela segunda.
+
+Uma definição só para as três telas, em `paceFrom` — o card divide os minutos de
+uma rota, o dialog divide os da carreira, o ranking divide os do mês, e o texto
+`5,7 min/parada` sai de `formatPace` nos três. É o mesmo motivo de
+`RouteTime.formatMinutes()` existir: o dialog de perfil somava a média a uma
+data arbitrária só para conseguir formatar `4h22`, e duas implementações do
+mesmo texto divergem na primeira vez que alguém mexe numa só.
 
 ### A amostra mínima
 
-**Cinco rotas no mês para disputar as médias.** Sem isso, quem rodou **uma**
-rota de 8 pacotes sem insucesso fica com 0% e ganha de quem rodou 40 rotas e
-3.000 pacotes com 1,4%. É o mesmo remédio do `_minimumFills` do consumo real:
-a média de uma amostra pequena não é um número melhor, é um número que ainda
-não existe.
+**Cinco rotas para disputar as médias — e cinco rotas *da população da
+média*.** Sem o mínimo, quem rodou **uma** rota de 8 pacotes sem insucesso fica
+com 0% e ganha de quem rodou 40 rotas e 3.000 pacotes com 1,4%. É o mesmo
+remédio do `_minimumFills` do consumo real: a média de uma amostra pequena não
+é um número melhor, é um número que ainda não existe.
+
+"Da população da média" é a segunda correção de 24/08/2026, e ela é irmã da
+primeira. A porta contava `routes`, as rotas do mês, enquanto o número saía de
+um subconjunto delas: quem tinha 40 rotas e **uma** com hora de fim passava
+pelo mínimo com amostra de uma — e a linha ainda anunciava "40 rotas" embaixo
+do número, que é a informação errada com a aparência da certa. Por isso o balde
+ganhou `pacedRoutes` e `packagedRoutes`: cada critério cobra e mostra a amostra
+que o formou.
 
 **Não vale para a contagem de rotas** — lá a amostra é o próprio placar, e
 exigir mínimo esconderia justamente quem rodou pouco, que é a informação.
 
 Quem não alcança o mínimo, ou não tem o número (nunca preencheu hora de fim,
-nunca preencheu pacotes), vai para um rodapé **"ainda sem amostra"** com o
-valor visível e sem posição. Fora da disputa, não escondido: `null` continua
-sendo "não dá para calcular", nunca zero.
+nunca preencheu paradas, nunca preencheu pacotes), vai para um rodapé **"ainda
+sem amostra"** com o valor visível e sem posição. Fora da disputa, não
+escondido: `null` continua sendo "não dá para calcular", nunca zero.
 
-Toda linha mostra a amostra ao lado do número. `1,4%` de 40 rotas e de 2 rotas
-são o mesmo texto e não são a mesma informação.
+Toda linha mostra a amostra ao lado do número, e agora com o denominador junto:
+`506 paradas · 12 rotas`. `1,4%` de 40 rotas e de 2 rotas são o mesmo texto e
+não são a mesma informação — e `1,4%` de 3.000 pacotes e de 40 também não.
+Quando não há amostra nenhuma, a linha cai nas rotas do mês: sob o cabeçalho
+"AINDA SEM AMOSTRA", dizer `0 paradas · 0 rotas` para quem rodou dezessete
+trocaria uma informação verdadeira por dois zeros.
+
+**O amigo que não atualizou o app aparece no rodapé, e está certo assim.** O
+balde dele não tem `pacedStops`, então o ritmo dele é `null` — e `null` é a
+verdade: aquele documento não guarda de onde tirar o número. Ele volta à
+disputa sozinho na primeira vez que o outro abrir o app, que é quando a janela
+de doze meses é reescrita. O único campo com queda para trás é
+`packagedRoutes`, que cai em `routes` quando está ausente: ali existe régua
+antiga em que cair, e sem ela o critério de insucesso ficaria vazio para todo
+mundo de uma vez — o que parece defeito, e não é o que o documento diz.
 
 ### O que a escolha do balde mensal custou
 
@@ -1441,10 +1591,16 @@ for, a saída é `stats/all` deixar de ser público e o dialog de confirmação
 mostrar só nome, foto e apelido. É decisão de produto, e precisa ser tomada
 antes do passo 1 do Feed.
 
-As duas do Ranking foram respondidas em 07/08/2026 e estão em **O Ranking**:
-"mais rápido" é a **duração média** — o mesmo `4h22` que o card da rota e o
-dialog de perfil já mostram — e amigo com menos de **cinco rotas no mês** fica
-num rodapé "ainda sem amostra", com o número visível e fora da disputa.
+As duas do Ranking foram respondidas em 07/08/2026 e **corrigidas em
+24/08/2026** — as duas respostas estão em **O Ranking**.
+
+"Mais rápido" deixou de ser a duração média e virou o **ritmo**,
+`pacedMinutes / pacedStops` (`5,7 min/parada`): o `4h22` continua no card da rota
+e no dialog de perfil, onde a pergunta é "quanto durou", e não é mais o que o
+ranking ordena. E o mínimo de cinco rotas passou a contar **a população da
+média** — rotas com hora de fim e paradas no ritmo, rotas com pacotes no
+insucesso —, não as rotas do mês. Quem não alcança continua no rodapé "ainda sem
+amostra", com o número visível e fora da disputa.
 
 ---
 

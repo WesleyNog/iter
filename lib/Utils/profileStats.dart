@@ -1,4 +1,5 @@
 import 'package:iter/Utils/mapRead.dart';
+import 'package:iter/Utils/routePace.dart';
 import 'package:iter/Utils/routeStats.dart';
 import 'package:iter/model/newRouteModal.dart';
 
@@ -26,6 +27,8 @@ class ProfileStats {
     this.failureRate,
     this.topCompany,
     this.averageDuration,
+    this.pacedMinutes = 0,
+    this.pacedStops = 0,
   });
 
   /// Rotas realizadas (`concluido` + `pago`).
@@ -43,6 +46,25 @@ class ProfileStats {
 
   /// Média de `endAt - startAt`. `null` quando nenhuma rota tem hora de fim.
   final Duration? averageDuration;
+
+  /// Minutos das rotas que têm hora de fim **e** paradas informadas.
+  ///
+  /// Não é [averageDuration] × [routes]: a população é outra, e é justamente
+  /// por isso que os dois números vivem separados. Rota cronometrada sem
+  /// paradas entra na média de duração e fica fora do ritmo.
+  final int pacedMinutes;
+
+  /// Paradas das mesmas rotas de [pacedMinutes]. Não é [stops], que soma as
+  /// paradas de todas as rotas, inclusive as que não têm hora de fim.
+  final int pacedStops;
+
+  /// **O ritmo da carreira: minutos por parada.**
+  ///
+  /// Fica ao lado de [averageDuration] no dialog, e não no lugar dela: "minhas
+  /// rotas duram 4h27" e "eu gasto 6 minutos por parada" respondem perguntas
+  /// diferentes, e é a segunda que compara duas pessoas que pegam rotas de
+  /// tamanhos diferentes. Ver `Utils/routePace.dart`.
+  double? get minutesPerStop => paceFrom(pacedMinutes, pacedStops);
 
   /// Vira `profiles/{uid}/stats/all`, para outro entregador poder ler.
   ///
@@ -62,6 +84,8 @@ class ProfileStats {
       'topCompanyLabel': topCompany?.label,
       'topCompanyShare': topCompany?.share,
       'averageMinutes': averageDuration?.inMinutes,
+      'pacedMinutes': pacedMinutes,
+      'pacedStops': pacedStops,
     };
   }
 
@@ -89,6 +113,12 @@ class ProfileStats {
           ? null
           : (label: label, share: share),
       averageDuration: minutes == null ? null : Duration(minutes: minutes),
+      // Documento de carreira anterior ao ritmo volta com zero, e zero vira
+      // `minutesPerStop == null` — "não dá para calcular", que é a verdade
+      // sobre um documento que não guardou as paradas cronometradas. O dialog
+      // desenha `—` até o dono do perfil reabrir o app dele.
+      pacedMinutes: readInt(map['pacedMinutes']) ?? 0,
+      pacedStops: readInt(map['pacedStops']) ?? 0,
     );
   }
 }
@@ -102,6 +132,8 @@ ProfileStats profileStats(List<NewRouteModal> all) {
   var stops = 0;
   var totalMinutes = 0;
   var timedRoutes = 0;
+  var pacedMinutes = 0;
+  var pacedStops = 0;
 
   for (final route in done) {
     // Rota sem pacotes fica fora dos dois lados: o insucesso dela não teria de
@@ -124,6 +156,16 @@ ProfileStats profileStats(List<NewRouteModal> all) {
         timedRoutes++;
       }
     }
+
+    // O ritmo tem população própria e é `pacedOf` quem a define — a mesma
+    // regra do card da rota e do balde do mês. Ela é mais estreita que a da
+    // duração média logo acima: exige paradas informadas, porque sem
+    // denominador não há ritmo.
+    final paced = pacedOf(route);
+    if (paced != null) {
+      pacedMinutes += paced.minutes;
+      pacedStops += paced.stops;
+    }
   }
 
   return ProfileStats(
@@ -137,6 +179,8 @@ ProfileStats profileStats(List<NewRouteModal> all) {
     averageDuration: timedRoutes == 0
         ? null
         : Duration(minutes: totalMinutes ~/ timedRoutes),
+    pacedMinutes: pacedMinutes,
+    pacedStops: pacedStops,
   );
 }
 

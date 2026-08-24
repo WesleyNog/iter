@@ -5,6 +5,7 @@ import 'package:iter/controller/friendController.dart';
 import 'package:iter/controller/nicknameController.dart';
 import 'package:iter/controller/profileController.dart';
 import 'package:iter/model/publicProfile.dart';
+import 'package:iter/screens/scanFriend.dart';
 import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/profileDialog.dart';
 
@@ -122,6 +123,21 @@ class _AddFriendState extends State<AddFriend> {
     return (await collection.doc(id).get()).exists;
   }
 
+  /// A leitura devolve o apelido e cai **no mesmo fluxo da digitação**.
+  ///
+  /// Preenche o campo antes de buscar de propósito: se o apelido lido não
+  /// existir mais, a tela diz isso com o apelido à vista, e dá para corrigir
+  /// uma letra em vez de ler o código de novo.
+  Future<void> _scan() async {
+    final nickname = await Navigator.of(
+      context,
+    ).push<String>(MaterialPageRoute(builder: (_) => const ScanFriend()));
+    if (nickname == null || !mounted) return;
+
+    _controller.text = nickname;
+    _search();
+  }
+
   void _openProfile() {
     final profile = _found;
     if (profile == null) return;
@@ -200,7 +216,17 @@ class _AddFriendState extends State<AddFriend> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Adicionar amigo')),
+      appBar: AppBar(
+        title: const Text('Adicionar amigo'),
+        actions: [
+          IconButton(
+            key: const ValueKey('ler-qr'),
+            tooltip: 'Ler QR Code',
+            icon: const Icon(Icons.qr_code_scanner_rounded),
+            onPressed: _scan,
+          ),
+        ],
+      ),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
         child: Column(
@@ -241,10 +267,7 @@ class _AddFriendState extends State<AddFriend> {
 
     final profile = _found;
     if (_status.hasProfile && profile != null) {
-      return Align(
-        alignment: Alignment.topCenter,
-        child: _card(profile),
-      );
+      return Align(alignment: Alignment.topCenter, child: _card(profile));
     }
 
     final message = _status.message;
@@ -268,10 +291,7 @@ class _AddFriendState extends State<AddFriend> {
       child: ListTile(
         key: const ValueKey('resultado-amigo'),
         onTap: _openProfile,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 8,
-        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: CircleAvatar(
           radius: 24,
           backgroundColor: Colors.blue.shade50,

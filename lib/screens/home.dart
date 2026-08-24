@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:iter/Utils/friendShare.dart';
 import 'package:iter/Utils/profileStats.dart';
 import 'package:iter/controller/friendController.dart';
 import 'package:iter/controller/profileController.dart';
@@ -21,6 +22,7 @@ import 'package:iter/widget/glassNavBar.dart';
 import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/profileDialog.dart';
 import 'package:iter/widget/vehicleAvatar.dart';
+import 'package:share_plus/share_plus.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.user});
@@ -129,12 +131,46 @@ class _HomeScreenState extends State<HomeScreen> {
       photoUrl: widget.user.photoURL,
       stats: RouteController.fetchAll(widget.user.uid).then(profileStats),
       actionLabel: 'Compartilhar',
-      onAction: () => showNotification(
-        context: context,
-        type: 'info',
-        msg: 'Compartilhar perfil está em desenvolvimento.',
-      ),
+      // Sem apelido não há o que compartilhar nem o que virar QR: a busca do
+      // outro lado é por `nicknames/{apelido}`. Na prática ele sempre existe
+      // — o login reserva um —, e `null` aqui é o perfil que ainda não
+      // carregou. Botão apagado diz isso melhor do que um QR de string vazia.
+      onAction: nickName == null ? null : () => _shareProfile(nickName),
+      qrPayload: nickName == null ? null : friendQrPayload(nickName),
     );
+  }
+
+  /// Manda o convite para fora do app.
+  ///
+  /// A folha nativa é quem oferece WhatsApp, Instagram, e-mail e "copiar" —
+  /// com os apps que a pessoa tem de fato instalados. Um botão por rede aqui
+  /// seria uma lista para manter e um esquema de URL para quebrar sozinho.
+  Future<void> _shareProfile(String nickName) async {
+    // No iPad a folha é um **popover**, e popover sem âncora derruba o app com
+    // exceção nativa. O `TARGETED_DEVICE_FAMILY` do projeto é "1,2", então o
+    // iPad é destino declarado, mesmo que ninguém teste nele. No iPhone o
+    // parâmetro é ignorado.
+    final box = context.findRenderObject() as RenderBox?;
+
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          text: friendShareText(nickName, name: _fullName),
+          subject: 'Me adiciona no iter',
+          sharePositionOrigin: box == null || !box.hasSize
+              ? null
+              : box.localToGlobal(Offset.zero) & box.size,
+        ),
+      );
+    } catch (e) {
+      debugPrint('compartilhar perfil falhou: $e');
+      if (!mounted) return;
+      showNotification(
+        context: context,
+        type: 'error',
+        msg: 'Não foi possível abrir o compartilhamento.',
+      );
+    }
   }
 
   /// Menu do "+".
@@ -337,10 +373,8 @@ class _HomeScreenState extends State<HomeScreen> {
       body: screens[current],
       bottomNavigationBar: StreamBuilder<List<String>>(
         stream: _incoming,
-        builder: (context, snapshot) => _navBar(
-          current,
-          pending: snapshot.data?.length ?? 0,
-        ),
+        builder: (context, snapshot) =>
+            _navBar(current, pending: snapshot.data?.length ?? 0),
       ),
     );
   }
@@ -360,10 +394,7 @@ class _HomeScreenState extends State<HomeScreen> {
       items: [
         const GlassNavItem(icon: Icons.bar_chart, label: "Gráfico"),
         const GlassNavItem(icon: Icons.receipt_long, label: "Lista"),
-        const GlassNavItem(
-          icon: Icons.data_saver_off_rounded,
-          label: "Resumo",
-        ),
+        const GlassNavItem(icon: Icons.data_saver_off_rounded, label: "Resumo"),
         const GlassNavItem(icon: Icons.people, label: "Amigos"),
       ],
       onTap: (index) {

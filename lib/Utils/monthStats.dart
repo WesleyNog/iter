@@ -7,6 +7,7 @@
 library;
 
 import 'package:iter/Utils/mapRead.dart';
+import 'package:iter/Utils/routePace.dart';
 import 'package:iter/Utils/routeStats.dart';
 import 'package:iter/model/newRouteModal.dart';
 
@@ -22,14 +23,22 @@ String monthKey(DateTime date) {
 /// **Numerador e denominador, nunca a taxa.** `1 insucesso em 8 pacotes` e
 /// `125 em 1000` dão a mesma porcentagem e não são o mesmo problema — é a
 /// mesma razão de `FailureRate` carregar os dois números em vez do quociente.
+///
+/// **Cada média carrega a própria população, e as duas não coincidem:** rotas
+/// com pacotes informados de um lado, rotas com hora de fim **e** paradas do
+/// outro. Um par de contadores por média é o que impede a conta que mistura as
+/// duas — dividir os minutos de todas as rotas cronometradas pelas paradas de
+/// algumas produz um ritmo que não é o de ninguém, e era o defeito do
+/// `minutesPerPackage` que estes campos aposentam.
 class MonthStats {
   const MonthStats({
     this.routes = 0,
     this.packages = 0,
     this.failures = 0,
-    this.timedRoutes = 0,
-    this.totalMinutes = 0,
-    this.timedPackages = 0,
+    this.packagedRoutes = 0,
+    this.pacedRoutes = 0,
+    this.pacedMinutes = 0,
+    this.pacedStops = 0,
   });
 
   /// Rotas realizadas (`concluido` + `pago`) no mês.
@@ -42,53 +51,80 @@ class MonthStats {
   /// `failuresOf` somado sobre a mesma população de [packages].
   final int failures;
 
-  /// Quantas rotas têm hora de fim e duração positiva.
-  final int timedRoutes;
-
-  final int totalMinutes;
-
-  /// Pacotes das rotas que entram em [timedRoutes] **e** têm `packages > 0`.
+  /// Quantas rotas formam [failureRate] — a amostra que o ranking cobra.
   ///
-  /// Existe porque [packages] e [totalMinutes] contam populações diferentes —
-  /// um é sobre rotas com pacotes informados, o outro sobre rotas com hora de
-  /// fim. Sem um terceiro campo cruzando os dois, "minutos por pacote" seria
-  /// incomputável, e o ranking de velocidade premiaria quem pega rota de 30
-  /// pacotes contra quem pega de 200.
-  final int timedPackages;
+  /// Sem ele o mínimo do ranking media a coisa errada: a taxa sai das rotas
+  /// com pacotes, e a porta olhava [routes]. Quem tinha 40 rotas no mês e
+  /// pacotes preenchidos em **uma** disputava com amostra de uma rota, e a
+  /// linha ainda dizia "40 rotas" embaixo do número.
+  final int packagedRoutes;
 
-  /// Minutos por rota. `null` quando nenhuma rota do mês tem hora de fim —
-  /// **nunca** zero, que significaria "terminou instantaneamente".
-  double? get minutesPerRoute =>
-      timedRoutes == 0 ? null : totalMinutes / timedRoutes;
+  /// Rotas com hora de fim **e** paradas informadas — a população do ritmo, e
+  /// a amostra que o mínimo do ranking cobra.
+  ///
+  /// Uma rota cronometrada sem paradas informadas **não** entra aqui, e é essa
+  /// recusa que mantém numerador e denominador descrevendo o mesmo conjunto.
+  /// Ver `pacedOf` em `Utils/routePace.dart`, que é onde a regra mora.
+  final int pacedRoutes;
 
-  /// Minutos por pacote: o ritmo, e a comparação justa entre rotas de
-  /// tamanhos diferentes. `null` quando não dá para calcular.
-  double? get minutesPerPackage =>
-      timedPackages == 0 ? null : totalMinutes / timedPackages;
+  /// Minutos das rotas de [pacedRoutes].
+  final int pacedMinutes;
+
+  /// Paradas das rotas de [pacedRoutes].
+  final int pacedStops;
+
+  /// **O ritmo: minutos por parada.** É o que o Ranking ordena.
+  ///
+  /// A média por rota premiava a rota pequena: quem pega 30 pacotes em 2h
+  /// aparecia na frente de quem pega 200 em 8h, tendo sido menos produtivo.
+  /// Dividir pela quantidade de paradas é o que torna comparável quem pegou
+  /// rota grande com quem pegou rota curta. Ver `Utils/routePace.dart`.
+  ///
+  /// O balde **não guarda mais** `timedRoutes`/`totalMinutes`, que eram a média
+  /// por rota. Eles ficaram sem leitor no instante em que o Ranking deixou de
+  /// ordenar por eles — a duração que as telas mostram vem da própria rota (o
+  /// card) e de `stats/all` (o dialog de perfil), não daqui. Voltam em uma
+  /// linha no dia em que alguma tela pedir a duração média do mês *de um
+  /// amigo*: a janela de doze meses é reescrita a cada abertura do app, então
+  /// campo novo se preenche sozinho e não há migração de que fugir.
+  double? get minutesPerStop => paceFrom(pacedMinutes, pacedStops);
 
   /// Percentual de insucesso sobre os pacotes. `null` sem pacotes informados.
-  double? get failureRate =>
-      packages == 0 ? null : failures / packages * 100;
+  double? get failureRate => packages == 0 ? null : failures / packages * 100;
 
   Map<String, dynamic> toMap() {
     return {
       'routes': routes,
       'packages': packages,
       'failures': failures,
-      'timedRoutes': timedRoutes,
-      'totalMinutes': totalMinutes,
-      'timedPackages': timedPackages,
+      'packagedRoutes': packagedRoutes,
+      'pacedRoutes': pacedRoutes,
+      'pacedMinutes': pacedMinutes,
+      'pacedStops': pacedStops,
     };
   }
 
   factory MonthStats.fromMap(Map<String, dynamic> map) {
+    final routes = readInt(map['routes']) ?? 0;
+
     return MonthStats(
-      routes: readInt(map['routes']) ?? 0,
+      routes: routes,
       packages: readInt(map['packages']) ?? 0,
       failures: readInt(map['failures']) ?? 0,
-      timedRoutes: readInt(map['timedRoutes']) ?? 0,
-      totalMinutes: readInt(map['totalMinutes']) ?? 0,
-      timedPackages: readInt(map['timedPackages']) ?? 0,
+      // **Ausente é documento velho, não zero.** O balde escrito antes deste
+      // campo existir não sabia quantas rotas tinham pacotes; cair em [routes]
+      // é a régua com que ele foi escrito, e ela volta sozinha à régua nova na
+      // próxima vez que o dono abrir o app. Cair em zero jogaria todo mundo
+      // para o rodapé "ainda sem amostra" — que parece defeito, e não é o que
+      // o documento diz.
+      packagedRoutes: readInt(map['packagedRoutes']) ?? routes,
+      // Aqui **não** há régua antiga em que cair: o documento velho não tem de
+      // onde tirar quantas paradas foram feitas nas rotas cronometradas. Zero
+      // vira `minutesPerStop == null`, que é a verdade — "não dá para
+      // calcular" — e o amigo aparece no rodapé até reabrir o app dele.
+      pacedRoutes: readInt(map['pacedRoutes']) ?? 0,
+      pacedMinutes: readInt(map['pacedMinutes']) ?? 0,
+      pacedStops: readInt(map['pacedStops']) ?? 0,
     );
   }
 }
@@ -105,9 +141,10 @@ MonthStats monthStatsOf(List<NewRouteModal> all, DateTime month) {
   var routes = 0;
   var packages = 0;
   var failures = 0;
-  var timedRoutes = 0;
-  var totalMinutes = 0;
-  var timedPackages = 0;
+  var packagedRoutes = 0;
+  var pacedRoutes = 0;
+  var pacedMinutes = 0;
+  var pacedStops = 0;
 
   // `realized` é a mesma régua dos gráficos: uma rota agendada com pacotes
   // estimados inflaria o denominador sem ninguém ter entregado nada.
@@ -118,30 +155,30 @@ MonthStats monthStatsOf(List<NewRouteModal> all, DateTime month) {
 
     final routePackages = route.packages ?? 0;
     if (routePackages > 0) {
+      packagedRoutes++;
       packages += routePackages;
       failures += failuresOf(route);
     }
 
-    final end = route.endAt;
-    if (end == null) continue;
+    // Quem decide se a rota tem ritmo é `pacedOf`, e não este laço: a mesma
+    // regra vale para o card da rota e para a carreira, e uma cópia aqui
+    // divergiria no dia em que uma das três mudasse.
+    final paced = pacedOf(route);
+    if (paced == null) continue;
 
-    // Duração negativa é documento corrompido, não rota de madrugada:
-    // `RouteTime.resolveEnd` já rola a virada do dia na gravação.
-    final duration = end.difference(route.startAt);
-    if (duration <= Duration.zero) continue;
-
-    timedRoutes++;
-    totalMinutes += duration.inMinutes;
-    if (routePackages > 0) timedPackages += routePackages;
+    pacedRoutes++;
+    pacedMinutes += paced.minutes;
+    pacedStops += paced.stops;
   }
 
   return MonthStats(
     routes: routes,
     packages: packages,
     failures: failures,
-    timedRoutes: timedRoutes,
-    totalMinutes: totalMinutes,
-    timedPackages: timedPackages,
+    packagedRoutes: packagedRoutes,
+    pacedRoutes: pacedRoutes,
+    pacedMinutes: pacedMinutes,
+    pacedStops: pacedStops,
   );
 }
 

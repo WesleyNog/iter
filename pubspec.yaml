@@ -51,6 +51,9 @@ dependencies:
   geolocator: ^14.0.3
   firebase_storage: ^13.4.6
   cached_network_image: ^3.4.1
+  share_plus: ^13.3.0
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^7.4.0
 
 dev_dependencies:
   flutter_test:

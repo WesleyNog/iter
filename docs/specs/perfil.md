@@ -1,6 +1,8 @@
 # Spec: Dialog de Perfil
 
-Status: **implementada** · Criada em 2026-08-01 · Falta verificar no simulador
+Status: **implementada** · Criada em 2026-08-01 · O **ritmo** entrou embaixo do
+tempo médio em 2026-08-24, junto com a troca do critério do Ranking (ver
+`amigos.md`) · Falta verificar no simulador
 
 ## Objetivo
 
@@ -115,9 +117,19 @@ onde ser descontado e é ignorado nos dois lados.
 "Índice de insucesso" da tela de gráficos. `null` quando ninguém informou
 pacotes, e aí a métrica mostra `—` em vez de `0%`.
 
-**Empresa mais rodada** — a de maior número de rotas, com sua participação:
-`Shopee · 62%`. Empate resolve pelo nome, para o rótulo não dançar entre dois
-rebuilds.
+**Empresa mais rodada** — a de maior número de rotas, com sua participação.
+Empate resolve pelo nome, para o rótulo não dançar entre dois rebuilds.
+
+Desde 24/08/2026 é a **logo** e o percentual lado a lado, e não mais o nome em
+duas linhas (`Mercado Livre` / `60%`). A segunda linha desalinhava o valor desta
+coluna em relação às vizinhas, que têm uma só — e a logo diz a mesma coisa em
+menos espaço, sendo o que o entregador reconhece primeiro. O nome continua
+alcançável por toque longo (`Tooltip`) e pelo leitor de tela (`Semantics`).
+
+O documento publicado **não mudou**: `stats/all` guarda `topCompanyLabel`, uma
+String, e é `companyFromLabel` — derivada de `companyLabel`, nunca uma segunda
+tabela — que recupera a empresa para achar a logo. Rótulo que este app não
+conhece devolve `null` e cai no texto de duas linhas, que é o que ele tem.
 
 **Tempo médio** — média de `endAt − startAt`, **só das rotas que têm `endAt`**.
 Rota sem hora de fim é ignorada em vez de contar como zero, o que puxaria a
@@ -126,6 +138,35 @@ média para baixo. `null` quando nenhuma tem, e a métrica mostra `—`.
 Durações não positivas são descartadas: `RouteTime.resolveEnd` já rola a virada
 do dia na gravação, então uma duração negativa é dado corrompido, não rota de
 madrugada.
+
+**Ritmo** (24/08/2026) — `4h26 · 6,0 m/p`, na **mesma linha** do tempo médio. Vem de `pacedMinutes / pacedStops`, os minutos
+e as paradas das rotas que têm hora de fim **e** paradas informadas — população
+mais estreita que a do tempo médio, que só exige a hora de fim. A regra mora em
+`pacedOf`, em `Utils/routePace.dart`, e é a mesma do card da rota e do Ranking.
+
+Fica ao lado da duração e não no lugar dela porque as duas respondem perguntas
+diferentes: `4h26` é o dia que o entregador reconhece, `6,0 m/p` é o que o
+compara com quem pega rota de outro tamanho — quem vê só o segundo não sabe se
+rodou duas horas ou nove. É o ritmo que o Ranking passou a ordenar, e a razão
+está em `amigos.md`.
+
+**Uma linha, e é por isso que o texto é abreviado.** `min/parada` por extenso
+não cabe num terço de dialog ao lado da duração, e a segunda linha desalinhava o
+valor desta coluna em relação às vizinhas — o mesmo defeito que a logo de "Mais
+rodada" veio corrigir. `formatPaceShort` existe só para isto; onde o número tem
+a linha inteira — o card da rota e o Ranking — vai `formatPace`, por extenso. As
+duas dividem o mesmo primitivo de arredondamento, porque é ele que não pode
+divergir: seria `5,8 min/parada` num lugar e `5,7 m/p` no outro, para o mesmo
+entregador.
+
+O pior caso não cabe mesmo — `45min · 120,0 m/p` pede 103 px numa coluna de 80
+em 320 dp —, e aí o `FittedBox` encolhe em vez de quebrar. Medido com Roboto: o
+caso comum (`4h26 · 6,0 m/p`, 81,8 px) sai inteiro em 390 e 360 dp.
+
+Ritmo `null` deixa só a duração, sem um segundo travessão pendurado depois do
+separador. Carreira publicada antes de 24/08/2026 não guardou as paradas
+cronometradas e cai nesse caso até o dono do perfil reabrir o app — e desenha
+exatamente a **mesma altura** de bloco, 144 px, que a carreira completa.
 
 ## Estilo de código
 

@@ -6,6 +6,12 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!-- Exigida pelo mobile_scanner (ler o QR Code de um amigo). O
+         image_picker não a declara: ele delega a foto ao app de câmera do
+         sistema, que tira a foto com a permissão dele. Ler QR é diferente —
+         o app recebe o fluxo da câmera, e aí a permissão é nossa. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
     <application
         android:label="iter"
         android:name="${applicationName}"

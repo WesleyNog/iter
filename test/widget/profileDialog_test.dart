@@ -12,6 +12,8 @@ const _stats = ProfileStats(
   failureRate: 1.44,
   topCompany: (label: 'Shopee', share: 62.0),
   averageDuration: Duration(hours: 6, minutes: 30),
+  pacedMinutes: 1950,
+  pacedStops: 300,
 );
 
 Future<void> _pump(
@@ -19,6 +21,7 @@ Future<void> _pump(
   Future<ProfileStats>? stats,
   String? nickName = 'wesley-efmg',
   VoidCallback? onAction,
+  String? qrPayload,
 }) {
   return tester.pumpWidget(
     MaterialApp(
@@ -29,6 +32,7 @@ Future<void> _pump(
           stats: stats ?? Future.value(_stats),
           actionLabel: 'Compartilhar',
           onAction: onAction ?? () {},
+          qrPayload: qrPayload,
         ),
       ),
     ),
@@ -48,8 +52,53 @@ void main() {
     expect(find.text('2890'), findsOneWidget);
 
     expect(find.text('1.4%'), findsOneWidget);
-    expect(find.text('Shopee\n62%'), findsOneWidget);
-    expect(find.text('6h30'), findsOneWidget);
+    // A empresa aparece como logo + fatia, e não como nome em duas linhas: a
+    // segunda linha desalinhava o valor desta coluna em relação às vizinhas.
+    expect(find.text('62%'), findsOneWidget);
+    expect(find.text('Shopee\n62%'), findsNothing);
+    expect(find.byType(Image), findsOneWidget);
+    // O nome não some: fica no leitor de tela e no toque longo. O finder é
+    // por ancestral do percentual, e não `byType(Tooltip)` — o X de fechar
+    // também tem um, e "o primeiro Tooltip da tela" é asserção que passa a
+    // significar outra coisa no dia em que alguém acrescentar um botão.
+    expect(
+      tester
+          .widget<Tooltip>(
+            find.ancestor(of: find.text('62%'), matching: find.byType(Tooltip)),
+          )
+          .message,
+      'Shopee',
+    );
+    // A duração e o ritmo na mesma linha, e não um embaixo do outro: duas
+    // linhas nesta coluna a desalinhavam das vizinhas. "6h30" é o dia que o
+    // entregador reconhece, "6,5 m/p" é o que o compara com quem pega rota de
+    // outro tamanho — e nenhum dos dois substitui o outro.
+    expect(find.text('6h30 · 6,5 m/p'), findsOneWidget);
+  });
+
+  testWidgets('carreira sem ritmo não desenha um segundo travessão', (
+    tester,
+  ) async {
+    // É o perfil publicado antes de o ritmo existir: tem tempo médio, não tem
+    // paradas cronometradas. A linha some — dois "—" empilhados na mesma
+    // coluna pareceriam duas métricas quebradas em vez de uma ausente.
+    await _pump(
+      tester,
+      stats: Future.value(
+        const ProfileStats(
+          routes: 17,
+          deliveredPackages: 551,
+          stops: 506,
+          averageDuration: Duration(hours: 2, minutes: 49),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Só a duração, sem um segundo travessão pendurado depois do separador.
+    expect(find.text('2h49'), findsOneWidget);
+    expect(find.textContaining('m/p'), findsNothing);
+    expect(find.textContaining('·'), findsNothing);
   });
 
   testWidgets('métrica sem como calcular mostra travessão, não zero', (
@@ -125,6 +174,115 @@ void main() {
     await tester.tap(find.text('COMPARTILHAR'));
 
     expect(tapped, isTrue);
+  });
+
+  group('o QR do próprio perfil', () {
+    /// Tela de celular de verdade.
+    ///
+    /// O padrão do teste é 800×600 — mais **baixo** que qualquer aparelho —, e
+    /// a face do QR é mais alta que a dos números: no viewport padrão a linha
+    /// de botões sai da área visível e o toque não chega nela. Isso não é
+    /// defeito do dialog (o `SingleChildScrollView` rola), é o teste medindo
+    /// numa tela que não existe.
+    setUp(() {
+      final view =
+          TestWidgetsFlutterBinding.instance.platformDispatcher.views.first;
+      view.physicalSize = const Size(390 * 3, 844 * 3);
+      view.devicePixelRatio = 3.0;
+      addTearDown(view.reset);
+    });
+
+    testWidgets('sem payload, não há botão de QR nem face de trás', (
+      tester,
+    ) async {
+      // É o perfil de um **amigo**: o QR é o convite dele, e oferecer daqui
+      // deixaria qualquer um distribuir o convite de outra pessoa.
+      await _pump(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('girar-qr')), findsNothing);
+      expect(find.byKey(const ValueKey('qr-amigo')), findsNothing);
+    });
+
+    testWidgets('o botão vira o cartão e mostra o QR', (tester) async {
+      await _pump(tester, qrPayload: 'iter://amigo/wesley-efmg');
+      await tester.pumpAndSettle();
+
+      // De frente: os números, nenhum QR.
+      expect(find.text('128'), findsOneWidget);
+      expect(find.byKey(const ValueKey('qr-amigo')), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('girar-qr')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('qr-amigo')), findsOneWidget);
+      expect(find.text('128'), findsNothing);
+    });
+
+    testWidgets('o mesmo botão volta para os números', (tester) async {
+      await _pump(tester, qrPayload: 'iter://amigo/wesley-efmg');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('girar-qr')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('girar-qr')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('128'), findsOneWidget);
+      expect(find.byKey(const ValueKey('qr-amigo')), findsNothing);
+    });
+
+    testWidgets('o apelido continua à vista na face do QR', (tester) async {
+      // Quando a câmera do outro não coopera, digitar é a saída — e por isso
+      // o cabeçalho fica fora do `Transform` que gira.
+      await _pump(tester, qrPayload: 'iter://amigo/wesley-efmg');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('girar-qr')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('@wesley-efmg'), findsOneWidget);
+      expect(find.text('Wesley Nogueira'), findsOneWidget);
+    });
+
+    testWidgets('o compartilhar continua ao alcance nas duas faces', (
+      tester,
+    ) async {
+      var compartilhou = 0;
+      await _pump(
+        tester,
+        qrPayload: 'iter://amigo/wesley-efmg',
+        onAction: () => compartilhou++,
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('COMPARTILHAR'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('girar-qr')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('COMPARTILHAR'));
+      await tester.pump();
+
+      expect(compartilhou, 2);
+    });
+
+    testWidgets('girar não derruba o dialog nem levanta exceção', (
+      tester,
+    ) async {
+      // O meio do giro é onde mora o erro: é lá que a face troca e que a
+      // altura das duas difere. Bombeia quadro a quadro em vez de assentar.
+      await _pump(tester, qrPayload: 'iter://amigo/wesley-efmg');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('girar-qr')));
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 40));
+        expect(tester.takeException(), isNull);
+      }
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('qr-amigo')), findsOneWidget);
+    });
   });
 
   testWidgets('o X fecha o dialog', (tester) async {

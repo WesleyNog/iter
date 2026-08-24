@@ -166,11 +166,7 @@ void main() {
       // lucro, esse custo não existiria em lugar nenhum da tela.
       await pumpCard(
         tester,
-        ida(
-          kmInitial: 1000,
-          kmFinal: 1046.9,
-          provision: buildProvision(),
-        ),
+        ida(kmInitial: 1000, kmFinal: 1046.9, provision: buildProvision()),
         isExpanded: true,
       );
       await tester.pumpAndSettle();
@@ -218,7 +214,52 @@ void main() {
     expect(find.text('120'), findsOneWidget);
     expect(find.text('85'), findsOneWidget);
     expect(find.text('08:00 às 17:30 (9h30)'), findsOneWidget);
+    // 570 minutos em 85 paradas.
+    expect(find.text('6,7 min/parada'), findsOneWidget);
+    // E **embaixo** da duração, porque responde a outra pergunta: "9h30" é
+    // quanto durou, o ritmo é se foi rápido. `find.text` não olha posição, e
+    // sem esta linha o teste passa com o ritmo no topo do card.
+    expect(
+      tester.getTopLeft(find.text('6,7 min/parada')).dy,
+      greaterThan(tester.getTopLeft(find.text('08:00 às 17:30 (9h30)')).dy),
+    );
     expect(find.text('Aldeota, Meireles'), findsOneWidget);
+  });
+
+  testWidgets('sem paradas informadas não há linha de ritmo', (tester) async {
+    // Sem denominador não há número, e um "—" ali seria uma métrica quebrada
+    // onde só falta um campo do formulário.
+    await pumpCard(
+      tester,
+      buildRoute(
+        packages: 120,
+        startAt: DateTime(2026, 8, 1, 8),
+        endAt: DateTime(2026, 8, 1, 17, 30),
+      ),
+      isExpanded: true,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('08:00 às 17:30 (9h30)'), findsOneWidget);
+    expect(find.textContaining('min/parada'), findsNothing);
+  });
+
+  testWidgets('rota em andamento não tem ritmo, só o início', (tester) async {
+    // Sem hora de fim não há duração para dividir. É a rota que ainda está
+    // acontecendo, e ela não pode aparecer com ritmo nenhum.
+    await pumpCard(
+      tester,
+      buildRoute(
+        status: StatusRoute.andamento,
+        stops: 85,
+        startAt: DateTime(2026, 8, 1, 8),
+      ),
+      isExpanded: true,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Início às 08:00'), findsOneWidget);
+    expect(find.textContaining('min/parada'), findsNothing);
   });
 
   testWidgets('insucesso sem distribuição mostra só o total', (tester) async {
