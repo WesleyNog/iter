@@ -30,6 +30,7 @@ class FailureRateCard extends StatelessWidget {
     super.key,
     required this.rows,
     required this.overall,
+    this.eyebrow,
     this.footnote,
     this.palette = ChartPalette.azul,
   });
@@ -39,6 +40,9 @@ class FailureRateCard extends StatelessWidget {
   /// Índice do período inteiro, o número grande do topo. `null` quando ninguém
   /// informou pacotes.
   final double? overall;
+
+  /// Repassado ao [ChartCard] sem lógica nenhuma — ver [ChartCard.eyebrow].
+  final String? eyebrow;
 
   final String? footnote;
 
@@ -56,6 +60,7 @@ class FailureRateCard extends StatelessWidget {
 
     return ChartCard(
       title: 'Índice de insucesso',
+      eyebrow: eyebrow,
       footnote: footnote,
       palette: palette,
       stats: [

@@ -19,6 +19,7 @@ class LineChartCard extends StatelessWidget {
     required this.formatValue,
     required this.formatAxis,
     required this.emptyMessage,
+    this.eyebrow,
     this.trailing,
     this.stats = const <ChartStat>[],
     this.lineColors = const [Color(0xFF69F0AE), Color(0xFF84FFFF)],
@@ -42,6 +43,10 @@ class LineChartCard extends StatelessWidget {
   final String Function(double value) formatAxis;
 
   final String emptyMessage;
+
+  /// Repassado ao [ChartCard] sem lógica nenhuma — ver [ChartCard.eyebrow].
+  final String? eyebrow;
+
   final Widget? trailing;
   final List<ChartStat> stats;
   final List<Color> lineColors;
@@ -54,6 +59,7 @@ class LineChartCard extends StatelessWidget {
 
     return ChartCard(
       title: title,
+      eyebrow: eyebrow,
       trailing: trailing,
       stats: stats,
       // Série toda zerada desenha uma reta no chão que parece dado. Melhor

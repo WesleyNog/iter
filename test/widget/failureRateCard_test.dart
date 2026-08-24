@@ -34,7 +34,13 @@ Future<void> _pump(
         // espaço real que ele tem.
         body: SizedBox(
           height: 340,
-          child: FailureRateCard(rows: rows, overall: overall),
+          child: FailureRateCard(
+            rows: rows,
+            overall: overall,
+            // Em produção todas as páginas têm eyebrow, e ele come altura da
+            // área do gráfico: sem ele a guarda mede uma folga inexistente.
+            eyebrow: 'Rotas concluídas e pagas',
+          ),
         ),
       ),
     ),

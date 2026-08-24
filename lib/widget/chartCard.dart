@@ -81,6 +81,7 @@ class ChartCard extends StatelessWidget {
     super.key,
     required this.title,
     required this.child,
+    this.eyebrow,
     this.trailing,
     this.stats = const <ChartStat>[],
     this.footnote,
@@ -92,6 +93,18 @@ class ChartCard extends StatelessWidget {
 
   /// O gráfico em si.
   final Widget child;
+
+  /// Linha miúda acima do título, dentro do gradiente: o recorte a que os
+  /// números do card obedecem (ex.: "Rotas concluídas e pagas").
+  ///
+  /// Existe porque na pilha de gráficos o card seguinte encaixa por cima do
+  /// rótulo de seção da tela — e é esse rótulo que carrega a ressalva de que
+  /// rota agendada fica de fora. Coberto o rótulo, o total daqui passaria a
+  /// contradizer o do card de dinheiro, que conta todos os status, sem nada
+  /// na tela explicando a diferença.
+  ///
+  /// `null` deixa o card como sempre foi: sem a linha e sem o espaço dela.
+  final String? eyebrow;
 
   /// Canto direito do título — o seletor de turno, por exemplo.
   final Widget? trailing;
@@ -114,6 +127,15 @@ class ChartCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
+        // Sobre o fundo claro da tela, e sem nunca se encostarem, os cards
+        // liam sem sombra. Na pilha eles se sobrepõem: dois cards da mesma
+        // família de cor encostados viram um bloco só, e é a sombra que
+        // devolve a borda entre um e outro.
+        //
+        // Os valores são os da `GlassPill` (glassNavBar.dart) — a sombra de
+        // "flutuando sobre o conteúdo" que o app já tem — para não nascer uma
+        // terceira variante. O card da lista de rotas não serve de fonte: ele
+        // é `elevation: 0` e se separa por uma borda cinza, que sobre um
         gradient: LinearGradient(
           colors: palette.gradient,
           begin: Alignment.topLeft,
@@ -124,6 +146,11 @@ class ChartCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: fillHeight ? MainAxisSize.max : MainAxisSize.min,
         children: [
+          // Sem eyebrow nada entra na árvore: nem a linha, nem o espaço dela.
+          if (eyebrow != null) ...[
+            _eyebrow(eyebrow!),
+            const SizedBox(height: 6),
+          ],
           Row(
             children: [
               Expanded(
@@ -160,6 +187,39 @@ class ChartCard extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+
+  /// O mesmo ícone do rótulo de seção que esta linha substitui, para quem já
+  /// conhecia a tela reconhecer a ressalva onde ela foi parar — só que nas
+  /// cores de dentro do card, sobre o gradiente.
+  Widget _eyebrow(String text) {
+    return Row(
+      key: const Key('chart-eyebrow'),
+      children: [
+        Icon(
+          Icons.insights_outlined,
+          size: 13,
+          color: Colors.white.withValues(alpha: 0.7),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            // Uma linha só: a altura do card é fixa dentro do carrossel, então
+            // uma ressalva que quebrasse em duas linhas sairia da altura do
+            // gráfico, não do espaço em branco.
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.7),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ),
+      ],
     );
   }
 

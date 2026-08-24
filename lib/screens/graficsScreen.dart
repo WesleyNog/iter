@@ -14,6 +14,7 @@ import 'package:iter/widget/failureRateCard.dart';
 import 'package:iter/widget/lineChartCard.dart';
 import 'package:iter/widget/periodFilter.dart';
 import 'package:iter/widget/periodPresetFilter.dart';
+import 'package:iter/widget/stackedScroll.dart';
 import 'package:iter/widget/summaryCards.dart';
 
 /// Painel de gráficos das rotas do período.
@@ -147,64 +148,115 @@ class _GraficsScreenState extends State<GraficsScreen> {
     );
   }
 
+  /// O recorte dos quatro cards de dinheiro: eles somam **todos** os status,
+  /// o agendado incluído.
+  ///
+  /// É por isso que o TOTAL deles não bate com o dos outros carrosséis, e a
+  /// diferença é de propósito. Sem esta linha dentro do card, dois números da
+  /// mesma tela se contradizem sem nada explicando por quê.
+  static const _recorteTudo = 'Todos os status do período';
+
+  /// O recorte dos carrosséis de análise e de insucesso: só o que rodou.
+  /// Bairro percorrido e índice de insucesso de rota que ainda não saiu não
+  /// existem.
+  static const _recorteRodadas = 'Rotas concluídas e pagas';
+
   /// [routes] chega com **todos** os status do período.
   ///
   /// Os cards de dinheiro do topo usam o período inteiro — é lá que o
   /// agendado importa, para responder "já bati minha meta ou pego mais uma
-  /// rota?". Os gráficos de análise usam só o que rodou: bairro percorrido e
-  /// índice de insucesso de rota que ainda não saiu não existem.
+  /// rota?". Os gráficos de análise usam só o que rodou.
   ///
-  /// Por isso o TOTAL dos dois blocos difere de propósito, e o rótulo entre
-  /// eles diz qual recorte está valendo.
+  /// Quem diz qual dos dois recortes está valendo é o eyebrow de cada página,
+  /// e não mais um rótulo de seção entre os carrosséis: numa pilha o card
+  /// seguinte encaixa por cima do que está acima dele, então a ressalva
+  /// sumiria justo quando o card sobe ao topo para ser lido. Cada card passa a
+  /// se descrever sozinho — é o que a pilha exige.
   Widget _dashboard(List<NewRouteModal> routes) {
     final periodSummary = summarize(routes);
     final done = realized(routes);
     final doneSummary = summarize(done);
 
-    return SingleChildScrollView(
+    return StackedScroll(
+      // Padding igual ao de antes: a pilha mudou como os cards se movem, não
+      // onde a tela começa nem quanto sobra para a `GlassNavBar` flutuar.
+      //
+      // O `gap` fica no padrão do widget. Os 24px que separavam alguns blocos
+      // existiam para dar ar ao rótulo de seção que vinha no meio; sem ele o
+      // espaçamento não tem mais motivo para variar de um par de cards para o
+      // outro.
       padding: EdgeInsets.fromLTRB(16, 16, 16, _bottomGap),
-      child: Column(
-        children: [
-          ChartCarousel(height: 290, pages: _moneyPages(periodSummary, routes)),
-          const SizedBox(height: 24),
-          _sectionLabel('Análise das rotas concluídas e pagas'),
-          const SizedBox(height: 10),
-          ChartCarousel(height: 340, pages: _companyPages(doneSummary, done)),
-          const SizedBox(height: 20),
-          ChartCarousel(height: 340, pages: _bairroPages(done)),
-          const SizedBox(height: 20),
-          ChartCarousel(height: 330, pages: _timePages(done)),
-          const SizedBox(height: 24),
-          // O insucesso fecha a tela. Antes vinha em segundo, com o argumento
-          // de ser o que se acompanha todo dia — mas ele é o único bloco de
-          // notícia ruim, e abrir a tela por ele enterrava o dinheiro e a
-          // análise embaixo. No fim, o fundo laranja o separa do resto sem
-          // precisar de aviso nenhum.
-          _sectionLabel('Insucessos das rotas concluídas e pagas'),
-          const SizedBox(height: 10),
-          ChartCarousel(height: 340, pages: _insucessoPages(doneSummary, done)),
-        ],
-      ),
+      cards: [
+        _stacked(
+          const ValueKey('dinheiro'),
+          // 312, e não os 290 de antes: o eyebrow custa 22px, e eles saem do
+          // `Expanded` do gráfico. Medido com a fonte real do aparelho, o card
+          // aguentava a fonte do sistema até a escala 1.2 e passou a estourar
+          // já em 1.1 — devolver os 22px devolve exatamente a folga que ele
+          // tinha. É o card mais apertado dos cinco; os de 340 têm sobra.
+          height: 312,
+          pages: _moneyPages(periodSummary, routes),
+        ),
+        _stacked(
+          const ValueKey('empresas'),
+          height: 340,
+          pages: _companyPages(doneSummary, done),
+        ),
+        _stacked(
+          const ValueKey('bairros'),
+          height: 340,
+          pages: _bairroPages(done),
+        ),
+        _stacked(const ValueKey('tempo'), height: 330, pages: _timePages(done)),
+        // O insucesso fecha a tela. Antes vinha em segundo, com o argumento
+        // de ser o que se acompanha todo dia — mas ele é o único bloco de
+        // notícia ruim, e abrir a tela por ele enterrava o dinheiro e a
+        // análise embaixo. No fim, o fundo laranja o separa do resto sem
+        // precisar de aviso nenhum.
+        _stacked(
+          const ValueKey('insucessos'),
+          height: 340,
+          pages: _insucessoPages(doneSummary, done),
+        ),
+      ],
     );
   }
 
-  Widget _sectionLabel(String text) {
-    return Row(
-      children: [
-        Icon(Icons.insights_outlined, size: 15, color: Colors.grey.shade500),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.3,
-              color: Colors.grey.shade600,
-            ),
-          ),
-        ),
-      ],
+  /// Um carrossel virando card da pilha.
+  ///
+  /// A altura é a do carrossel montado (`totalHeight`), nunca uma conta
+  /// refeita aqui: o bloco de bolinhas só existe quando há mais de uma página
+  /// — o carrossel de bairros tem uma só — e uma cópia dessa regra na tela
+  /// passaria a discordar do desenho no primeiro ajuste de espaçamento lá
+  /// dentro, com o sintoma aparecendo como um encaixe alguns pixels fora do
+  /// lugar e nada apontando para a causa.
+  ///
+  /// A [key] prende o `State` de cada carrossel — a página aberta — a este
+  /// lugar da pilha. Hoje o casamento por tipo e posição dentro do `Stack` já
+  /// preservaria a página quando a troca de período reconstrói a tela, porque
+  /// a lista tem tamanho fixo e os cinco cards são do mesmo tipo; a key é o
+  /// que mantém isso verdadeiro no dia em que um carrossel entrar, sair ou
+  /// trocar de ordem, em vez de o sintoma aparecer como "mudei a data e voltei
+  /// para a primeira página".
+  /// Um carrossel virando card da pilha.
+  ///
+  /// A chave vai no [StackedCard], e não no [ChartCarousel]: é o card que é
+  /// filho direto do `Stack`, e é ali que o Flutter casa elementos entre dois
+  /// builds. Um nível abaixo ela não casa nada — medido: reordenar a lista
+  /// zerava a página de cada carrossel como se não houvesse chave.
+  ///
+  /// A altura sai de `totalHeight`, nunca refeita aqui: ela inclui o bloco de
+  /// bolinhas, que só existe quando há mais de uma página.
+  StackedCard _stacked(
+    ValueKey<String> key, {
+    required double height,
+    required List<Widget> pages,
+  }) {
+    final carousel = ChartCarousel(height: height, pages: pages);
+    return StackedCard(
+      key: key,
+      height: carousel.totalHeight,
+      child: carousel,
     );
   }
 
@@ -229,6 +281,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
     return [
       MoneyBreakdownCard(
         title: 'Resumo do período',
+        eyebrow: _recorteTudo,
         // A barra aqui é por status, e não por empresa: ela é o índice das
         // outras três páginas — mostra para onde foi cada real do período.
         slices: [
@@ -254,6 +307,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
       ),
       MoneyBreakdownCard(
         title: 'Pago no período',
+        eyebrow: _recorteTudo,
         slices: _companySlices(receivedPayment(routes)),
         // `receivedTotal` e não `received`. As fatias vêm de `receivedPayment`,
         // que já traz as idas sem rota: com o denominador só do pago, as
@@ -281,6 +335,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
       ),
       MoneyBreakdownCard(
         title: 'A receber no período',
+        eyebrow: _recorteTudo,
         slices: _companySlices(pendingPayment(routes)),
         total: summary.pending,
         emptyNote: 'Nada a receber: tudo que rodou já foi pago.',
@@ -296,6 +351,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
       ),
       MoneyBreakdownCard(
         title: 'Pendentes no período',
+        eyebrow: _recorteTudo,
         slices: _companySlices(notRunYet(routes)),
         total: summary.upcoming,
         emptyNote: 'Nenhuma rota marcada para o período.',
@@ -339,6 +395,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
     return [
       BarRankChart(
         title: 'Insucessos por empresa',
+        eyebrow: _recorteRodadas,
         palette: ChartPalette.alerta,
         entries: byCompany,
         formatValue: _whole,
@@ -351,6 +408,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
       ),
       BarRankChart(
         title: 'Bairros com insucesso',
+        eyebrow: _recorteRodadas,
         palette: ChartPalette.alerta,
         entries: byBairro,
         formatValue: _oneDecimal,
@@ -364,6 +422,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
       ),
       BarRankChart(
         title: 'Insucessos por clima',
+        eyebrow: _recorteRodadas,
         palette: ChartPalette.alerta,
         entries: byWeather,
         formatValue: _whole,
@@ -388,6 +447,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
     const semPacotes = 'Sem pacotes informados no período.';
 
     return FailureRateCard(
+      eyebrow: _recorteRodadas,
       palette: ChartPalette.alerta,
       overall: summary.packages == 0
           ? null
@@ -429,6 +489,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
     return [
       BarRankChart(
         title: 'Empresas por valor',
+        eyebrow: _recorteRodadas,
         entries: byValue,
         formatValue: _money,
         emptyMessage: 'Nenhuma rota no período.',
@@ -440,6 +501,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
       ),
       BarRankChart(
         title: 'Empresas por rotas',
+        eyebrow: _recorteRodadas,
         entries: byCount,
         formatValue: _whole,
         emptyMessage: 'Nenhuma rota no período.',
@@ -451,6 +513,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
       ),
       BarRankChart(
         title: 'Empresas por pacotes',
+        eyebrow: _recorteRodadas,
         entries: byPackages,
         formatValue: _whole,
         emptyMessage: 'Nenhuma rota no período.',
@@ -466,6 +529,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
       ),
       BarRankChart(
         title: 'Empresas por paradas',
+        eyebrow: _recorteRodadas,
         entries: byStops,
         formatValue: _whole,
         emptyMessage: 'Nenhuma rota no período.',
@@ -487,6 +551,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
     return [
       BarRankChart(
         title: 'Bairros mais rodados',
+        eyebrow: _recorteRodadas,
         entries: rodados,
         formatValue: _whole,
         emptyMessage:
@@ -511,6 +576,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
     return [
       LineChartCard(
         title: 'Por dia da semana',
+        eyebrow: _recorteRodadas,
         values: weekdays,
         firstX: 0,
         labelOf: (x) => weekdayLabel(x + 1),
@@ -522,6 +588,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
       ),
       LineChartCard(
         title: 'Faixa horária',
+        eyebrow: _recorteRodadas,
         values: hourValues,
         firstX: _shift.startHour,
         labelOf: (x) => '${x.toString().padLeft(2, '0')}h',

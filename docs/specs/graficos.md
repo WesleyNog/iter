@@ -204,36 +204,31 @@ Padrão ao abrir: Manhã.
 
 ## Layout
 
+Revisto em 2026-08-24: os carrosséis **empilham** ao rolar, e os rótulos de
+seção viraram uma linha dentro de cada card. Ver `docs/specs/pilha-de-graficos.md`.
+
 ```
-┌─ Filtro: [Início ▾]            [Fim ▾] ──────────────┐
-│                                                       │
-│ ┌─ RESUMO DO PERÍODO ────────────────────────────┐   │
-│ │  TOTAL         ROTAS         MÉDIA/ROTA         │   │  ← fixo
-│ │  ▓▓▓▓▓▓▓▓░░░░░░░░  (proporção por empresa)      │   │
-│ │  ● ML (62%) R$ x  ● Amazon (25%) …              │   │
-│ │  Taxa de entrega: ▓▓▓▓▓▓▓▓▓░ 97%                │   │
+┌─ Filtro: (Este Mês) (Mês Anterior) (Esta Semana) … ──┐   ← fixo, fora da rolagem
+│ ══════════════════════════════ azul   (dinheiro)      │   ← faixa de 12px
+│ ══════════════════════════════ azul   (empresas)      │
+│ ══════════════════════════════ azul   (bairros)       │
+│ ┌─ ↗ Rotas concluídas e pagas ───────────────────┐   │   ← eyebrow no card
+│ │  POR DIA DA SEMANA                              │   │
+│ │  TOTAL        MAIOR        MÉDIA                │   │
+│ │  (linha)                                        │   │
 │ └────────────────────────────────────────────────┘   │
-│                                                       │
-│ ── Insucessos das rotas concluídas e pagas ──────     │
-│ ┌─ INSUCESSOS ───────────────────────────────────┐   │
-│ │  (3 págs de barras + 1 card de índice)          │   │  ← PageView, 4 págs
+│                    ● ○                                │
+│ ┌─ ↗ Rotas concluídas e pagas ───────────────────┐   │
+│ │  INSUCESSOS POR EMPRESA        (fundo laranja)  │   │   ← fecha a tela
+│ │  (3 págs de barras + 1 card de índice)          │   │
 │ └────────────────────────────────────────────────┘   │
 │                  ● ○ ○ ○                              │
-│ ── Análise das rotas concluídas e pagas ─────────     │
-│ ┌─ EMPRESAS ─────────────────────────────────────┐   │
-│ │  (barras top-4)                                 │   │  ← PageView, 2 págs
-│ └────────────────────────────────────────────────┘   │
-│                    ● ○                                │
-│ ┌─ BAIRROS ──────────────────────────────────────┐   │
-│ │  (barras top-4)                                 │   │  ← página única
-│ └────────────────────────────────────────────────┘   │
-│                   (sem bolinha)                       │
-│ ┌─ TEMPO ────────────────────────────[Manhã ▾]───┐   │
-│ │  (linha fl_chart)                               │   │  ← PageView, 2 págs
-│ └────────────────────────────────────────────────┘   │
-│                    ● ○                                │
 └───────────────────────────────────────────────────────┘
 ```
+
+Cada card encaixa no topo ao chegar lá e o seguinte desliza por cima, deixando
+12px do anterior à mostra. A ordem é dinheiro → empresas → bairros → tempo →
+insucessos.
 
 Carrosséis separados em vez de um único gigante: uma fileira longa de bolinhas
 vira um ponto onde o usuário perde a conta de onde está, e o agrupamento já diz
@@ -416,8 +411,13 @@ outras três — mostra para onde foi cada real do período.
 saiu e índice de insucesso de rota que não aconteceu não existem.
 
 Consequência aceita: o **TOTAL do topo difere do TOTAL dos gráficos de baixo**.
-Um rótulo entre os dois blocos ("Análise das rotas concluídas e pagas") diz qual
-recorte está valendo, em vez de deixar a diferença parecer erro de conta.
+Quem diz qual recorte está valendo é o **eyebrow dentro de cada card** — "Todos
+os status do período" nos de dinheiro, "Rotas concluídas e pagas" nos demais —
+em vez de deixar a diferença parecer erro de conta.
+
+Até 2026-08-24 isso era um rótulo **entre** os blocos. Ele saiu porque a pilha o
+cobriria: o card encaixado no meio da tela não tem mais nada acima dele, então a
+ressalva passou a viajar junto dos números que ela qualifica.
 
 Dois detalhes que caíram junto, para número nenhum mentir:
 - **Pacotes e insucessos só contam de rota realizada.** Uma agendada com pacotes

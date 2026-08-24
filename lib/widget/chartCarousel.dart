@@ -11,8 +11,30 @@ import 'package:flutter/material.dart';
 class ChartCarousel extends StatefulWidget {
   const ChartCarousel({super.key, required this.height, required this.pages});
 
+  /// Respiro entre o `PageView` e a fileira de bolinhas.
+  static const double _dotsSpacing = 10;
+
+  /// A fileira tem a altura da bolinha ativa, que é a maior das duas.
+  static const double _activeDotSize = 11;
+  static const double _inactiveDotSize = 7;
+
   final double height;
   final List<Widget> pages;
+
+  /// Tudo o que o carrossel ocupa: a [height] do `PageView` mais o bloco de
+  /// bolinhas, quando ele existe.
+  ///
+  /// Quem empilha os cards (`StackedScroll`) precisa desse número **antes** de
+  /// desenhar, e por isso ele mora aqui: refazer a conta lá fora seria copiar o
+  /// layout interno deste arquivo para outro. A cópia diverge no primeiro
+  /// ajuste de espaçamento, e o sintoma seria a pilha encaixando alguns pixels
+  /// fora do lugar — sem nada apontando para cá. As constantes acima são as
+  /// mesmas que o `build` usa, então o número não pode discordar do desenho.
+  ///
+  /// Uma constante fixa de 21px erraria o carrossel de bairros, que tem uma
+  /// página só e portanto não desenha bolinha nenhuma.
+  double get totalHeight =>
+      height + (pages.length > 1 ? _dotsSpacing + _activeDotSize : 0);
 
   @override
   State<ChartCarousel> createState() => _ChartCarouselState();
@@ -40,9 +62,10 @@ class _ChartCarouselState extends State<ChartCarousel> {
             children: widget.pages,
           ),
         ),
-        // Uma bolinha sozinha promete uma página que não existe.
+        // Uma bolinha sozinha promete uma página que não existe. É a mesma
+        // condição de `totalHeight`, e as duas têm de continuar iguais.
         if (widget.pages.length > 1) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: ChartCarousel._dotsSpacing),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -56,11 +79,15 @@ class _ChartCarouselState extends State<ChartCarousel> {
   }
 
   Widget _dot({required bool isActive}) {
+    final size = isActive
+        ? ChartCarousel._activeDotSize
+        : ChartCarousel._inactiveDotSize;
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
       margin: const EdgeInsets.symmetric(horizontal: 4),
-      width: isActive ? 11 : 7,
-      height: isActive ? 11 : 7,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: isActive ? Colors.blue.shade600 : Colors.grey.shade300,

@@ -35,6 +35,7 @@ class MoneyBreakdownCard extends StatelessWidget {
     required this.slices,
     required this.total,
     required this.emptyNote,
+    this.eyebrow,
     this.footnote,
     this.extra,
   });
@@ -49,6 +50,10 @@ class MoneyBreakdownCard extends StatelessWidget {
   final double total;
 
   final String emptyNote;
+
+  /// Repassado ao [ChartCard] sem lógica nenhuma — ver [ChartCard.eyebrow].
+  final String? eyebrow;
+
   final String? footnote;
 
   /// Linha extra no rodapé do card (a taxa de entrega, no resumo).
@@ -60,6 +65,7 @@ class MoneyBreakdownCard extends StatelessWidget {
 
     return ChartCard(
       title: title,
+      eyebrow: eyebrow,
       stats: stats,
       footnote: footnote,
       child: Column(

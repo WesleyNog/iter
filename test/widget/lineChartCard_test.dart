@@ -18,6 +18,10 @@ Future<void> pumpLine(
           height: 330,
           child: LineChartCard(
             title: 'Por dia da semana',
+            // Em produção todas as páginas têm eyebrow, e ele come
+            // altura da área do gráfico: sem ele a guarda mede uma
+            // folga que a tela não tem.
+            eyebrow: 'Rotas concluídas e pagas',
             values: values,
             firstX: firstX,
             labelOf: (x) => 'x$x',

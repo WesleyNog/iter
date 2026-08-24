@@ -15,6 +15,7 @@ class BarRankChart extends StatelessWidget {
     required this.entries,
     required this.formatValue,
     required this.emptyMessage,
+    this.eyebrow,
     this.stats = const <ChartStat>[],
     this.footnote,
     this.maxBars = 4,
@@ -31,6 +32,10 @@ class BarRankChart extends StatelessWidget {
 
   final String Function(double value) formatValue;
   final String emptyMessage;
+
+  /// Repassado ao [ChartCard] sem lógica nenhuma — ver [ChartCard.eyebrow].
+  final String? eyebrow;
+
   final List<ChartStat> stats;
   final String? footnote;
   final int maxBars;
@@ -54,6 +59,7 @@ class BarRankChart extends StatelessWidget {
 
     return ChartCard(
       title: title,
+      eyebrow: eyebrow,
       stats: stats,
       footnote: footnote,
       palette: palette,

@@ -7,7 +7,9 @@ import 'package:iter/widget/summaryCards.dart';
 /// Altura real do carrossel de cima. Testar em altura solta esconde justo o
 /// erro que interessa: a legenda de cinco status quebra em duas linhas e o
 /// card estoura.
-const _carouselHeight = 290.0;
+// A altura que a tela usa hoje. Subiu de 290 para 312 quando o eyebrow
+// entrou: ele custa 22px, tirados do `Expanded` do gráfico.
+const _carouselHeight = 312.0;
 
 PeriodSummary _summary({
   double total = 1000,
@@ -71,6 +73,10 @@ void main() {
       tester,
       MoneyBreakdownCard(
         title: 'Resumo do período',
+        // A guarda tem de montar o card que o app desenha: em produção as 15
+        // páginas passaram a ter eyebrow, e ele come altura justamente da área
+        // do gráfico. Sem esta linha a guarda mede uma folga que não existe.
+        eyebrow: 'Todos os status do período',
         slices: _fiveSlices,
         total: 1100,
         emptyNote: 'Sem rotas no período.',

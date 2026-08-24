@@ -21,6 +21,10 @@ Future<void> pumpChart(
           height: 340,
           child: BarRankChart(
             title: 'Empresas',
+            // Em produção todas as páginas têm eyebrow, e ele come
+            // altura da área do gráfico: sem ele a guarda mede uma
+            // folga que a tela não tem.
+            eyebrow: 'Rotas concluídas e pagas',
             entries: entries,
             formatValue: formatValue ?? (value) => value.toStringAsFixed(0),
             emptyMessage: 'Nada no período',
