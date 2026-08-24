@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:iter/Utils/feedAds.dart';
 import 'package:iter/Utils/profileDisplay.dart';
 import 'package:iter/controller/blockController.dart';
 import 'package:iter/controller/postController.dart';
@@ -11,6 +12,7 @@ import 'package:iter/screens/addPost.dart';
 import 'package:iter/services/postImage.dart';
 import 'package:iter/widget/blockDialog.dart';
 import 'package:iter/widget/commentsSheet.dart';
+import 'package:iter/widget/feedAdSlot.dart';
 import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/postCard.dart';
 import 'package:iter/widget/reportSheet.dart';
@@ -392,9 +394,9 @@ class _FeedTabState extends State<FeedTab> {
   /// `extendBody` da Home deixa por cima do conteúdo; e é aqui que dá para
   /// recarregar a lista quando o post volta publicado.
   Future<void> _compose() async {
-    final published = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => AddPost(uid: widget.uid)),
-    );
+    final published = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => AddPost(uid: widget.uid)));
     if (published == true && mounted) await _refresh();
   }
 
@@ -430,46 +432,82 @@ class _FeedTabState extends State<FeedTab> {
       );
     }
 
+    // A lista com os anúncios já no lugar, montada **uma vez por build** e não
+    // dentro do `itemBuilder`.
+    //
+    // `feedWithAds` é determinística, então chamá-la aqui devolve sempre o
+    // mesmo resultado para os mesmos posts — é isso que dispensa guardar a
+    // sequência num campo do State e invalidá-la nos quatro lugares onde
+    // `_posts` muda. Decidir a cadência lá dentro seria o defeito oposto: o
+    // builder roda a cada rebuild, e esta tela reconstrói a cada curtida, a
+    // cada foto resolvida e a cada perfil que chega do prefetch — o anúncio
+    // mudaria de lugar debaixo do dedo de quem rola. Ver
+    // `docs/specs/anuncios-no-feed.md`.
+    final slots = feedWithAds(_posts);
+
     return ListView.builder(
       controller: _scroll,
       padding: EdgeInsets.fromLTRB(16, 12, 16, widget.bottomGap),
-      itemCount: _posts.length + 2,
+      // Uma aritmética só, e num lugar só: o compositor na frente, o rodapé
+      // atrás. Antes eram três constantes literais (`+ 2`, `+ 1`, `- 1`) em
+      // três linhas deste mesmo builder, e qualquer item novo entre os posts
+      // quebrava as três de uma vez.
+      itemCount: slots.length + 2,
       itemBuilder: (context, index) {
         if (index == 0) return _composer();
 
-        if (index == _posts.length + 1) {
+        if (index == slots.length + 1) {
           if (_loading) {
             return const Padding(
               padding: EdgeInsets.all(16),
               child: Center(child: CircularProgressIndicator()),
             );
           }
-          // O espaço onde o anúncio entra, quando entrar: um a cada N posts.
-          // Ver `docs/specs/amigos.md`.
           return const SizedBox(height: 8);
         }
 
-        final post = _posts[index - 1];
-        final isMine = post.uid == widget.uid;
-
-        return PostCard(
-          post: post,
-          author: widget.profiles[post.uid],
-          imageUrl: _imageUrls[post.id],
-          imageLoading: post.hasImage && !_imageUrls.containsKey(post.id),
-          likes: _likes[post.id] ?? 0,
-          liked: _liked.contains(post.id),
-          comments: _comments[post.id] ?? 0,
-          isMine: isMine,
-          onLike: (liked) => _toggleLike(post, liked),
-          onComment: () => _openComments(post),
-          onDelete: () => _erase(post),
-          // Ninguém se denuncia nem se bloqueia: no post próprio o menu tem
-          // uma linha só.
-          onReport: isMine ? null : () => _report(post),
-          onBlock: isMine ? null : () => _block(post),
-        );
+        // **A `key` vai na raiz de cada item**, e não só dentro do `PostCard`.
+        //
+        // O `ListView` casa elemento com widget pela raiz; a
+        // `ValueKey('post-…')` que já existia mora um nível abaixo, dentro do
+        // build do card, e portanto não contava. Enquanto tudo na lista era
+        // `StatelessWidget` isso funcionava por sorte. Um anúncio tem estado —
+        // objeto `Ad`, view nativa —, e casar posicionalmente um anúncio com
+        // um card depois de apagar um post do meio é exatamente o caso em que
+        // a falta de key aparece.
+        //
+        // `switch` sobre o tipo selado, e não `is` mais `as`: é o compilador
+        // cobrando o caso novo no dia em que um terceiro tipo de item entrar
+        // na lista. Com o `as`, um `FeedSlot` novo compilaria e estouraria em
+        // execução, na tela de outra pessoa.
+        return switch (slots[index - 1]) {
+          AdSlot(:final anchorId) => FeedAdSlot(key: ValueKey('ad-$anchorId')),
+          PostSlot(:final post) => _card(post),
+        };
       },
+    );
+  }
+
+  Widget _card(Post post) {
+    final isMine = post.uid == widget.uid;
+
+    return PostCard(
+      key: ValueKey('post-${post.id}'),
+      post: post,
+      author: widget.profiles[post.uid],
+      imageUrl: _imageUrls[post.id],
+      imageLoading: post.hasImage && !_imageUrls.containsKey(post.id),
+      likes: _likes[post.id] ?? 0,
+      liked: _liked.contains(post.id),
+      comments: _comments[post.id] ?? 0,
+      isMine: isMine,
+      onLike: (liked) => _toggleLike(post, liked),
+      onComment: () => _openComments(post),
+      onDelete: () => _erase(post),
+      // Ninguém se denuncia nem se bloqueia: no post próprio o menu tem uma
+      // linha só.
+      onReport: isMine ? null : () => _report(post),
+      onBlock: isMine ? null : () => _block(post),
     );
   }
 
