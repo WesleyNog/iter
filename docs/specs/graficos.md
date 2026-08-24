@@ -16,7 +16,7 @@ o dado é deste app.
 | # | Pergunta | Onde aparece |
 |---|---|---|
 | 1 | Valor total de rotas no período | Card resumo (fixo, topo) |
-| 2 | Ranking por empresa, em valor **e** em quantidade | Carrossel Empresas, pág. 1 e 2 |
+| 2 | Ranking por empresa, em valor, quantidade, **pacotes e paradas** | Carrossel Empresas, pág. 1 a 4 (as duas últimas desde 2026-08-24) |
 | 3 | Ranking de insucesso por empresa (quantidade) | Carrossel Empresas, pág. 3 |
 | 7 | Empresa com maior **índice** de insucesso (%) | Carrossel Empresas, pág. 4 |
 | 5 | Bairros mais rodados | Carrossel Bairros, pág. 1 |

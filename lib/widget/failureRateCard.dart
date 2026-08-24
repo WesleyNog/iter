@@ -31,6 +31,7 @@ class FailureRateCard extends StatelessWidget {
     required this.rows,
     required this.overall,
     this.footnote,
+    this.palette = ChartPalette.azul,
   });
 
   final List<FailureRateRow> rows;
@@ -41,9 +42,8 @@ class FailureRateCard extends StatelessWidget {
 
   final String? footnote;
 
-  /// Laranja→vermelho: aqui a barra cheia é notícia ruim, ao contrário da taxa
-  /// de entrega do resumo, que é verde.
-  static const _colors = [Color(0xFFFFAB91), Color(0xFFFF7043)];
+  /// Fundo do card e cores da barra. Ver [ChartPalette].
+  final ChartPalette palette;
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +57,7 @@ class FailureRateCard extends StatelessWidget {
     return ChartCard(
       title: 'Índice de insucesso',
       footnote: footnote,
+      palette: palette,
       stats: [
         ChartStat('GERAL', overall == null ? '—' : _percent(overall!)),
       ],
@@ -104,7 +105,7 @@ class FailureRateCard extends StatelessWidget {
                   // Tudo zerado não vira barra cheia: sem insucesso nenhum, as
                   // três ficam vazias, que é a leitura certa.
                   fraction: worst <= 0 ? 0 : leader.rate / worst,
-                  colors: _colors,
+                  colors: palette.progress,
                 ),
               ),
               const SizedBox(width: 10),

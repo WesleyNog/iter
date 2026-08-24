@@ -2,15 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:iter/Utils/routeStats.dart';
 import 'package:iter/widget/chartCard.dart';
 
-/// Paleta das barras, ciclada por posição. Quatro tons chapados sobre o
-/// gradiente azul do card.
-const _barColors = [
-  Color(0xFF69F0AE),
-  Color(0xFF84FFFF),
-  Color(0xFFFFECB3),
-  Color(0xFFFF8A80),
-];
-
 /// Gráfico de barras de um ranking: até [maxBars] degraus, altura proporcional
 /// ao maior, valor em cima e rótulo embaixo.
 ///
@@ -28,6 +19,7 @@ class BarRankChart extends StatelessWidget {
     this.footnote,
     this.maxBars = 4,
     this.showShare = true,
+    this.palette = ChartPalette.azul,
   });
 
   final String title;
@@ -49,6 +41,11 @@ class BarRankChart extends StatelessWidget {
   /// de empresas diferentes para tirar uma "participação" não significa nada.
   final bool showShare;
 
+  /// Fundo do card e cores das barras. As duas coisas juntas de propósito: a
+  /// paleta de barra foi escolhida contra um fundo específico, e trocar só um
+  /// dos lados é como o salmão foi parar em cima do laranja.
+  final ChartPalette palette;
+
   @override
   Widget build(BuildContext context) {
     final top = entries.take(maxBars).toList();
@@ -59,40 +56,65 @@ class BarRankChart extends StatelessWidget {
       title: title,
       stats: stats,
       footnote: footnote,
+      palette: palette,
       child: top.isEmpty
           ? ChartEmpty(emptyMessage)
-          : Column(
-              children: [
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      for (var index = 0; index < top.length; index++)
-                        _bar(top[index], index, highest),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  height: 46,
-                  child: Row(
-                    children: [
-                      for (final entry in top) _caption(entry, total),
-                    ],
-                  ),
-                ),
-              ],
+          // A largura de cada degrau é **fixa**: sempre a fração que ele teria
+          // com [maxBars] barras, seja qual for quantas existam. Com `Expanded`
+          // um ranking de um item só esticava a barra pela largura inteira do
+          // card, e um retângulo do tamanho do cartão não se lê como gráfico —
+          // não dá para comparar altura nenhuma quando não há com o quê.
+          //
+          // `LayoutBuilder` porque a fração é da largura disponível, não de um
+          // número de pixels: o card muda de tamanho entre um iPhone e um iPad,
+          // e com quatro barras o resultado é idêntico ao de antes.
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                final slot = constraints.maxWidth / maxBars;
+
+                return Column(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        // Centralizado: sobrando espaço, ele fica dos dois
+                        // lados em vez de deixar o gráfico encostado à
+                        // esquerda com um vazio à direita.
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          for (var index = 0; index < top.length; index++)
+                            _bar(top[index], index, highest, slot),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 46,
+                      child: Row(
+                        // O mesmo alinhamento e a mesma largura de slot das
+                        // barras: são duas linhas separadas, e qualquer
+                        // diferença aqui desalinha o rótulo da sua barra.
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          for (final entry in top) _caption(entry, total, slot),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
     );
   }
 
-  Widget _bar(RankEntry entry, int index, double highest) {
+  Widget _bar(RankEntry entry, int index, double highest, double slot) {
     // Ranking inteiro zerado (nenhum insucesso no período, por exemplo): sem
     // altura de referência, todas as barras ficam no chão em vez de dividir
     // por zero.
     final ratio = highest > 0 ? entry.value / highest : 0.0;
 
-    return Expanded(
+    return SizedBox(
+      width: slot,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 5),
         child: Column(
@@ -119,7 +141,7 @@ class BarRankChart extends StatelessWidget {
                 child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: _barColors[index % _barColors.length],
+                    color: palette.bars[index % palette.bars.length],
                     borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(8),
                     ),
@@ -140,10 +162,11 @@ class BarRankChart extends StatelessWidget {
     );
   }
 
-  Widget _caption(RankEntry entry, double total) {
+  Widget _caption(RankEntry entry, double total, double slot) {
     final share = showShare && total > 0 ? entry.value / total * 100 : null;
 
-    return Expanded(
+    return SizedBox(
+      width: slot,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4),
         child: Column(

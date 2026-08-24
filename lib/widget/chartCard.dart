@@ -8,7 +8,69 @@ class ChartStat {
   final String value;
 }
 
-/// Moldura compartilhada de todos os cards de gráfico: gradiente azul, título,
+/// A paleta de um card: o fundo, as barras do ranking e a barra de progresso.
+///
+/// Existe porque o carrossel de insucessos passou a ter um fundo próprio, e
+/// trocar só o gradiente deixaria as barras erradas: as cores de barra foram
+/// escolhidas **contra o azul**, e o salmão (`#FF8A80`) sobre laranja é a
+/// mesma cor duas vezes. Uma paleta é o conjunto inteiro, ou o card fica
+/// legível só na metade que alguém lembrou de trocar.
+///
+/// As cores de [alerta] não foram escolhidas no olho: passaram no validador de
+/// paleta (croma, separação sob daltonismo, piso de visão normal e contraste
+/// contra a superfície). A única checagem que elas "reprovam" é a faixa de
+/// luminosidade, calibrada para superfície neutra quase preta — sobre um
+/// laranja vivo a barra precisa justamente sair dessa faixa para contrastar.
+class ChartPalette {
+  const ChartPalette({
+    required this.gradient,
+    required this.bars,
+    required this.progress,
+  });
+
+  /// Fundo do card, do canto superior esquerdo ao inferior direito.
+  final List<Color> gradient;
+
+  /// Barras do ranking, cicladas por posição.
+  final List<Color> bars;
+
+  /// Preenchimento da [ChartProgressBar].
+  final List<Color> progress;
+
+  /// O azul de sempre — dinheiro, empresa, bairro, tempo.
+  static const azul = ChartPalette(
+    gradient: [Color(0xFF0D47A1), Color(0xFF1976D2), Color(0xFF42A5F5)],
+    bars: [
+      Color(0xFF69F0AE),
+      Color(0xFF84FFFF),
+      Color(0xFFFFECB3),
+      Color(0xFFFF8A80),
+    ],
+    // Laranja→vermelho: no card de índice a barra cheia é notícia ruim, ao
+    // contrário da taxa de entrega do resumo, que é verde.
+    progress: [Color(0xFFFFAB91), Color(0xFFFF7043)],
+  );
+
+  /// O laranja dos insucessos — o dado que é ruim justamente quando cresce.
+  ///
+  /// Complementar do azul na roda de cores, nos mesmos degraus do Material
+  /// (900 / 700 / 400) que o azul usa: o antagonismo sai da construção, não de
+  /// tentativa e erro.
+  static const alerta = ChartPalette(
+    gradient: [Color(0xFFBF360C), Color(0xFFE64A19), Color(0xFFFF7043)],
+    bars: [
+      Color(0xFFFFE082),
+      Color(0xFF18FFFF),
+      Color(0xFFCCFF90),
+      Color(0xFF4A148C),
+    ],
+    // Dourado sobre laranja queimado: quente com quente mantém a leitura de
+    // "ruim", e os dois tons passam de 3:1 contra o fundo.
+    progress: [Color(0xFFFFECB3), Color(0xFFFFE082)],
+  );
+}
+
+/// Moldura compartilhada de todos os cards de gráfico: gradiente, título,
 /// até três números no topo e o gráfico embaixo.
 ///
 /// Existe para os seis gráficos não serem seis cópias da mesma decoração — foi
@@ -23,6 +85,7 @@ class ChartCard extends StatelessWidget {
     this.stats = const <ChartStat>[],
     this.footnote,
     this.fillHeight = true,
+    this.palette = ChartPalette.azul,
   });
 
   final String title;
@@ -43,14 +106,16 @@ class ChartCard extends StatelessWidget {
   /// resumo, que rola com a página, ele tem a altura do próprio conteúdo.
   final bool fillHeight;
 
+  final ChartPalette palette;
+
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF0D47A1), Color(0xFF1976D2), Color(0xFF42A5F5)],
+        gradient: LinearGradient(
+          colors: palette.gradient,
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -133,7 +198,7 @@ class ChartCard extends StatelessWidget {
   }
 }
 
-/// Barra horizontal de preenchimento sobre o fundo azul do card.
+/// Barra horizontal de preenchimento sobre o fundo do card.
 ///
 /// Mora aqui, e não no card que a usa, porque dois cards a desenham: a taxa de
 /// entrega do resumo e o índice de insucesso.

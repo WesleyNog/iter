@@ -67,24 +67,32 @@ dois cards desenham a mesma barra.
 Antes → depois:
 
 ```
-ANTES                                DEPOIS
+ANTES                                DEPOIS (revisto em 2026-08-24)
 Resumo do período (4 págs)           Resumo do período (4 págs)
-                                     ── Insucessos ────────────────
-Análise das rotas concluídas e pagas   Insucessos por empresa   (un.)
-  Empresas          (4 págs)           Bairros com insucesso    (un.)
-    valor                              Insucessos por clima     (un.)   ← novo
-    rotas                              Índice de insucesso      (%)     ← card único
-    insucessos por empresa   ──┐          Empresa · pior
-    índice de insucesso      ──┤          Bairro  · pior              ← novo
-  Bairros           (2 págs)   │          Clima   · pior              ← novo
-    mais rodados               │     ── Análise das rotas concluídas e pagas
-    com insucesso            ──┘       Empresas          (2 págs)
-  Tempo             (2 págs)             valor
-                                         rotas
-                                       Bairros           (1 pág)
-                                         mais rodados
-                                       Tempo             (2 págs)
+                                     ── Análise das rotas concluídas e pagas
+Análise das rotas concluídas e pagas   Empresas          (4 págs)
+  Empresas          (4 págs)             valor
+    valor                                rotas
+    rotas                                pacotes                   ← novo
+    insucessos por empresa   ──┐          paradas                   ← novo
+    índice de insucesso      ──┤        Bairros           (1 pág)
+  Bairros           (2 págs)   │          mais rodados
+    mais rodados               │        Tempo             (2 págs)
+    com insucesso            ──┘      ── Insucessos ──── fundo laranja
+  Tempo             (2 págs)            Insucessos por empresa   (un.)
+                                        Bairros com insucesso    (un.)
+                                        Insucessos por clima     (un.)
+                                        Índice de insucesso      (%)
+                                          Empresa · pior
+                                          Bairro  · pior
+                                          Clima   · pior
 ```
+
+**O carrossel de insucessos fecha a tela**, e não abre o miolo dela. A primeira
+versão o punha em segundo, com o argumento de ser o que se acompanha todo dia —
+mas ele é o único bloco de notícia ruim, e começar por ele enterrava o dinheiro
+e a análise embaixo. No fim, o fundo laranja o separa do resto sem precisar de
+aviso nenhum.
 
 As três primeiras páginas são **quantidade**, uma por eixo; a última é o
 **índice** dos três eixos juntos. Índice e quantidade respondem coisas
@@ -105,9 +113,32 @@ barra cheia.
 
 O carrossel de Insucessos ganha rótulo de seção próprio — **"Insucessos das
 rotas concluídas e pagas"** — porque usa o mesmo recorte `realized` do bloco de
-análise, mas agora aparece antes dele. Sem o rótulo, o "Análise das rotas
-concluídas e pagas" que hoje explica esse recorte ficaria depois de um carrossel
-que também depende dele.
+análise e está separado dele por dois outros carrosséis. Sem o rótulo, quem
+chega rolando ao fim da tela não teria como saber que aqueles números excluem
+rota agendada.
+
+### O fundo laranja
+
+`ChartPalette.alerta` é o complementar do azul na roda de cores, **nos mesmos
+degraus do Material** que o azul usa (900 / 700 / 400): o antagonismo sai da
+construção, não de tentativa e erro.
+
+A paleta é o conjunto inteiro — gradiente, barras e barra de progresso — e não
+só o fundo. Trocar apenas o gradiente deixaria as barras erradas: elas foram
+escolhidas **contra o azul**, e o salmão (`#FF8A80`) sobre laranja é a mesma cor
+duas vezes.
+
+As quatro cores de barra do laranja não foram escolhidas no olho. Passaram no
+validador de paleta em croma, separação sob daltonismo (protan/deutan), piso de
+visão normal e contraste contra a superfície. A única checagem que elas
+"reprovam" é a faixa de luminosidade, calibrada para superfície neutra quase
+preta — sobre laranja vivo a barra precisa justamente sair dessa faixa para
+contrastar.
+
+Medido no mesmo validador: a paleta **azul** falha o piso de visão normal — o
+verde e o ciano dos dois primeiros degraus ficam a ΔE 11,2, abaixo de 15, e o
+salmão tem 2,02:1 de contraste contra o fundo. Está anotado aqui em vez de
+corrigido porque repintar o card azul é mudança visível que ninguém pediu.
 
 Altura 340, igual aos outros dois de barras.
 

@@ -530,6 +530,36 @@ of the right day and moves a period's edge by a day. Brazil dropped DST in 2019
 and Fortaleza never had it, so both spell the same result today — the
 constructor is chosen because it stays right elsewhere and costs nothing.
 
+## A paleta de um card é o conjunto inteiro
+
+`ChartPalette` carries the gradient, the bar colors and the progress fill
+together, and `ChartCard`/`BarRankChart`/`FailureRateCard` all take one. Swapping
+only the gradient is what breaks: the bar colors were chosen **against the blue**,
+and the salmon `#FF8A80` on orange is the same color twice.
+
+`ChartPalette.alerta` — the insucesso carousel, which closes the charts screen —
+is blue's complement at the same Material steps the blue uses (900/700/400), so
+the antagonism comes from construction rather than trial and error. Its four bar
+colors passed the data-viz validator on chroma, protan/deutan separation, the
+normal-vision floor and contrast against the surface. The one check they "fail"
+is the lightness band, which is calibrated for a neutral near-black surface — on
+a bright saturated orange the bar has to leave that band to contrast at all.
+
+Measured on the same validator and left alone on purpose: the **blue** palette
+fails the normal-vision floor — its first two steps (`#69F0AE` green and
+`#84FFFF` cyan) sit at ΔE 11.2, under the 15 threshold, so the top two bars are
+hard to tell apart even with full color vision, and `#FF8A80` has 2.02:1 against
+the blue. Both are discharged by the direct labels every bar carries. Repainting
+the blue card is a visible change nobody asked for; fix it deliberately, not as a
+side effect.
+
+Bar color follows **rank position**, not the company — Shopee is green when it
+leads and cyan when it is second. That is the opposite of what data-viz practice
+asks for, and it is deliberate only in the sense that the bairro charts have
+more entities than any fixed palette could name. If the company charts ever get
+entity colors, `companyColor` already exists for it, and the bairro charts must
+keep the positional palette.
+
 ## Widget tests cannot tell you whether text fits
 
 Two traps, both hit for real in this project:

@@ -382,6 +382,19 @@ List<RankEntry> valuePerCompany(List<NewRouteModal> routes) =>
 List<RankEntry> countPerCompany(List<NewRouteModal> routes) =>
     _rankCompanies(routes, (_) => 1);
 
+/// Pacotes por empresa.
+///
+/// Rota sem `packages` informado soma **zero**, e não fica de fora: a empresa
+/// continua no ranking com o que ela de fato declarou. Tirá-la mudaria o eixo
+/// de "quantos pacotes rodei por empresa" para "quantos pacotes rodei nas
+/// rotas em que me lembrei de anotar", que é outra pergunta.
+List<RankEntry> packagesPerCompany(List<NewRouteModal> routes) =>
+    _rankCompanies(routes, (route) => (route.packages ?? 0).toDouble());
+
+/// Paradas por empresa. Mesma regra de [packagesPerCompany].
+List<RankEntry> stopsPerCompany(List<NewRouteModal> routes) =>
+    _rankCompanies(routes, (route) => (route.stops ?? 0).toDouble());
+
 /// Insucessos por empresa, em quantidade absoluta.
 ///
 /// Empresa que rodou no período aparece mesmo zerada: são três empresas, e

@@ -167,12 +167,6 @@ class _GraficsScreenState extends State<GraficsScreen> {
         children: [
           ChartCarousel(height: 290, pages: _moneyPages(periodSummary, routes)),
           const SizedBox(height: 24),
-          // Insucesso vem antes da análise geral: é o que se acompanha todo
-          // dia, e ficava espalhado entre os dois carrosséis de baixo.
-          _sectionLabel('Insucessos das rotas concluídas e pagas'),
-          const SizedBox(height: 10),
-          ChartCarousel(height: 340, pages: _insucessoPages(doneSummary, done)),
-          const SizedBox(height: 24),
           _sectionLabel('Análise das rotas concluídas e pagas'),
           const SizedBox(height: 10),
           ChartCarousel(height: 340, pages: _companyPages(doneSummary, done)),
@@ -180,6 +174,15 @@ class _GraficsScreenState extends State<GraficsScreen> {
           ChartCarousel(height: 340, pages: _bairroPages(done)),
           const SizedBox(height: 20),
           ChartCarousel(height: 330, pages: _timePages(done)),
+          const SizedBox(height: 24),
+          // O insucesso fecha a tela. Antes vinha em segundo, com o argumento
+          // de ser o que se acompanha todo dia — mas ele é o único bloco de
+          // notícia ruim, e abrir a tela por ele enterrava o dinheiro e a
+          // análise embaixo. No fim, o fundo laranja o separa do resto sem
+          // precisar de aviso nenhum.
+          _sectionLabel('Insucessos das rotas concluídas e pagas'),
+          const SizedBox(height: 10),
+          ChartCarousel(height: 340, pages: _insucessoPages(doneSummary, done)),
         ],
       ),
     );
@@ -336,6 +339,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
     return [
       BarRankChart(
         title: 'Insucessos por empresa',
+        palette: ChartPalette.alerta,
         entries: byCompany,
         formatValue: _whole,
         emptyMessage: 'Nenhuma rota no período.',
@@ -347,6 +351,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
       ),
       BarRankChart(
         title: 'Bairros com insucesso',
+        palette: ChartPalette.alerta,
         entries: byBairro,
         formatValue: _oneDecimal,
         footnote: 'Insucesso rateado entre os bairros de cada rota.',
@@ -359,6 +364,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
       ),
       BarRankChart(
         title: 'Insucessos por clima',
+        palette: ChartPalette.alerta,
         entries: byWeather,
         formatValue: _whole,
         emptyMessage: semClima,
@@ -382,6 +388,7 @@ class _GraficsScreenState extends State<GraficsScreen> {
     const semPacotes = 'Sem pacotes informados no período.';
 
     return FailureRateCard(
+      palette: ChartPalette.alerta,
       overall: summary.packages == 0
           ? null
           : summary.failures / summary.packages * 100,
@@ -416,6 +423,8 @@ class _GraficsScreenState extends State<GraficsScreen> {
   ) {
     final byValue = valuePerCompany(routes);
     final byCount = countPerCompany(routes);
+    final byPackages = packagesPerCompany(routes);
+    final byStops = stopsPerCompany(routes);
 
     return [
       BarRankChart(
@@ -438,6 +447,33 @@ class _GraficsScreenState extends State<GraficsScreen> {
           ChartStat('TOTAL', '${summary.count}'),
           ChartStat('MAIOR', _highest(byCount, _whole)),
           ChartStat('MENOR', _lowest(byCount, _whole)),
+        ],
+      ),
+      BarRankChart(
+        title: 'Empresas por pacotes',
+        entries: byPackages,
+        formatValue: _whole,
+        emptyMessage: 'Nenhuma rota no período.',
+        // Zero é resposta: quem não anotou pacote fica no ranking com o que
+        // declarou, senão o eixo vira "pacotes das rotas em que me lembrei de
+        // anotar", que é outra pergunta.
+        footnote: 'Rota sem pacotes informados conta zero.',
+        stats: [
+          ChartStat('TOTAL', _whole(_sum(byPackages))),
+          ChartStat('MAIOR', _highest(byPackages, _whole)),
+          ChartStat('MENOR', _lowest(byPackages, _whole)),
+        ],
+      ),
+      BarRankChart(
+        title: 'Empresas por paradas',
+        entries: byStops,
+        formatValue: _whole,
+        emptyMessage: 'Nenhuma rota no período.',
+        footnote: 'Rota sem paradas informadas conta zero.',
+        stats: [
+          ChartStat('TOTAL', _whole(_sum(byStops))),
+          ChartStat('MAIOR', _highest(byStops, _whole)),
+          ChartStat('MENOR', _lowest(byStops, _whole)),
         ],
       ),
     ];

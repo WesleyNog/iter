@@ -17,6 +17,7 @@ NewRouteModal _route({
   int? insucessoQnt,
   Map<String, int> insucessoPorBairro = const {},
   int? packages,
+  int? stops,
   String? weather,
 }) {
   final start = startAt ?? DateTime(2026, 8, 10, 8);
@@ -32,6 +33,7 @@ NewRouteModal _route({
     status: status,
     value: value,
     packages: packages,
+    stops: stops,
     adress: adress,
     startAt: start,
     isInsucesso: isInsucesso,
@@ -774,6 +776,58 @@ void main() {
 
       final total = ranking.fold<double>(0, (sum, r) => sum + r.failures);
       expect(total, closeTo(5, 0.0001));
+    });
+  });
+
+  group('pacotes e paradas por empresa', () {
+    test('soma os pacotes de cada empresa', () {
+      final ranking = packagesPerCompany([
+        _route(company: Company.mercadolivre, packages: 120),
+        _route(company: Company.mercadolivre, packages: 80),
+        _route(company: Company.amazon, packages: 45),
+      ]);
+
+      expect(_valueOf(ranking, 'Mercado Livre'), 200);
+      expect(_valueOf(ranking, 'Amazon'), 45);
+    });
+
+    test('rota sem pacotes conta zero e não some do ranking', () {
+      // Tirá-la mudaria o eixo de "quantos pacotes rodei por empresa" para
+      // "quantos rodei nas rotas em que me lembrei de anotar".
+      final ranking = packagesPerCompany([
+        _route(company: Company.mercadolivre, packages: 100),
+        _route(company: Company.amazon),
+      ]);
+
+      expect(_valueOf(ranking, 'Mercado Livre'), 100);
+      expect(_has(ranking, 'Amazon'), isTrue);
+      expect(_valueOf(ranking, 'Amazon'), 0);
+    });
+
+    test('soma as paradas de cada empresa', () {
+      final ranking = stopsPerCompany([
+        _route(company: Company.shopee, stops: 30),
+        _route(company: Company.shopee, stops: 25),
+        _route(company: Company.amazon, stops: 12),
+      ]);
+
+      expect(_valueOf(ranking, 'Shopee'), 55);
+      expect(_valueOf(ranking, 'Amazon'), 12);
+    });
+
+    test('rota sem paradas conta zero', () {
+      final ranking = stopsPerCompany([_route(company: Company.amazon)]);
+      expect(_valueOf(ranking, 'Amazon'), 0);
+    });
+
+    test('os dois rankings saem do maior para o menor', () {
+      final ranking = packagesPerCompany([
+        _route(company: Company.amazon, packages: 10),
+        _route(company: Company.shopee, packages: 90),
+      ]);
+
+      expect(ranking.first.label, 'Shopee');
+      expect(ranking.last.label, 'Amazon');
     });
   });
 
