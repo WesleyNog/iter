@@ -53,6 +53,29 @@ class PostController {
     return query.get();
   }
 
+  /// Um post pelo id, para o toque numa notificação abrir a thread.
+  ///
+  /// **`null` para inexistente e `null` para lápide**, e a segunda metade é a
+  /// que importa: quem filtra o tombstone hoje é o [parse] da lista, e uma
+  /// thread aberta por link pularia esse filtro — mostrando ao dono o post que
+  /// ele apagou, com os comentários vivos embaixo.
+  ///
+  /// Mesma disciplina do `getWeather` e do `ProfileController.fetch`: `null` é
+  /// "não deu para saber", e quem chama decide o que dizer.
+  static Future<Post?> fetch(String id) async {
+    try {
+      final doc = await _collection.doc(id).get();
+      final data = doc.data();
+      if (data == null) return null;
+
+      final post = Post.fromMap(doc.id, data);
+      return post.deleted ? null : post;
+    } catch (e) {
+      debugPrint('feed: post $id ilegível: $e');
+      return null;
+    }
+  }
+
   static List<Post> parse(QuerySnapshot<Map<String, dynamic>> snapshot) {
     final posts = <Post>[];
     for (final doc in snapshot.docs) {

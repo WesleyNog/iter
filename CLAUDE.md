@@ -351,7 +351,7 @@ to `request.time` so a guest cannot sort themselves to the top of your list.
 incremented — `increment` drifts the first time a route is edited. See
 `docs/specs/amigos.md`.
 
-The rules have tests: `cd firestore-tests && npm test` runs 90 cases against
+The rules have tests: `cd firestore-tests && npm test` runs 103 cases against
 the Firestore emulator. It is a Node project on purpose, and deliberately
 **outside `test/`** — `flutter test` globs that directory for `*_test.dart` and
 would walk `node_modules` on every run. The emulator needs **Java 21+** while
@@ -599,7 +599,7 @@ The fix is the cache, and it is safe — nothing but build artifacts:
 ```bash
 rm -rf ~/Library/Developer/Xcode/DerivedData/Runner-*
 flutter clean && flutter pub get
-flutter build ios --debug          # ~11 min; re-signs all 29 frameworks
+flutter build ios --debug          # ~11 min; re-signs all 37 frameworks
 ```
 
 Verify before blaming anything else:

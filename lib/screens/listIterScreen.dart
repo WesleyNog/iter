@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:iter/Utils/routeFilter.dart';
+import 'package:iter/controller/profileController.dart';
 import 'package:iter/controller/routeController.dart';
 import 'package:iter/controller/vehicleController.dart';
 import 'package:iter/model/newRouteModal.dart';
@@ -352,6 +353,7 @@ class _ListIterScreenState extends State<ListIterScreen> {
 
     try {
       await RouteController.delete(widget.user.uid, route.id);
+      unawaited(_republishStats(route));
       if (!mounted) return;
       showNotification(
         context: context,
@@ -368,6 +370,35 @@ class _ListIterScreenState extends State<ListIterScreen> {
             ? 'Falha ao excluir: $e'
             : 'Não foi possível excluir a rota.',
       );
+    }
+  }
+
+  /// Recalcula os números públicos depois de uma exclusão.
+  ///
+  /// **Faltava.** Gravar rota republica (`addIter._republishStats`), apagar não
+  /// republicava: a rota sumia do app na hora e continuava contando no ranking
+  /// dos amigos até a próxima abertura, quando `ProfileController.publish`
+  /// reescreve a janela inteira. Horas depois da causa, e sem nada na tela
+  /// dizendo por quê.
+  ///
+  /// Vira defeito maior com a notificação de ultrapassagem: o aviso chegaria na
+  /// abertura do app, atribuído a um evento que ninguém fez naquele instante.
+  ///
+  /// `unawaited` e com o próprio `try`: o dono já viu a rota sumir, e um erro
+  /// de rede aqui não pode virar "não foi possível excluir" — a exclusão
+  /// aconteceu. Mesmo desenho de `addIter`.
+  ///
+  /// Só o mês da rota apagada, e não a janela inteira: é o único que mudou.
+  Future<void> _republishStats(NewRouteModal removed) async {
+    try {
+      final routes = await RouteController.fetchAll(widget.user.uid);
+      await ProfileController.refreshAfterRoute(
+        uid: widget.user.uid,
+        routes: routes,
+        months: {removed.startAt},
+      );
+    } catch (e) {
+      debugPrint('profiles: números públicos não republicados: $e');
     }
   }
 

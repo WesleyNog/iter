@@ -92,6 +92,17 @@ class MonthStats {
   /// Percentual de insucesso sobre os pacotes. `null` sem pacotes informados.
   double? get failureRate => packages == 0 ? null : failures / packages * 100;
 
+  /// Os sete inteiros que vão para `profiles/{uid}/stats/{yyyy-MM}`.
+  ///
+  /// **Este mapa é contrato com `functions/rank.js`, e os dois mudam juntos.**
+  /// A Function de ultrapassagem no ranking lê exatamente estes nomes para
+  /// refazer a comparação do lado do servidor; renomear qualquer um deles a
+  /// quebra **em silêncio** — sem erro de compilação dos dois lados, porque não
+  /// há compilação que os una. A única defesa é `functions/test/rank.test.mjs`,
+  /// que repete os casos de `test/unit/ranking_test.dart` com os mesmos números.
+  ///
+  /// É a mesma disciplina do regex de apelido, duplicado em `firestore.rules`.
+  /// Ver `docs/specs/notificacoes.md`.
   Map<String, dynamic> toMap() {
     return {
       'routes': routes,

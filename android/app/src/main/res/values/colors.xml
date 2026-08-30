@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      A cor da silhueta na bandeja de notificações.
+
+      É o azul do meio do gradiente do ícone do app: `assets/Icon/ITER.png` vai
+      de #0CC7FC no canto superior esquerdo a #036BF3 no inferior direito, e
+      #098BFB é a amostra do centro. Uma cor chapada, porque a notificação não
+      aceita gradiente.
+
+      Precisa ser um recurso de cor e ser referenciado com `android:resource` no
+      manifesto. Escrito como `android:value="#098BFB"`, o FCM lê o meta-data com
+      `Bundle.getInt`, recebe 0 e ignora **em silêncio** — parece configurado e
+      não está.
+    -->
+    <color name="notificacao">#098BFB</color>
+</resources>

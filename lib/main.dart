@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +9,8 @@ import 'package:iter/firebase_options.dart';
 import 'package:iter/screens/addIter.dart';
 import 'package:iter/screens/home.dart';
 import 'package:iter/screens/login.dart';
+import 'package:iter/services/appCheck.dart';
+import 'package:iter/services/pushMessaging.dart';
 
 void configLoading() {
   EasyLoading.instance
@@ -31,7 +35,29 @@ Future<void> main() async {
   }
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Depois do `initializeApp` e **antes** de qualquer coisa que fale com o
+  // Firebase — o `ligarToques()` logo abaixo já faz rede. Com `await`, porque o
+  // provedor precisa estar instalado antes da primeira requisição; se a
+  // atestação for buscada sem ele, ela nasce inválida.
+  //
+  // Ele engole a própria exceção de propósito: aqui ainda não existe árvore de
+  // widgets, e uma exceção não daria erro na tela — daria tela preta.
+  await AppCheckService.ativar();
+
   configLoading();
+
+  // Aqui, e não na HomeScreen — que é onde a documentação põe o exemplo.
+  //
+  // `getInitialMessage()` **consome** a mensagem que abriu o app, e consumir
+  // tarde é o bug do celular emprestado: um toque que abre o app deslogado
+  // deixaria a mensagem viva no processo até alguém montar a Home, e essa
+  // alguém pode ser outra pessoa.
+  //
+  // Sem `await`: o primeiro quadro não espera rede. Se a resposta chegar depois
+  // de a Home montar, o `ValueNotifier` do serviço avisa.
+  unawaited(PushMessaging.instance.ligarToques());
+
   runApp(const MyApp());
 }
 

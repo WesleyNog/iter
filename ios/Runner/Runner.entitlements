@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  ATENÇÃO: este arquivo existe, mas NÃO está ligado ao projeto Xcode — de
+	  propósito. Ver "iOS: o caminho pronto" em docs/specs/notificacoes.md.
+
+	  Ligá-lo (CODE_SIGN_ENTITLEMENTS nas três configurações) faz o iOS exigir
+	  que o perfil de provisionamento inclua o entitlement de Push. Perfil de
+	  conta gratuita NÃO inclui, então ligar isto hoje quebraria o build no
+	  iPhone do dono, que hoje funciona — sem ligar nada em troca, porque sem
+	  conta paga não existe chave APNs e o push iOS não funcionaria de qualquer
+	  forma.
+
+	  `development` é o ambiente de APNs para builds de debug e profile. O
+	  build de release para a App Store usa `production`; o Xcode troca isso
+	  sozinho quando a capability está ligada, e é por isso que este valor não
+	  deve ser mantido à mão em três arquivos.
+	-->
+	<key>aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>

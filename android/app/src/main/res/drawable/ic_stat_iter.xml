@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  O ícone da notificação na bandeja.
+
+  Silhueta branca sobre transparente, e não o logo reduzido: o Android joga fora
+  as cores e usa **só o canal alpha** deste drawable. O `mipmap/ic_launcher` é
+  100% opaco, então cair nele — que é o padrão do FCM quando não há este
+  meta-data — desenha um quadrado branco sólido em todo Android 5+.
+
+  É o motivo do logo sem o carro, de propósito. A 24dp o carro vira mancha, e
+  ícone de notificação é glifo chapado: o que sobrevive ao tamanho é a estrada
+  com o pin. Ver `docs/specs/notificacoes.md`.
+
+  Um vetor só basta porque o `minSdk` é 24; não são os cinco PNGs por densidade.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!--
+      O pin, no alto à direita. O `path` é o "place" do Material, desenhado num
+      quadro de 24; quem o encolhe e o posiciona é o `group`, para não haver
+      dado de caminho recalculado à mão — que é onde esse tipo de arquivo erra.
+    -->
+    <group
+        android:scaleX="0.42"
+        android:scaleY="0.42"
+        android:translateX="13.2"
+        android:translateY="0.6">
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M12,2C8.13,2 5,5.13 5,9c0,5.25 7,13 7,13s7,-7.75 7,-13c0,-3.87 -3.13,-7 -7,-7zM12,11.5c-1.38,0 -2.5,-1.12 -2.5,-2.5s1.12,-2.5 2.5,-2.5 2.5,1.12 2.5,2.5 -1.12,2.5 -2.5,2.5z" />
+    </group>
+
+    <!--
+      A estrada, do pé do pin até o canto de baixo à esquerda. Traço e não
+      preenchimento: a curva em S é uma linha, e descrevê-la como contorno
+      fechado dobraria o dado de caminho sem mudar o desenho.
+    -->
+    <path
+        android:pathData="M18.2,10.4 C18.2,13.2 12.6,12.6 12.6,15.4 C12.6,18.2 6.8,17.6 5.2,20.6"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

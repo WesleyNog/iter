@@ -3,12 +3,14 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:iter/Utils/friendship.dart';
+import 'package:iter/Utils/pushTarget.dart';
 import 'package:iter/Utils/ranking.dart';
 import 'package:iter/controller/blockController.dart';
 import 'package:iter/controller/friendController.dart';
 import 'package:iter/controller/profileController.dart';
 import 'package:iter/model/publicProfile.dart';
 import 'package:iter/screens/addFriend.dart';
+import 'package:iter/services/pushMessaging.dart';
 import 'package:iter/widget/blockDialog.dart';
 import 'package:iter/widget/feedTab.dart';
 import 'package:iter/widget/friendTile.dart';
@@ -25,9 +27,17 @@ enum FriendsTab { amigos, ranking, feed }
 /// "+": informar o que vem sem precisar redesenhar depois. Ver
 /// `docs/specs/amigos.md`.
 class FriendsScreen extends StatefulWidget {
-  const FriendsScreen({super.key, required this.user});
+  const FriendsScreen({super.key, required this.user, this.target});
 
   final User user;
+
+  /// O toque em notificação que trouxe o usuário até aqui, ou `null`.
+  ///
+  /// Objeto com **identidade**, comparado com `identical` — nunca um `bool` ou
+  /// um enum. Dois convites seguidos produzem alvos de conteúdo igual, e com
+  /// igualdade de valor o segundo toque não moveria nada: quem tivesse ido para
+  /// o Feed depois do primeiro ficaria preso lá.
+  final NotificationTarget? target;
 
   @override
   State<FriendsScreen> createState() => _FriendsScreenState();
@@ -35,6 +45,17 @@ class FriendsScreen extends StatefulWidget {
 
 class _FriendsScreenState extends State<FriendsScreen> {
   FriendsTab _tab = FriendsTab.amigos;
+
+  /// O critério que o toque pediu, repassado à `RankingTab`.
+  ///
+  /// Fica aqui e não é lido do alvo direto porque o alvo é **consumido** assim
+  /// que aplicado — ele é intenção de uma vez só, e a aba precisa do valor
+  /// enquanto estiver montada.
+  RankCriterion? _rankCriterion;
+
+  /// O post cuja thread o toque pediu. Mesmo motivo do critério: o alvo é
+  /// consumido ao ser aplicado, e a aba precisa do valor enquanto vive.
+  String? _threadPost;
 
   /// Criados uma vez: montar o stream dentro do `build` reinscreveria no
   /// Firestore a cada rebuild.
@@ -61,6 +82,15 @@ class _FriendsScreenState extends State<FriendsScreen> {
   @override
   void initState() {
     super.initState();
+
+    // **`initState` e `didUpdateWidget`, os dois.** `home.dart` é
+    // `body: screens[current]`, então trocar de aba desmonta esta tela: o
+    // caminho mais comum do deep link — o usuário está em Gráficos e o toque o
+    // traz para Amigos — passa por aqui, onde `didUpdateWidget` nunca roda. Só
+    // o `didUpdateWidget` faria o link funcionar exclusivamente para quem já
+    // estava nesta aba; só o `initState`, o inverso.
+    _aplicarAlvo();
+
     _blockedSub = BlockController.watch(widget.user.uid).listen(
       (blocked) {
         if (!mounted) return;
@@ -74,9 +104,40 @@ class _FriendsScreenState extends State<FriendsScreen> {
   }
 
   @override
+  void didUpdateWidget(FriendsScreen old) {
+    super.didUpdateWidget(old);
+    // `identical` e não `==`: ver o comentário de `target`.
+    if (!identical(old.target, widget.target)) _aplicarAlvo();
+  }
+
+  @override
   void dispose() {
     _blockedSub?.cancel();
     super.dispose();
+  }
+
+  /// Abre a sub-tela que o toque pede e marca o toque como atendido.
+  ///
+  /// Sem `setState`: no `initState` a tela ainda vai construir, e no
+  /// `didUpdateWidget` o framework reconstrói logo em seguida. Chamar `setState`
+  /// em qualquer um dos dois seria erro de ciclo de vida.
+  ///
+  /// **Consumir é obrigatório.** Esta tela é desmontada a cada troca de aba, e
+  /// um alvo que sobrevive faz toda visita futura a Amigos reaplicar o deep
+  /// link de ontem.
+  void _aplicarAlvo() {
+    final alvo = widget.target;
+    if (alvo == null) return;
+
+    _tab = switch (alvo.destination) {
+      NotificationDestination.amigos => FriendsTab.amigos,
+      NotificationDestination.ranking => FriendsTab.ranking,
+      NotificationDestination.feed => FriendsTab.feed,
+    };
+    _rankCriterion = alvo.criterion;
+    _threadPost = alvo.opensThread ? alvo.postId : null;
+
+    PushMessaging.instance.consumir();
   }
 
   /// Busca os perfis que ainda não vieram, sem bloquear a lista.
@@ -138,6 +199,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
             FriendsTab.ranking => _rankingTab(),
             FriendsTab.feed => FeedTab(
               uid: widget.user.uid,
+              openThreadFor: _threadPost,
               // O mesmo mapa da lista e do ranking. Um cache próprio no feed
               // morreria a cada troca de aba e releria perfis que este já tem.
               profiles: _profiles,
@@ -177,6 +239,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
           friends: friends,
           profiles: _profiles,
           bottomGap: _bottomGap,
+          initialCriterion: _rankCriterion,
         );
       },
     );

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:iter/services/authService.dart';
+import 'package:iter/services/pushMessaging.dart';
 import 'package:iter/widget/notificationPush.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -15,6 +16,18 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Um toque em notificação que chegou sem ninguém logado não tem para onde
+    // ir. Descartar aqui — e não no `build` do `AuthGate`, que é puro e não
+    // pode mexer em estado — é o que impede que ele fique pendurado e leve o
+    // **próximo** usuário deste aparelho a uma tela por causa de um aviso que
+    // não é dele. Ver `docs/specs/notificacoes.md`.
+    PushMessaging.instance.descartarPendente();
+  }
 
   Future<void> _handleGoogleSignIn() async {
     setState(() => _isLoading = true);

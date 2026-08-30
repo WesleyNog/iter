@@ -44,6 +44,94 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // ── Token de notificação ──────────────────────────────────────────────
+    //
+    // `fcmTokens/{sha256(token)}` -> `{token, uid, platform, updatedAt}`.
+    //
+    // **A chave é o aparelho, não o dono**, e é o oposto do que a intuição
+    // pede. O token do FCM identifica a *instalação do app*, não a pessoa: com
+    // o uid no prefixo — `user/{uid}/tokens/{token}` —, `user/A/tokens/T` e
+    // `user/B/tokens/T` seriam dois documentos diferentes, e o Firestore ficaria
+    // **estruturalmente incapaz** de impedir o mesmo celular sob dois donos ao
+    // mesmo tempo. Que é o bug do aparelho emprestado: A sai, B entra, e A
+    // continua recebendo os convites dele no telefone do B.
+    //
+    // Com o token como id os dois caminhos viram um documento só e a colisão
+    // some por forma — a técnica de `nicknames/{apelido}`, com uma diferença
+    // deliberada: aqui o `update` é **permitido**. A reivindicação legítima é de
+    // quem está com o aparelho na mão e autenticado agora, e é isso que faz o
+    // **login** restabelecer o invariante sozinho, mesmo quando o logout falhou.
+    //
+    // O id é o sha256 em hexa, e não o token cru: o Google trata o token como
+    // string opaca e não promete alfabeto nenhum. Um token que um dia venha com
+    // `/` seria id inválido, e a falha seria silenciosa e permanente naquele
+    // aparelho. 64 caracteres de `[0-9a-f]` custam zero e prendem o wildcard —
+    // sem isso a coleção é depósito livre na cota do projeto, como o comentário
+    // de `profiles/{uid}/stats/{bucket}` já registra.
+    //
+    // O que esta regra garante, e uma versão anterior deste comentário dizia
+    // que não: **o id é o hash do token, conferido aqui**. Sem isso, "a colisão
+    // some por forma" seria promessa do app, não invariante — bastava um cliente
+    // gravar o mesmo token sob dois ids para dois donos receberem no mesmo
+    // aparelho, que é o caso inteiro que a chave invertida existe para fechar.
+    //
+    // O que ela continua **não** garantindo: ela não amarra o token a um
+    // aparelho. Quem soubesse o token do celular de outra pessoa poderia
+    // reivindicá-lo com o próprio uid e desviar as próprias notificações para
+    // lá. Tokens não são públicos e nenhum caminho do app os expõe; sem servidor
+    // de atestação não há defesa melhor.
+    //
+    // Ver `docs/specs/notificacoes.md`.
+    match /fcmTokens/{tokenId} {
+      // Ninguém lê, nem o dono. O app só escreve, e quem lê é o Admin SDK, que
+      // não passa por aqui. Uma coleção de tokens legível é o mapa dos
+      // aparelhos de todo mundo.
+      allow get, list: if false;
+
+      // `create` e `update` sob a MESMA condição, de propósito: reivindicar um
+      // aparelho que já está em outro dono é o caminho normal, não um ataque.
+      allow create, update: if request.auth != null
+                            && tokenId.matches('^[0-9a-f]{64}$')
+                            && request.resource.data.keys().hasAll(
+                                 ['token', 'uid', 'platform', 'updatedAt'])
+                            && request.resource.data.keys().hasOnly(
+                                 ['token', 'uid', 'platform', 'updatedAt'])
+                            && request.resource.data.uid == request.auth.uid
+                            && request.resource.data.platform in ['android', 'ios']
+                            && request.resource.data.token is string
+                            && request.resource.data.token.size() > 0
+                            && request.resource.data.token.size() <= 4096
+                            // **O id é o hash do token, e a regra confere.**
+                            //
+                            // Sem esta linha a frase central do desenho seria
+                            // falsa: um cliente gravaria o MESMO token sob dois
+                            // ids diferentes, com dois donos, e os dois
+                            // receberiam — que é exatamente o celular
+                            // emprestado que a chave invertida existe para
+                            // fechar. "Colisão some por forma" só vale se a
+                            // forma for imposta aqui, e não confiada ao app.
+                            //
+                            // `.lower()` não é detalhe: `toHexString()` devolve
+                            // MAIÚSCULO e o `crypto` do Dart gera minúsculo.
+                            // Sem ele, toda gravação é negada.
+                            && tokenId == hashing.sha256(request.resource.data.token)
+                                            .toHexString().lower()
+                            // Carimbo do servidor, e não a string ISO que é o
+                            // padrão de `updatedAt` no resto do app. É o ÚNICO
+                            // campo que a varredura de token velho vai ler, e
+                            // deixar o cliente escolher o que é "fresco" é
+                            // deixá-lo escolher se expira.
+                            && request.resource.data.updatedAt == request.time;
+
+      // O dono retira o próprio aparelho. `resource == null` passa porque
+      // apagar documento que não existe é no-op — o mesmo motivo de
+      // `friendRequests`: o logout apaga o último id que conhece, e negar o
+      // segundo logout seria erro sem consequência.
+      allow delete: if request.auth != null
+                    && (resource == null
+                        || resource.data.uid == request.auth.uid);
+    }
+
     // Rotas de cada usuário: iter/{uid}/routes/{routeId}.
     match /iter/{userId}/routes/{routeId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
@@ -562,6 +650,21 @@ service cloud.firestore {
                           || get(/databases/$(database)/documents/posts/$(postId))
                                .data.uid == request.auth.uid);
       }
+
+      // Os marcos já anunciados deste post: `curtidas_10`, `comentarios_5`.
+      //
+      // **Escrita só pelo Admin SDK, que não passa por aqui** — e é exatamente
+      // por isso que esta regra precisa existir. Sem ela a coleção funcionaria
+      // igual, e ninguém notaria que qualquer conta autenticada podia
+      // **pré-criar** o marcador de um post alheio para emudecer o aviso, ou
+      // apagá-lo para fazer o mesmo marco ser anunciado de novo, quantas vezes
+      // quisesse. A supressão é invisível para os dois lados.
+      //
+      // `read` fechado junto: a lista de marcos entrega quantas curtidas um
+      // post já teve ao longo do tempo, que é mais do que a tela mostra.
+      match /marcos/{marcoId} {
+        allow read, write: if false;
+      }
     }
 
     // ── Denúncia ──────────────────────────────────────────────────────────
@@ -620,6 +723,36 @@ service cloud.firestore {
       // Denúncia que se apaga não é denúncia — mesma razão de `precos` não ter
       // `update` nem `delete`.
       allow delete: if false;
+    }
+
+    // ── Marcadores de notificação ─────────────────────────────────────────
+    //
+    // `avisosRanking/{passado}_{passador}_{criterio}_{mes}_{dia}` — o teto de um
+    // aviso de ultrapassagem por par, por critério, por dia.
+    //
+    // **O documento É a trava**: `create()` do Admin SDK falha quando o id já
+    // existe, então não há leitura, nem transação, nem contador para conciliar.
+    // A técnica é a de `nicknames/{apelido}` — mas a semelhança para aqui, e o
+    // comentário precisa dizer por quê: em `nicknames` o documento **é** o fato
+    // reivindicado, e a colisão aparece na cara de quem tenta. Aqui ele é uma
+    // afirmação derivada, e a colisão é invisível para os dois lados — quem
+    // deveria receber nunca soube que havia algo para receber.
+    //
+    // Por isso `if false` para todo mundo, como `norouterule`: se um cliente
+    // pudesse criar marcador, pré-criar o do vizinho o emudeceria pelo dia
+    // inteiro, sem rastro. É a segunda coleção de infraestrutura do projeto, e a
+    // segunda em que o cliente não tem nada a fazer. O Admin SDK ignora regras e
+    // continua escrevendo — e é justamente por isso que a ausência de regra
+    // passaria despercebida.
+    //
+    // O uid vem **antes** da data no id: data no prefixo joga todas as escritas
+    // do dia numa faixa contígua de chaves, que é o anti-padrão de hotspot que o
+    // Google documenta. Nesta escala não chega perto do limite; a ordem certa
+    // custa zero e sobrevive ao dia em que chegar.
+    //
+    // Ver `docs/specs/notificacoes.md`.
+    match /avisosRanking/{avisoId} {
+      allow read, write: if false;
     }
 
     // O espelho do dono: `iter/{uid}/posts/{id}`, mesmo id do global, gravado

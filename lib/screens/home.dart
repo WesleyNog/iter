@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:iter/Utils/friendShare.dart';
+import 'package:iter/Utils/pushTarget.dart';
 import 'package:iter/Utils/profileStats.dart';
 import 'package:iter/controller/friendController.dart';
 import 'package:iter/controller/profileController.dart';
@@ -17,6 +20,7 @@ import 'package:iter/screens/listIterScreen.dart';
 import 'package:iter/screens/summaryScreen.dart';
 import 'package:iter/screens/vehiclesScreen.dart';
 import 'package:iter/services/authService.dart';
+import 'package:iter/services/pushMessaging.dart';
 import 'package:iter/widget/createActionSheet.dart';
 import 'package:iter/widget/glassNavBar.dart';
 import 'package:iter/widget/notificationPush.dart';
@@ -35,13 +39,38 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  /// A posição da aba Amigos, que agora é citada em três lugares: a ordem de
+  /// `screens`, o badge de convites da navBar e o destino do push. Escrita três
+  /// vezes como `3`, a primeira reordenação de abas quebra duas delas em
+  /// silêncio.
+  static const int _amigosIndex = 3;
+
   bool _isSigningOut = false;
   int _currentIndex = 0;
 
   late final _grafics = GraficsScreen(user: widget.user);
   late final _listIter = ListIterScreen(user: widget.user);
-  late final _friends = FriendsScreen(user: widget.user);
   late final _summary = SummaryScreen(user: widget.user);
+
+  // A `FriendsScreen` **não** é `late final`, ao contrário das três de cima, e
+  // isso é obrigatório e não estilo.
+  //
+  // Uma instância guardada em campo é **idêntica** entre rebuilds, e nesse caso
+  // o Flutter devolve o Element sem chamar `update()` — logo `didUpdateWidget`
+  // nunca roda, e o alvo do push jamais chegaria na aba. Construída no `build`,
+  // o `State` continua preservado (mesmo tipo, mesma posição, sem key); o que
+  // se perde é só o curto-circuito de identidade, que as outras três mantêm.
+
+  /// O toque em notificação que a Home ainda não repassou.
+  ///
+  /// Espiado do serviço e **não copiado para um campo**: quem zera é a aba, ao
+  /// aplicar. Uma cópia aqui precisaria ser zerada em dois lugares, e o que
+  /// ficasse para trás grudaria o deep link.
+  final ValueNotifier<NotificationTarget?> _pushTarget =
+      PushMessaging.instance.target;
+
+  StreamSubscription<({String? titulo, String? corpo, NotificationTarget? alvo})>?
+  _pushEmPrimeiroPlano;
 
   /// Convites recebidos, só para o badge da navBar.
   ///
@@ -60,6 +89,88 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _publishPublicProfile();
+
+    // Segundo future **independente**, e não uma etapa dentro do publish: são
+    // dois trabalhos sem relação, e uma exceção num não pode levar o outro
+    // embora. Nada na tela fica atrás do `await requestPermission()`, que abre
+    // diálogo de sistema.
+    PushMessaging.instance.registrarAparelho(widget.user.uid);
+
+    // O toque pode ter chegado **antes** desta tela existir: com o app morto,
+    // `main()` estaciona o alvo e a Home só monta depois de o `AuthGate`
+    // resolver a sessão. Por isso o listener e a leitura do valor atual.
+    _pushTarget.addListener(_aoReceberAlvo);
+    _aoReceberAlvo();
+
+    _pushEmPrimeiroPlano = PushMessaging.instance.emPrimeiroPlano.listen(
+      _mostrarEmPrimeiroPlano,
+      onError: (Object e) => debugPrint('push: primeiro plano falhou: $e'),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pushTarget.removeListener(_aoReceberAlvo);
+    _pushEmPrimeiroPlano?.cancel();
+    super.dispose();
+  }
+
+  /// Leva o toque para a aba que sabe atendê-lo.
+  ///
+  /// Só troca de aba: **quem aplica o destino de dentro é a `FriendsScreen`**,
+  /// que recebe o alvo por construtor e o consome. Dois lugares interpretando o
+  /// mesmo alvo divergiriam na primeira mexida.
+  void _aoReceberAlvo() {
+    final alvo = _pushTarget.value;
+
+    // Sai antes de qualquer `setState`: o `consumir()` da aba roda **dentro do
+    // build** da Home (no `initState` da aba), e este listener é chamado ali
+    // mesmo. Com `setState` antes desta porta, seria escrita durante a
+    // construção da árvore.
+    if (alvo == null || !mounted) return;
+
+    // O celular emprestado, segunda trava. A primeira é a chave de
+    // `fcmTokens`; esta pega o caso em que o token sobreviveu à troca de conta
+    // e a mensagem já estava a caminho.
+    if (alvo.toUid != null && alvo.toUid != widget.user.uid) {
+      debugPrint('push: alvo de outra sessão, descartado');
+      PushMessaging.instance.consumir();
+      return;
+    }
+
+    setState(() => _currentIndex = _amigosIndex);
+  }
+
+  /// Com o app aberto, quem desenha é o app.
+  ///
+  /// Nem Android nem iOS mostram a notificação do sistema em primeiro plano, e
+  /// o toast que o app já usa em toda tela faz o serviço — com o link "Ver",
+  /// que já existia no `showNotification` e nunca tinha sido usado para isto.
+  ///
+  /// O toque no link **não navega direto**: ele estaciona o alvo no serviço e
+  /// deixa o caminho de sempre atender. Um segundo caminho de navegação é como
+  /// os dois lados passam a discordar.
+  void _mostrarEmPrimeiroPlano(
+    ({String? titulo, String? corpo, NotificationTarget? alvo}) aviso,
+  ) {
+    if (!mounted) return;
+
+    final texto = [
+      aviso.titulo,
+      aviso.corpo,
+    ].whereType<String>().where((t) => t.trim().isNotEmpty).join(' ');
+    if (texto.isEmpty) return;
+
+    final alvo = aviso.alvo;
+    showNotification(
+      context: context,
+      type: 'info',
+      msg: texto,
+      learnMoreText: alvo == null ? null : 'Ver',
+      onLearnMoreTap: alvo == null
+          ? null
+          : () => PushMessaging.instance.target.value = alvo,
+    );
   }
 
   /// Publica `profiles/{uid}` na abertura do app.
@@ -258,7 +369,14 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final photoUrl = widget.user.photoURL;
-    final List<Widget> screens = [_grafics, _listIter, _summary, _friends];
+    final List<Widget> screens = [
+      _grafics,
+      _listIter,
+      _summary,
+      // Construída aqui de propósito — ver o comentário do campo que não
+      // existe mais acima.
+      FriendsScreen(user: widget.user, target: _pushTarget.value),
+    ];
     final current = _currentIndex.clamp(0, screens.length - 1);
     return Scaffold(
       // A GlassNavBar é uma pílula flutuante: sem isto ela reservaria a própria
@@ -383,7 +501,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _navBar(int current, {required int pending}) {
     return GlassNavBar(
       currentIndex: current,
-      pendingIndex: 3,
+      pendingIndex: _amigosIndex,
       pendingCount: pending,
       trailing: GlassCircleButton(
         icon: Icons.add_rounded,

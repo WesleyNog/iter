@@ -4,6 +4,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:iter/controller/nicknameController.dart';
 import 'package:iter/model/users.dart';
 import 'package:iter/services/firebase.dart';
+import 'package:iter/services/pushMessaging.dart';
 
 // Google Sign-In Service Class
 class GoogleSignInService {
@@ -114,6 +115,19 @@ class GoogleSignInService {
 
   // Sign out
   static Future<void> signOut() async {
+    // **Antes de tudo, e fora do try que faz rethrow.**
+    //
+    // Depois do `_auth.signOut()` o `request.auth` é nulo e a regra de dono
+    // nega o delete do token, que ficaria vivo para sempre — e o próximo
+    // usuário deste celular herdaria as notificações do anterior.
+    //
+    // Fora do `try`: este método faz `rethrow`, e a tela mostra o erro. Uma
+    // falha ao apagar o token — sem rede, por exemplo — não pode impedir
+    // alguém de sair da própria conta. O método já engole a própria exceção e
+    // tem prazo; a rede de segurança de verdade é a chave de `fcmTokens`, que
+    // faz o login do próximo dono tomar o aparelho de qualquer jeito.
+    await PushMessaging.instance.desregistrarAparelho();
+
     try {
       await initSignIn();
       await _googleSignIn.signOut();

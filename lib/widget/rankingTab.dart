@@ -22,12 +22,19 @@ class RankingTab extends StatefulWidget {
     required this.friends,
     required this.profiles,
     required this.bottomGap,
+    this.initialCriterion,
   });
 
   final String uid;
   final List<String> friends;
   final Map<String, PublicProfile?> profiles;
   final double bottomGap;
+
+  /// O critério que o toque numa notificação pediu, ou `null`.
+  ///
+  /// "Cleyton passou você em Ritmo" tem de abrir em **Ritmo**: cair no padrão
+  /// obrigaria o usuário a procurar a disputa de que o aviso falava.
+  final RankCriterion? initialCriterion;
 
   @override
   State<RankingTab> createState() => _RankingTabState();
@@ -46,12 +53,25 @@ class _RankingTabState extends State<RankingTab> {
   @override
   void initState() {
     super.initState();
+    // Antes do `_load()`: o critério não muda o que se busca (o balde do mês é
+    // o mesmo para os três), mas deixa o primeiro quadro já na disputa certa.
+    _aplicarCriterio();
     _load();
   }
 
   @override
   void didUpdateWidget(RankingTab old) {
     super.didUpdateWidget(old);
+
+    // **`initState` não basta.** Quem chega de outra aba monta a tela e passa
+    // por lá; quem **já estava** no Ranking quando o push chegou só passa por
+    // aqui. Sem os dois, o deep link funciona em metade dos caminhos.
+    //
+    // Igualdade de valor serve neste caso, ao contrário do alvo em si: dois
+    // avisos seguidos do mesmo critério não têm nada a fazer — a tela já está
+    // nele. E é isso que impede o parâmetro de grudar quando o usuário troca de
+    // critério na mão e a tela de cima reconstrói.
+    if (old.initialCriterion != widget.initialCriterion) _aplicarCriterio();
     // Compara o **conjunto**, não o tamanho: remover a ana e aceitar a carla
     // no mesmo instante mantém o tamanho e troca quem disputa.
     if (!setEquals(old.friends.toSet(), widget.friends.toSet())) _load();
@@ -92,6 +112,11 @@ class _RankingTabState extends State<RankingTab> {
         _failed = true;
       });
     }
+  }
+
+  void _aplicarCriterio() {
+    final pedido = widget.initialCriterion;
+    if (pedido != null) _criterion = pedido;
   }
 
   void _goTo(DateTime month) {

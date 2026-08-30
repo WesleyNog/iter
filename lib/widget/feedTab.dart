@@ -33,6 +33,7 @@ class FeedTab extends StatefulWidget {
     required this.profiles,
     required this.blocked,
     required this.onNeedProfiles,
+    this.openThreadFor,
     required this.bottomGap,
   });
 
@@ -45,6 +46,13 @@ class FeedTab extends StatefulWidget {
   final Set<String> blocked;
 
   final ValueChanged<Iterable<String>> onNeedProfiles;
+
+  /// O post cuja thread o toque numa notificação pediu, ou `null`.
+  ///
+  /// Só o **comentário** pede isso: quem foi comentado quer ler o que
+  /// escreveram. Na curtida não há o que ler, e abrir a folha seria uma tela a
+  /// mais entre o dedo e a informação.
+  final String? openThreadFor;
   final double bottomGap;
 
   @override
@@ -97,6 +105,29 @@ class _FeedTabState extends State<FeedTab> {
     super.initState();
     _scroll.addListener(_onScroll);
     _load();
+    _abrirThreadPedida();
+  }
+
+  /// Abre a thread que a notificação pediu, buscando o post por id.
+  ///
+  /// **Independente da página carregada**, e é o ponto: o post pode ser antigo e
+  /// não estar entre os vinte que o mural baixou. `showCommentsSheet` recebe um
+  /// `Post` pronto, então basta buscá-lo.
+  ///
+  /// `PostController.fetch` devolve `null` para inexistente **e para lápide** —
+  /// se o dono apagou o post entre o aviso e o toque, não se abre nada, e é
+  /// isso que impede a thread de um post apagado de reaparecer para ele.
+  ///
+  /// Silencioso ao falhar: o usuário já está no mural, que é o destino certo de
+  /// qualquer jeito.
+  Future<void> _abrirThreadPedida() async {
+    final id = widget.openThreadFor;
+    if (id == null) return;
+
+    final post = await PostController.fetch(id);
+    if (post == null || !mounted) return;
+
+    await _openComments(post);
   }
 
   @override
@@ -113,6 +144,16 @@ class _FeedTabState extends State<FeedTab> {
   @override
   void didUpdateWidget(FeedTab old) {
     super.didUpdateWidget(old);
+
+    // O deep link entra aqui e no `initState`, pelo mesmo motivo da
+    // `FriendsScreen`: quem chega de outra aba monta a tela e passa pelo
+    // primeiro; quem já estava no Feed quando o push chegou só passa por aqui.
+    //
+    // **Antes da porta do bloqueio abaixo**, que faz `return` cedo: pendurar o
+    // link depois dela o perderia sempre que a lista de bloqueados não tivesse
+    // mudado — ou seja, quase sempre.
+    if (old.openThreadFor != widget.openThreadFor) _abrirThreadPedida();
+
     if (old.blocked.length == widget.blocked.length) return;
 
     final blocked = _posts.where((p) => widget.blocked.contains(p.uid));

@@ -43,6 +43,29 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Notificações push (FCM). Ver docs/specs/notificacoes.md.
+
+             O ícone é obrigatório: sem ele o FCM cai no ic_launcher, que é 100%
+             opaco, e o sistema — que usa só o canal alpha — desenha um quadrado
+             branco em todo Android 5+.
+
+             Ícone e cor por android:resource; o canal por android:value, que é
+             o que o Firebase espera de cada um. Cor escrita como valor literal
+             é lida com Bundle.getInt, devolve 0 e é ignorada em silêncio.
+
+             O id do canal repete a constante CANAL_SOCIAL de MainActivity.kt,
+             que é quem de fato o cria — este meta-data só aponta. Os dois mudam
+             juntos, e depois do primeiro install não mudam mais. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_iter" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notificacao" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="iter_social" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

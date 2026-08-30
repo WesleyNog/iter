@@ -37,7 +37,10 @@ dependencies:
   flutter_application_1: ^0.0.2
   uuid: ^4.6.0
   firebase_auth: ^6.5.6
-  firebase_core: ^4.12.1
+  # O piso é 4.14.0 desde que o firebase_messaging entrou; declarar 4.12.1
+  # deixava o pubspec mentindo, e um clone sem lock resolveria certo por
+  # acidente, não por declaração.
+  firebase_core: ^4.14.0
   flutter_dotenv: ^6.0.1
   http: ^1.6.0
   delightful_toast: ^1.1.0
@@ -54,6 +57,9 @@ dependencies:
   share_plus: ^13.3.0
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.4.0
+  firebase_messaging: ^16.6.0
+  crypto: ^3.0.7
+  firebase_app_check: ^0.4.7
 
 dev_dependencies:
   flutter_test:

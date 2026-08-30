@@ -15,6 +15,7 @@ import {
   assertSucceeds,
 } from '@firebase/rules-unit-testing'
 import { readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import {
   doc,
   collection,
@@ -1058,6 +1059,275 @@ describe('regra de pagamento — configuração de negócio, não dado de usuár
   it('NÃO cria empresa nova pelo cliente', async () => {
     await assertFails(
       setDoc(doc(ana, 'norouterule', 'shopee'), { percent: 100 }),
+    )
+  })
+})
+
+describe('token de notificação — a chave é o aparelho, não o dono', () => {
+  // O id **é** o sha256 do token, e a regra confere isso com
+  // `hashing.sha256(...).toHexString().lower()`. Um id literal aqui não serviria
+  // mais — e essa é a diferença entre a regra impor a forma e o app prometê-la.
+  const idDe = (token) => createHash('sha256').update(token, 'utf8').digest('hex')
+
+  const TOKEN_1 = 'fMxxx:APA91bExemploDeTokenDoFirebaseCloudMessaging'
+  const TOKEN_2 = 'gNyyy:APA91bOutroAparelhoDaMesmaPessoa'
+
+  const APARELHO_1 = idDe(TOKEN_1)
+  const APARELHO_2 = idDe(TOKEN_2)
+
+  const token = (uid, { plataforma = 'android', valor = TOKEN_1 } = {}) => ({
+    token: valor,
+    uid,
+    platform: plataforma,
+    updatedAt: serverTimestamp(),
+  })
+
+  before(async () => {
+    await seed()
+  })
+
+  it('o dono grava o próprio aparelho', async () => {
+    await assertSucceeds(
+      setDoc(doc(ana, 'fcmTokens', APARELHO_1), token(ANA)),
+    )
+  })
+
+  it('`updatedAt` em ISO é NEGADO — e é o erro que passaria despercebido', async () => {
+    // O padrão de `updatedAt` no resto do app é string ISO
+    // (`profileController`, `Users`, `Vehicle`); só `at` e `createdAt` usam
+    // carimbo do servidor. Escrever este no padrão da casa nega **toda**
+    // gravação de token — e como o registro é silencioso por desenho, o app
+    // sobe verde, o `flutter test` passa e nenhum aparelho recebe nada.
+    //
+    // Este teste existe para que o erro apareça aqui, e não num aparelho mudo.
+    await assertFails(
+      setDoc(doc(ana, 'fcmTokens', APARELHO_2), {
+        ...token(ANA, { valor: TOKEN_2 }),
+        updatedAt: '2026-08-25T10:00:00.000',
+      }),
+    )
+  })
+
+  it('ninguém grava token carimbado com o uid de outro', async () => {
+    await assertFails(
+      setDoc(doc(bia, 'fcmTokens', APARELHO_2), token(ANA, { valor: TOKEN_2 })),
+    )
+  })
+
+  it('o celular emprestado: quem entra depois FICA com o aparelho', async () => {
+    // O desenho inteiro está neste teste. O token do FCM é da instalação do
+    // app, não da pessoa: com `user/{uid}/tokens/{token}`, o aparelho da Ana e
+    // o da Bia seriam dois documentos e as duas receberiam. Com o token como
+    // id, é **um** documento, e o login da Bia o toma.
+    //
+    // Por isso o `update` é liberado aqui e negado em `nicknames`: lá a
+    // segunda reivindicação é um roubo, aqui é o dono legítimo do momento.
+    await assertSucceeds(
+      setDoc(doc(bia, 'fcmTokens', APARELHO_1), token(BIA)),
+    )
+
+    // Afirmar o valor, e não só que a escrita passou: `assertSucceeds` sozinho
+    // não diz de quem o aparelho ficou.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const salvo = await getDoc(doc(ctx.firestore(), 'fcmTokens', APARELHO_1))
+      assert.equal(salvo.data().uid, BIA)
+    })
+  })
+
+  it('id que NÃO é o hash do token é negado — o invariante da chave', async () => {
+    // Este é o teste que sustenta a frase inteira do desenho.
+    //
+    // Sem ele — e sem `hashing.sha256` na regra — um cliente gravaria o **mesmo
+    // token** sob dois ids diferentes, com dois donos, e os dois receberiam:
+    // exatamente o celular emprestado que a chave invertida existe para fechar.
+    // "A colisão some por forma" só é verdade se a forma for **imposta** pela
+    // regra; prometida pelo app, ela vale até o primeiro cliente que não cumpra.
+    //
+    // Uma versão anterior desta regra e da spec afirmavam que conferir isso era
+    // impossível. Era falso: regra do Firestore calcula hash.
+    await assertFails(
+      setDoc(doc(ana, 'fcmTokens', APARELHO_2), token(ANA, { valor: TOKEN_1 })),
+    )
+  })
+
+  it('hexa MAIÚSCULO é negado — `toHexString()` devolve assim, o Dart não', async () => {
+    // `.lower()` na regra é o que faz as duas pontas casarem: o Firestore
+    // devolve o hexa em maiúsculo, o `crypto` do Dart gera minúsculo. Sem o
+    // `.lower()`, TODA gravação seria negada e — como o registro é silencioso —
+    // o app subiria verde sem nenhum aparelho receber nada.
+    await assertFails(
+      setDoc(doc(ana, 'fcmTokens', APARELHO_1.toUpperCase()), token(ANA)),
+    )
+  })
+
+  it('id fora do sha256 é NEGADO — inclusive o token cru', async () => {
+    // Sem prender o wildcard, a coleção é depósito livre na cota do projeto,
+    // como o comentário de `profiles/{uid}/stats/{bucket}` já registra. E o
+    // token cru como id é a aposta que a regra recusa: o Google não promete
+    // alfabeto nenhum para ele.
+    await assertFails(
+      setDoc(doc(ana, 'fcmTokens', 'fMxxx:APA91bTokenCru'), token(ANA)),
+    )
+    await assertFails(
+      setDoc(doc(ana, 'fcmTokens', 'A'.repeat(64)), token(ANA)),
+    )
+    await assertFails(
+      setDoc(doc(ana, 'fcmTokens', 'a'.repeat(63)), token(ANA)),
+    )
+  })
+
+  it('campo a mais e campo a menos são NEGADOS', async () => {
+    await assertFails(
+      setDoc(doc(ana, 'fcmTokens', APARELHO_2), {
+        ...token(ANA, { valor: TOKEN_2 }),
+        apelido: 'iPhone do Wesley',
+      }),
+    )
+    await assertFails(
+      setDoc(doc(ana, 'fcmTokens', APARELHO_2), {
+        uid: ANA,
+        platform: 'android',
+        updatedAt: serverTimestamp(),
+      }),
+    )
+  })
+
+  it('plataforma fora da lista é NEGADA', async () => {
+    // `firebase_options.dart` só configura Android e iOS; as outras
+    // plataformas lançam `UnsupportedError`. Um token "web" aqui seria linha
+    // que nenhuma função saberia usar.
+    await assertFails(
+      setDoc(
+        doc(ana, 'fcmTokens', APARELHO_2),
+        token(ANA, { valor: TOKEN_2, plataforma: 'web' }),
+      ),
+    )
+  })
+
+  it('NINGUÉM lê, nem o próprio dono', async () => {
+    // O app só escreve. Quem lê é o Admin SDK, que não passa por estas regras.
+    // Uma coleção de tokens legível é o mapa dos aparelhos de todo mundo.
+    await assertFails(getDoc(doc(ana, 'fcmTokens', APARELHO_1)))
+    await assertFails(getDocs(collection(ana, 'fcmTokens')))
+  })
+
+  it('anônimo não grava', async () => {
+    const anonimo = env.unauthenticatedContext().firestore()
+    await assertFails(
+      setDoc(doc(anonimo, 'fcmTokens', APARELHO_2), token(ANA)),
+    )
+  })
+
+  it('o dono apaga o próprio aparelho; o de outro, não', async () => {
+    // Depois do teste do celular emprestado, APARELHO_1 é da Bia.
+    await assertFails(deleteDoc(doc(ana, 'fcmTokens', APARELHO_1)))
+    await assertSucceeds(deleteDoc(doc(bia, 'fcmTokens', APARELHO_1)))
+  })
+
+  it('apagar aparelho inexistente passa, e é de propósito', async () => {
+    // O logout apaga o último id que o serviço conhece, em melhor esforço.
+    // Negar o segundo logout seria erro sem consequência nenhuma — mesma
+    // escolha de `friendRequests`, onde o aceite apaga os quatro marcadores
+    // sem saber quais existem.
+    await assertSucceeds(
+      deleteDoc(doc(zeca, 'fcmTokens', 'f'.repeat(64))),
+    )
+  })
+})
+
+describe('marcador de aviso — infraestrutura, não dado de usuário', () => {
+  // A segunda coleção do projeto em que o cliente não tem nada a fazer, depois
+  // de `norouterule`. O Admin SDK ignora estas regras e continua escrevendo — e
+  // é exatamente por isso que a ausência de regra passaria despercebida: tudo
+  // funcionaria, e qualquer conta autenticada poderia emudecer o vizinho.
+  const ID = 'uid-ana_uid-bia_rotas_2026-08_2026-08-27'
+
+  before(async () => {
+    await seed()
+  })
+
+  it('NINGUÉM cria o marcador pelo cliente', async () => {
+    // O ataque que a regra fecha: pré-criar o marcador do dia da Ana faz a
+    // Function achar que já avisou, e ela passa o dia inteira muda. A supressão
+    // é **invisível para os dois lados** — ao contrário do apelido tomado, que
+    // dá erro na cara de quem tenta. É por isso que aqui é `if false` e em
+    // `nicknames` não.
+    await assertFails(
+      setDoc(doc(bia, 'avisosRanking', ID), { at: serverTimestamp() }),
+    )
+  })
+
+  it('NINGUÉM lê nem lista', async () => {
+    await assertFails(getDoc(doc(ana, 'avisosRanking', ID)))
+    await assertFails(getDocs(collection(ana, 'avisosRanking')))
+  })
+
+  it('nem o anônimo, nem para apagar', async () => {
+    const anonimo = env.unauthenticatedContext().firestore()
+    await assertFails(
+      setDoc(doc(anonimo, 'avisosRanking', ID), { at: serverTimestamp() }),
+    )
+    await assertFails(deleteDoc(doc(ana, 'avisosRanking', ID)))
+  })
+})
+
+describe('marcos do post — o marcador que ninguém pode tocar', () => {
+  const POST = 'post-marcos'
+
+  before(async () => {
+    await seed()
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'posts', POST), {
+        uid: ANA,
+        text: 'Rodei 180 km hoje',
+        createdAt: new Date(),
+        deleted: false,
+      })
+    })
+  })
+
+  it('NINGUÉM cria — nem o dono do post', async () => {
+    // Pré-criar `curtidas_10` num post alheio emudece o aviso daquele marco
+    // para sempre, e a supressão é invisível para os dois lados. Pré-criar no
+    // **próprio** post não faz sentido nenhum, e é justamente por isso que a
+    // regra não abre exceção para o dono: exceção sem caso de uso é só
+    // superfície.
+    await assertFails(
+      setDoc(doc(bia, 'posts', POST, 'marcos', 'curtidas_10'), { at: serverTimestamp() }),
+    )
+    await assertFails(
+      setDoc(doc(ana, 'posts', POST, 'marcos', 'curtidas_10'), { at: serverTimestamp() }),
+    )
+  })
+
+  it('NINGUÉM apaga — apagar faria o mesmo marco ser anunciado de novo', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(
+        doc(ctx.firestore(), 'posts', POST, 'marcos', 'curtidas_1'),
+        { at: new Date(), total: 1 },
+      )
+    })
+
+    await assertFails(deleteDoc(doc(ana, 'posts', POST, 'marcos', 'curtidas_1')))
+    await assertFails(deleteDoc(doc(bia, 'posts', POST, 'marcos', 'curtidas_1')))
+  })
+
+  it('NINGUÉM lê nem lista', async () => {
+    // A lista de marcos conta quantas curtidas o post já teve ao longo do
+    // tempo — mais do que a tela mostra, e de um jeito que o dono não escolheu.
+    await assertFails(getDoc(doc(ana, 'posts', POST, 'marcos', 'curtidas_1')))
+    await assertFails(getDocs(collection(bia, 'posts', POST, 'marcos')))
+  })
+
+  it('a subcoleção fechada não afeta curtir nem comentar', async () => {
+    // Sanidade: a `match` nova é irmã de `likes` e `comments`, e regra do
+    // Firestore não cascateia. Se esta expectativa falhar, alguém trocou a
+    // posição do bloco e fechou o mural junto.
+    await assertSucceeds(
+      setDoc(doc(bia, 'posts', POST, 'likes', BIA), {
+        uid: BIA,
+        at: serverTimestamp(),
+      }),
     )
   })
 })

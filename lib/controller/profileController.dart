@@ -115,6 +115,16 @@ class ProfileController {
   /// A janela vai inteira, zeros incluídos: são doze escritas por abertura,
   /// contra a alternativa de deixar documento velho num mês que esvaziou.
   ///
+  /// **Os baldes não levam `updatedAt`, e isso é decisão, não esquecimento.**
+  /// Escrita cujo conteúdo não muda é *no-op* e **não dispara gatilho** — e um
+  /// carimbo com o instante da abertura fazia as doze reescritas idênticas
+  /// parecerem mudança, acordando a Function de ultrapassagem no ranking doze
+  /// vezes por abertura de app, por nada. O campo também não tinha leitor:
+  /// `MonthStats.fromMap` e `ProfileStats.fromMap` não o olham, e a regra de
+  /// `stats/{bucket}` não o exige. A projeção `profiles/{uid}` **continua** com
+  /// ele, porque lá a regra o exige em `hasAll`.
+  /// Ver `docs/specs/notificacoes.md`.
+  ///
   /// Falhar aqui **não pode derrubar a sessão**. A projeção é conveniência
   /// para os outros; o app do dono funciona sem ela — a mesma escolha do
   /// `StationController.report`.
@@ -132,10 +142,7 @@ class ProfileController {
       projectionOf(user, nickName: nickName, now: reference).toMap(),
     );
 
-    batch.set(statsOf(user.uid).doc(careerBucket), {
-      ...profileStats(routes).toMap(),
-      'updatedAt': reference.toIso8601String(),
-    });
+    batch.set(statsOf(user.uid).doc(careerBucket), profileStats(routes).toMap());
 
     final buckets = monthlyStats(
       routes,
@@ -143,10 +150,7 @@ class ProfileController {
       months: windowMonths,
     );
     for (final entry in buckets.entries) {
-      batch.set(statsOf(user.uid).doc(entry.key), {
-        ...entry.value.toMap(),
-        'updatedAt': reference.toIso8601String(),
-      });
+      batch.set(statsOf(user.uid).doc(entry.key), entry.value.toMap());
     }
 
     try {
@@ -169,23 +173,18 @@ class ProfileController {
     required String uid,
     required List<NewRouteModal> routes,
     required Iterable<DateTime> months,
-    DateTime? now,
   }) async {
-    final at = (now ?? DateTime.now()).toIso8601String();
     final keys = {for (final month in months) monthKey(month): month};
 
     final batch = FirestoreService.instance.batch();
 
-    batch.set(statsOf(uid).doc(careerBucket), {
-      ...profileStats(routes).toMap(),
-      'updatedAt': at,
-    });
+    batch.set(statsOf(uid).doc(careerBucket), profileStats(routes).toMap());
 
     for (final entry in keys.entries) {
-      batch.set(statsOf(uid).doc(entry.key), {
-        ...monthStatsOf(routes, entry.value).toMap(),
-        'updatedAt': at,
-      });
+      batch.set(
+        statsOf(uid).doc(entry.key),
+        monthStatsOf(routes, entry.value).toMap(),
+      );
     }
 
     try {
