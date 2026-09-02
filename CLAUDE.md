@@ -560,6 +560,28 @@ more entities than any fixed palette could name. If the company charts ever get
 entity colors, `companyColor` already exists for it, and the bairro charts must
 keep the positional palette.
 
+## O gráfico anima a grandeza, nunca o número
+
+`ChartMotion` (`widget/chartCard.dart`) is the single duration and curve for the
+charts screen — 650ms `easeOutCubic` for the drawing, 300ms for the screen's
+fade-in. Bar height, progress width, share slice and the fl_chart line animate;
+**numbers and labels swap with no transition**, because text in transition is
+unreadable text, and the number is exactly what the reader is trying to read
+while the drawing moves.
+
+`TweenAnimationBuilder` with `begin: 0` covers both cases with one widget: on
+first mount the bar grows from the floor, and afterwards `begin` is ignored — it
+departs from wherever the bar *is* toward the new value, which is what makes
+switching period read as the same chart changing instead of another chart
+appearing. The content always goes in as the builder's `child`, never mounted
+inside it, or every frame rebuilds the whole chart.
+
+Two things deliberately have no entry animation, for one reason: **you only grow
+from a zero that exists**. The proportion bar starting at zero would show all
+slices *equal* in the first frame — a split that was never true; the line rising
+from zero would draw revenue that never happened (and `AnimatedWidgetBaseState`
+does not fire on first mount anyway). See `docs/specs/graficos.md`.
+
 ## Widget tests cannot tell you whether text fits
 
 Two traps, both hit for real in this project:

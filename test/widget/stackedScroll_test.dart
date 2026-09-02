@@ -1,9 +1,12 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iter/widget/stackedScroll.dart';
 
 const _peek = 12.0;
 const _gap = 16.0;
+const _shrink = 0.03;
 
 /// Conta quantas vezes o conteúdo foi reconstruído.
 ///
@@ -42,6 +45,7 @@ Future<void> _pump(
   List<double> alturas = const [200, 200, 200, 200],
   EdgeInsets padding = EdgeInsets.zero,
   bool bouncing = false,
+  double shrink = _shrink,
   List<int>? builds,
 }) async {
   tester.view.physicalSize = const Size(400, 600);
@@ -61,6 +65,7 @@ Future<void> _pump(
     ],
     gap: _gap,
     peek: _peek,
+    shrink: shrink,
     padding: padding,
   );
 
@@ -82,6 +87,19 @@ Future<void> _pump(
 
 double _topo(WidgetTester tester, int index) =>
     tester.getTopLeft(find.byKey(ValueKey('card-$index'))).dy;
+
+/// Largura **desenhada** do card: `getTopLeft`/`getTopRight` atravessam o
+/// `Transform`, então é a escala que aparece aqui — `getSize` devolveria a
+/// medida de layout, que o encolhimento não toca.
+double _largura(WidgetTester tester, int index) {
+  final card = find.byKey(ValueKey('card-$index'));
+  return tester.getTopRight(card).dx - tester.getTopLeft(card).dx;
+}
+
+double _centro(WidgetTester tester, int index) {
+  final card = find.byKey(ValueKey('card-$index'));
+  return (tester.getTopRight(card).dx + tester.getTopLeft(card).dx) / 2;
+}
 
 Future<void> _rolar(WidgetTester tester, double offset) async {
   _found.jumpTo(offset);
@@ -356,6 +374,76 @@ void main() {
         find.byWidgetPredicate((w) => w is _Contagem && w.rotulo == 'b'),
       );
       expect(depois.valor, 7);
+    });
+  });
+
+  group('encolhimento', () {
+    testWidgets('solto, nenhum card está encolhido', (tester) async {
+      await _pump(tester);
+
+      for (var i = 1; i < 4; i++) {
+        expect(_largura(tester, i), _largura(tester, 0), reason: 'card $i');
+      }
+    });
+
+    testWidgets('empilhado, cada card é menor que o que pousou sobre ele', (
+      tester,
+    ) async {
+      await _pump(tester);
+      await _rolar(tester, passo * 2);
+
+      // O último nunca é coberto, então ele é a régua do tamanho cheio.
+      final cheia = _largura(tester, 3);
+
+      expect(_largura(tester, 2), cheia);
+      expect(_largura(tester, 1), closeTo(cheia * (1 - _shrink), 0.5));
+      expect(
+        _largura(tester, 0),
+        closeTo(cheia * math.pow(1 - _shrink, 2), 0.5),
+      );
+
+      // E o degrau da pilha continua sendo o `peek`: a escala é ancorada no
+      // topo do card, que é justamente a faixa que ainda aparece.
+      expect(_topo(tester, 0), 0);
+      expect(_topo(tester, 1), _peek);
+      expect(_topo(tester, 2), _peek * 2);
+    });
+
+    testWidgets('o card encolhe para o próprio centro', (tester) async {
+      await _pump(tester);
+      await _rolar(tester, passo * 2);
+
+      // Sem isto o card sairia andando para um lado enquanto encolhe.
+      expect(_centro(tester, 0), closeTo(_centro(tester, 3), 0.5));
+      expect(_centro(tester, 1), closeTo(_centro(tester, 3), 0.5));
+    });
+
+    testWidgets('o encolhimento acompanha o dedo, sem pulo', (tester) async {
+      await _pump(tester);
+      final cheia = _largura(tester, 0);
+
+      // Faltam 84px para o card 0 virar faixa: fora da janela de 72, ele ainda
+      // está inteiro.
+      await _rolar(tester, 132);
+      expect(_largura(tester, 0), cheia);
+
+      // Metade da janela: metade do degrau, e não o degrau inteiro de uma vez.
+      await _rolar(tester, 168);
+      final meio = _largura(tester, 0);
+      expect(meio, lessThan(cheia));
+      expect(meio, closeTo(cheia * math.pow(1 - _shrink, 0.5), 0.5));
+
+      await _rolar(tester, 204);
+      expect(_largura(tester, 0), closeTo(cheia * (1 - _shrink), 0.5));
+    });
+
+    testWidgets('shrink zero devolve a pilha sem encolhimento', (tester) async {
+      await _pump(tester, shrink: 0);
+      await _rolar(tester, passo * 2);
+
+      for (var i = 1; i < 4; i++) {
+        expect(_largura(tester, i), _largura(tester, 0), reason: 'card $i');
+      }
     });
   });
 }

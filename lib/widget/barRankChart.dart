@@ -139,11 +139,23 @@ class BarRankChart extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Flexible(
-              child: FractionallySizedBox(
+              // A barra sobe do chão na primeira montagem (`begin: 0`) e, da
+              // segunda em diante, **desliza** da altura em que está para a
+              // nova: é o `TweenAnimationBuilder` que ignora o `begin` depois
+              // da entrada e parte do valor corrente. Sem isso, trocar de
+              // período troca o gráfico por outro sem nada ligando um ao
+              // outro, que é a queixa que trouxe esta animação para cá.
+              child: TweenAnimationBuilder<double>(
                 // Fração da altura disponível, e não pixels fixos como na tela
                 // de referência: assim a barra acompanha a altura do carrossel
                 // em vez de estourar em tela pequena.
-                heightFactor: ratio.clamp(0.02, 1.0),
+                tween: Tween(begin: 0, end: ratio.clamp(0.02, 1.0)),
+                duration: ChartMotion.draw,
+                curve: ChartMotion.curve,
+                // O retângulo vai como `child` — a cada quadro só o
+                // `FractionallySizedBox` é reconstruído, não a decoração.
+                builder: (context, factor, child) =>
+                    FractionallySizedBox(heightFactor: factor, child: child),
                 child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(

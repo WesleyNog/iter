@@ -177,48 +177,65 @@ class _GraficsScreenState extends State<GraficsScreen> {
     final done = realized(routes);
     final doneSummary = summarize(done);
 
-    return StackedScroll(
-      // Padding igual ao de antes: a pilha mudou como os cards se movem, não
-      // onde a tela começa nem quanto sobra para a `GlassNavBar` flutuar.
-      //
-      // O `gap` fica no padrão do widget. Os 24px que separavam alguns blocos
-      // existiam para dar ar ao rótulo de seção que vinha no meio; sem ele o
-      // espaçamento não tem mais motivo para variar de um par de cards para o
-      // outro.
-      padding: EdgeInsets.fromLTRB(16, 16, 16, _bottomGap),
-      cards: [
-        _stacked(
-          const ValueKey('dinheiro'),
-          // 312, e não os 290 de antes: o eyebrow custa 22px, e eles saem do
-          // `Expanded` do gráfico. Medido com a fonte real do aparelho, o card
-          // aguentava a fonte do sistema até a escala 1.2 e passou a estourar
-          // já em 1.1 — devolver os 22px devolve exatamente a folga que ele
-          // tinha. É o card mais apertado dos cinco; os de 340 têm sobra.
-          height: 312,
-          pages: _moneyPages(periodSummary, routes),
-        ),
-        _stacked(
-          const ValueKey('empresas'),
-          height: 340,
-          pages: _companyPages(doneSummary, done),
-        ),
-        _stacked(
-          const ValueKey('bairros'),
-          height: 340,
-          pages: _bairroPages(done),
-        ),
-        _stacked(const ValueKey('tempo'), height: 330, pages: _timePages(done)),
-        // O insucesso fecha a tela. Antes vinha em segundo, com o argumento
-        // de ser o que se acompanha todo dia — mas ele é o único bloco de
-        // notícia ruim, e abrir a tela por ele enterrava o dinheiro e a
-        // análise embaixo. No fim, o fundo laranja o separa do resto sem
-        // precisar de aviso nenhum.
-        _stacked(
-          const ValueKey('insucessos'),
-          height: 340,
-          pages: _insucessoPages(doneSummary, done),
-        ),
-      ],
+    // A pilha entra em fade **uma vez**: quando o stream traz a primeira lista
+    // e o indicador de carregamento sai. Sem isso a tela salta de um círculo
+    // girando para cinco cards inteiros já desenhados.
+    //
+    // Trocar de período não repete o fade, e é o certo: o `end` continua 1 e o
+    // elemento é o mesmo, então o `TweenAnimationBuilder` não reanima. Piscar a
+    // tela a cada chip esconderia justamente o movimento que a troca ganhou —
+    // as barras indo da altura antiga para a nova (ver `ChartMotion`).
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: ChartMotion.enter,
+      curve: ChartMotion.curve,
+      // A pilha vai como `child`: os cinco carrosséis não são remontados a
+      // cada quadro do fade.
+      builder: (context, opacity, child) =>
+          Opacity(opacity: opacity, child: child),
+      child: StackedScroll(
+        // Padding igual ao de antes: a pilha mudou como os cards se movem, não
+        // onde a tela começa nem quanto sobra para a `GlassNavBar` flutuar.
+        //
+        // O `gap` fica no padrão do widget. Os 24px que separavam alguns blocos
+        // existiam para dar ar ao rótulo de seção que vinha no meio; sem ele o
+        // espaçamento não tem mais motivo para variar de um par de cards para o
+        // outro.
+        padding: EdgeInsets.fromLTRB(16, 16, 16, _bottomGap),
+        cards: [
+          _stacked(
+            const ValueKey('dinheiro'),
+            // 312, e não os 290 de antes: o eyebrow custa 22px, e eles saem do
+            // `Expanded` do gráfico. Medido com a fonte real do aparelho, o card
+            // aguentava a fonte do sistema até a escala 1.2 e passou a estourar
+            // já em 1.1 — devolver os 22px devolve exatamente a folga que ele
+            // tinha. É o card mais apertado dos cinco; os de 340 têm sobra.
+            height: 312,
+            pages: _moneyPages(periodSummary, routes),
+          ),
+          _stacked(
+            const ValueKey('empresas'),
+            height: 340,
+            pages: _companyPages(doneSummary, done),
+          ),
+          _stacked(
+            const ValueKey('bairros'),
+            height: 340,
+            pages: _bairroPages(done),
+          ),
+          _stacked(const ValueKey('tempo'), height: 330, pages: _timePages(done)),
+          // O insucesso fecha a tela. Antes vinha em segundo, com o argumento
+          // de ser o que se acompanha todo dia — mas ele é o único bloco de
+          // notícia ruim, e abrir a tela por ele enterrava o dinheiro e a
+          // análise embaixo. No fim, o fundo laranja o separa do resto sem
+          // precisar de aviso nenhum.
+          _stacked(
+            const ValueKey('insucessos'),
+            height: 340,
+            pages: _insucessoPages(doneSummary, done),
+          ),
+        ],
+      ),
     );
   }
 

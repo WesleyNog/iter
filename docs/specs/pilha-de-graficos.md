@@ -1,7 +1,8 @@
 # Spec: Pilha de gráficos ao rolar
 
-Status: **implementada** · Criada e aprovada em 2026-08-24 · Falta rolar no
-aparelho (T5) · Plano e tarefas no fim do arquivo
+Status: **implementada** · Criada e aprovada em 2026-08-24 · Encolhimento dos
+cards empilhados (Regra 12) em 2026-09-01, falta rolar no aparelho (T7) · Plano
+e tarefas no fim do arquivo
 
 ## Objetivo
 
@@ -44,7 +45,7 @@ flutter run -d <simulador>                       # é aqui que o efeito se julga
 ## Estrutura
 
 ```
-lib/widget/stackedScroll.dart      → a rolagem que empilha (novo)
+lib/widget/stackedScroll.dart      → a rolagem que empilha e encolhe (novo)
 lib/widget/chartCard.dart          → + eyebrow (a linha de recorte)
 lib/widget/chartCarousel.dart      → + totalHeight
 lib/screens/graficsScreen.dart     → monta a pilha em vez da Column
@@ -203,6 +204,41 @@ A pilha precisa escutar a rolagem para posicionar os cards, então ela declara u
 controller — mas declara **o mesmo que herdaria**, caindo num próprio só quando
 não houver primário.
 
+### 12. O card que fica para trás encolhe, e encolhe de novo
+
+Rolado no aparelho (T5), o efeito lia como **um bloco só**: as faixas do topo
+têm a mesma cor e o mesmo tamanho do card ativo, e nada nelas diz que há
+camadas. A correção não é sombra (Regra 8) nem cor nova — é tamanho. Cada card
+perde um degrau de escala por card que pousa sobre ele: `shrink` = 3% do
+tamanho **atual**, ancorado no topo.
+
+**A âncora é o que segura a pilha em pé.** O topo do card é a faixa, a única
+parte que ainda aparece. Ancorada no centro, a escala desceria a faixa junto e a
+distância entre duas faixas deixaria de ser o `peek` — a Regra 1 continuaria
+certa na conta e errada na tela, que é a pior das duas.
+
+**A profundidade é contínua**, e não a contagem de quantos cards encaixaram: é a
+soma de quanto cada card daqui para baixo já foi coberto. Contada em número
+inteiro, a pilha inteira daria um pulo de tamanho no quadro em que o card
+seguinte pousa. Como os cards encaixam em ordem, cada parcela só cresce depois
+que a anterior chegou a 1, então a soma anda de degrau em degrau e nunca volta.
+
+**A conta é multiplicativa** (`(1 - shrink) ^ profundidade`). `1 - shrink *
+profundidade` zera a escala no nível `1/shrink` e a inverte depois dele, e este
+widget não sabe quantos cards vai receber — a tela de Gráficos tem cinco hoje.
+De quebra, os degraus vão ficando menores conforme afundam, que é como uma pilha
+de verdade recua.
+
+**O encolhimento é concentrado nos últimos `shrinkRange` = 72px da cobertura.**
+Espalhado pela cobertura inteira, o card do topo da pilha passaria a maior parte
+da rolagem mais estreito do que o card que o está cobrindo, com os ombros dele
+aparecendo por fora — o contrário de empilhamento. Nos últimos pixels o card já
+é quase só a faixa, e aí a diferença de largura lê como profundidade.
+
+`Transform.scale` é transformação de **pintura**: nada é remedido, e o gráfico
+lá dentro não refaz layout por causa do encolhimento. A Regra 3 continua valendo
+sem ressalva — só o `Transform` é reconstruído a cada quadro.
+
 ## Dados
 
 Nenhum. A tela continua lendo `RouteController.watchAll(uid)` e chamando as
@@ -279,6 +315,8 @@ fluidez. Rolar no simulador é critério de aceite, não conferência opcional.
 - [ ] Tocar na barra de status ainda volta ao topo (iOS).
 - [ ] Trocar o período redesenha a pilha sem a rolagem pular de posição.
 - [ ] Rolar é fluido no simulador — sem tranco ao encaixar.
+- [ ] Cada card encaixado é visivelmente menor que o que pousou sobre ele, e o
+      card ativo continua em tamanho cheio.
 - [ ] `flutter analyze lib/ test/` sem error/warning novo.
 - [ ] `flutter test` passa (menos `widget_test.dart`, que já estava quebrado).
 
@@ -331,9 +369,16 @@ do bloco 2 e do 3, rodar no aparelho.
   - Verificar: `flutter analyze` + aparelho.
   - Arquivos: `screens/graficsScreen.dart`.
 
-- [ ] **T5** Rolar no aparelho e julgar o efeito. Ajustar `peek` e o
-      espaçamento se preciso.
+- [x] **T5** Rolar no aparelho e julgar o efeito. Rolado: o encaixe não deu
+      tranco, mas a pilha **não lia como pilha** — mesma cor, mesmo tamanho.
+      `peek` e espaçamento ficaram como estavam; o que entrou foi a Regra 12.
   - Aceite: sem tranco no encaixe; a pilha lê como pilha.
+  - Verificar: `flutter run`.
+
+- [ ] **T7** Rolar de novo, agora com o encolhimento, e julgar os dois números:
+      `shrink` (3% por nível) e `shrinkRange` (72px). São os dois parâmetros do
+      `StackedScroll` — mudar não mexe em conta nenhuma.
+  - Aceite: dá para ver que são camadas sem que o card ativo pareça menor.
   - Verificar: `flutter run`.
 
 - [x] **T6** Atualizar `docs/specs/graficos.md` e este arquivo. Feito: a seção
@@ -344,9 +389,12 @@ do bloco 2 e do 3, rodar no aparelho.
 ## Fora de escopo
 
 A aba Resumo (cards de altura variável — exigiria medir em tempo de layout); a
-lista de rotas; animação de escala ou de opacidade nos cards encaixados; tocar
-numa faixa da pilha para voltar àquele card; e qualquer mudança de conta,
-recorte ou dado.
+lista de rotas; opacidade nos cards encaixados; tocar numa faixa da pilha para
+voltar àquele card; e qualquer mudança de conta, recorte ou dado.
+
+A **escala** saiu desta lista em 2026-09-01: estava fora por ser enfeite, e
+rolar no aparelho mostrou que sem ela a pilha não se lê como pilha. Ver Regra
+12.
 
 ## Perguntas resolvidas
 

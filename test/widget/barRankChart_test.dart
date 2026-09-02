@@ -300,4 +300,65 @@ void main() {
       expect(larguraDaBarra * 4, closeTo(larguraDoCard - 32 - 40, 1));
     });
   });
+
+  group('animação', () {
+    Finder barra(int index) => find.byWidgetPredicate(
+      (w) =>
+          w is Container &&
+          w.decoration is BoxDecoration &&
+          (w.decoration! as BoxDecoration).color ==
+              ChartPalette.azul.bars[index],
+    );
+
+    double altura(WidgetTester tester, int index) =>
+        tester.getSize(barra(index)).height;
+
+    testWidgets('a barra sobe do chão na primeira montagem', (tester) async {
+      await pumpChart(
+        tester,
+        entries: const [RankEntry('A', 100), RankEntry('B', 50)],
+      );
+
+      // Primeiro quadro: nenhuma barra desenhada ainda.
+      expect(altura(tester, 0), 0);
+      expect(altura(tester, 1), 0);
+
+      await tester.pumpAndSettle();
+
+      final cheia = altura(tester, 0);
+      expect(cheia, greaterThan(0));
+      // E a proporção do fim é a de sempre: metade do valor, metade da altura.
+      expect(altura(tester, 1), closeTo(cheia / 2, 1));
+    });
+
+    testWidgets('trocar o período desliza a barra em vez de trocá-la', (
+      tester,
+    ) async {
+      // A queixa que trouxe a animação: o gráfico do mês anterior aparecia do
+      // nada, sem nada ligando um desenho ao outro.
+      await pumpChart(
+        tester,
+        entries: const [RankEntry('A', 100), RankEntry('B', 25)],
+      );
+      await tester.pumpAndSettle();
+
+      final cheia = altura(tester, 0);
+      final baixa = altura(tester, 1);
+
+      await pumpChart(
+        tester,
+        entries: const [RankEntry('A', 100), RankEntry('B', 100)],
+      );
+      await tester.pump(const Duration(milliseconds: 120));
+
+      // No meio do caminho: saiu de onde estava e ainda não chegou. É isto —
+      // e não a altura final — que separa animar de redesenhar.
+      final meio = altura(tester, 1);
+      expect(meio, greaterThan(baixa));
+      expect(meio, lessThan(cheia));
+
+      await tester.pumpAndSettle();
+      expect(altura(tester, 1), closeTo(cheia, 0.5));
+    });
+  });
 }

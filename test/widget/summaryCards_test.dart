@@ -255,4 +255,71 @@ void main() {
       expect(find.text('Sem rotas no período.'), findsNothing);
     });
   });
+
+  group('a barra de proporção', () {
+    Widget _card(List<ShareSlice> slices) => MoneyBreakdownCard(
+      title: 'Pago no período',
+      slices: slices,
+      total: 100,
+      emptyNote: 'Nada foi pago neste período ainda.',
+      stats: const [ChartStat('PAGO', r'R$ 100,00')],
+    );
+
+    /// Só as fatias da barra: `CircleAvatar` também é um `AnimatedContainer`,
+    /// e sem o recorte a legenda entrava na medição como duas bolinhas de 8px.
+    List<double> larguras(WidgetTester tester) => tester
+        .widgetList<AnimatedContainer>(
+          find.descendant(
+            of: find.byType(ClipRRect),
+            matching: find.byType(AnimatedContainer),
+          ),
+        )
+        .map((fatia) => tester.getSize(find.byWidget(fatia)).width)
+        .toList();
+
+    testWidgets('já nasce nas proporções certas, sem animar a entrada', (
+      tester,
+    ) async {
+      // É a única grandeza da tela sem animação de entrada, e o motivo está no
+      // comentário do widget: partindo de zero, as fatias apareceriam **iguais**
+      // no primeiro quadro — uma divisão que nunca foi verdade.
+      await _pump(
+        tester,
+        _card(const [
+          ShareSlice(label: 'Shopee', value: 75, color: Color(0xFF69F0AE)),
+          ShareSlice(label: 'Amazon', value: 25, color: Color(0xFF84FFFF)),
+        ]),
+      );
+
+      final primeiroQuadro = larguras(tester);
+      expect(primeiroQuadro.first, closeTo(primeiroQuadro.last * 3, 2));
+    });
+
+    testWidgets('redistribui quando o período muda', (tester) async {
+      await _pump(
+        tester,
+        _card(const [
+          ShareSlice(label: 'Shopee', value: 75, color: Color(0xFF69F0AE)),
+          ShareSlice(label: 'Amazon', value: 25, color: Color(0xFF84FFFF)),
+        ]),
+      );
+      final antes = larguras(tester).first;
+
+      await _pump(
+        tester,
+        _card(const [
+          ShareSlice(label: 'Shopee', value: 25, color: Color(0xFF69F0AE)),
+          ShareSlice(label: 'Amazon', value: 75, color: Color(0xFF84FFFF)),
+        ]),
+      );
+      await tester.pump(const Duration(milliseconds: 120));
+
+      final meio = larguras(tester).first;
+      expect(meio, lessThan(antes));
+
+      await tester.pumpAndSettle();
+      final depois = larguras(tester);
+      expect(depois.last, closeTo(depois.first * 3, 2));
+    });
+  });
 }

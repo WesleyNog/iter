@@ -68,7 +68,20 @@ class LineChartCard extends StatelessWidget {
           ? ChartEmpty(emptyMessage)
           : Padding(
               padding: const EdgeInsets.only(top: 12, right: 12),
-              child: LineChart(_data(highest)),
+              // O `fl_chart` já anima sozinho a troca de dados; o que ele traz
+              // de fábrica são 150ms lineares, que ao lado das barras lê como
+              // outro app. Passa a ser o mesmo tempo e a mesma curva do resto
+              // da tela — ver [ChartMotion].
+              //
+              // A curva **não** tem entrada: `AnimatedWidgetBaseState` não
+              // dispara na primeira montagem, então a linha aparece pronta e
+              // anima da segunda em diante. Forçar uma entrada exigiria
+              // desenhar uma série falsa antes da verdadeira.
+              child: LineChart(
+                _data(highest),
+                duration: ChartMotion.draw,
+                curve: ChartMotion.curve,
+              ),
             ),
     );
   }

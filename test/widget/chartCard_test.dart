@@ -152,4 +152,57 @@ void main() {
       );
     });
   });
+
+  group('a barra de progresso anima', () {
+    Future<void> pumpBarra(WidgetTester tester, double fraction) =>
+        tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: SizedBox(
+                  width: 200,
+                  child: ChartProgressBar(
+                    fraction: fraction,
+                    colors: ChartPalette.azul.progress,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+    /// O preenchimento, não o trilho: o `Container` de dentro da fração.
+    double preenchida(WidgetTester tester) => tester
+        .getSize(
+          find.descendant(
+            of: find.byType(FractionallySizedBox),
+            matching: find.byType(Container),
+          ),
+        )
+        .width;
+
+    testWidgets('enche a partir do vazio na primeira montagem', (tester) async {
+      await pumpBarra(tester, 0.5);
+      expect(preenchida(tester), 0);
+
+      await tester.pumpAndSettle();
+      expect(preenchida(tester), closeTo(100, 0.5));
+    });
+
+    testWidgets('vai do valor antigo ao novo sem saltar', (tester) async {
+      await pumpBarra(tester, 0.25);
+      await tester.pumpAndSettle();
+      expect(preenchida(tester), closeTo(50, 0.5));
+
+      await pumpBarra(tester, 1);
+      await tester.pump(const Duration(milliseconds: 120));
+
+      final meio = preenchida(tester);
+      expect(meio, greaterThan(50));
+      expect(meio, lessThan(200));
+
+      await tester.pumpAndSettle();
+      expect(preenchida(tester), closeTo(200, 0.5));
+    });
+  });
 }

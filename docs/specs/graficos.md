@@ -209,9 +209,9 @@ seção viraram uma linha dentro de cada card. Ver `docs/specs/pilha-de-graficos
 
 ```
 ┌─ Filtro: (Este Mês) (Mês Anterior) (Esta Semana) … ──┐   ← fixo, fora da rolagem
-│ ══════════════════════════════ azul   (dinheiro)      │   ← faixa de 12px
-│ ══════════════════════════════ azul   (empresas)      │
-│ ══════════════════════════════ azul   (bairros)       │
+│   ══════════════════════════ azul   (dinheiro)        │   ← faixa de 12px
+│  ════════════════════════════ azul   (empresas)       │   ← e um degrau
+│ ══════════════════════════════ azul   (bairros)       │     maior a cada nível
 │ ┌─ ↗ Rotas concluídas e pagas ───────────────────┐   │   ← eyebrow no card
 │ │  POR DIA DA SEMANA                              │   │
 │ │  TOTAL        MAIOR        MÉDIA                │   │
@@ -227,8 +227,9 @@ seção viraram uma linha dentro de cada card. Ver `docs/specs/pilha-de-graficos
 ```
 
 Cada card encaixa no topo ao chegar lá e o seguinte desliza por cima, deixando
-12px do anterior à mostra. A ordem é dinheiro → empresas → bairros → tempo →
-insucessos.
+12px do anterior à mostra — e o que fica para trás **encolhe** um degrau, mais
+um a cada card que pousa em cima dele. A ordem é dinheiro → empresas → bairros
+→ tempo → insucessos.
 
 Carrosséis separados em vez de um único gigante: uma fileira longa de bolinhas
 vira um ponto onde o usuário perde a conta de onde está, e o agrupamento já diz
@@ -257,6 +258,51 @@ então zero precisa virar `'R$ 0,00'` na mão.
 O `Scaffold` da `HomeScreen` tem `AppBar` sólida e `GlassNavBar` embaixo, então
 o padding da referência (`MediaQuery.padding.top + 8` no topo, 110 na base) não
 se aplica: aqui é `EdgeInsets.fromLTRB(16, 16, 16, 24)`, como na lista.
+
+### Animação (2026-09-01)
+
+Até aqui o desenho **aparecia**. Na primeira abertura passava, mas trocar de
+"Este Mês" para "Mês Anterior" trocava um gráfico por outro sem nada ligando os
+dois, e a tela lia como se tivesse sido substituída em vez de atualizada.
+
+Uma regra, quatro lugares: **anima-se a grandeza, nunca o texto**. Altura da
+barra (`BarRankChart`), largura do preenchimento (`ChartProgressBar`), fatia da
+proporção (`ShareBar`) e a série da linha (`fl_chart`, que já animava sozinho —
+o que mudou foi o tempo). Número e rótulo trocam secos: texto em transição é
+texto ilegível, e é justamente o número que o leitor tenta ler enquanto o
+desenho se move.
+
+`ChartMotion` (em `chartCard.dart`, que todo card já importa) guarda os dois
+valores: 650ms com `easeOutCubic` para o desenho, 300ms para a tela entrar
+depois do carregamento. Num lugar só porque a tela mostra cinco carrosséis ao
+mesmo tempo — cada grandeza no seu ritmo não lê como uma tela reagindo à troca
+de período, e sim como três widgets independentes fazendo coisas ao mesmo tempo.
+Os 150ms **lineares** que o `fl_chart` traz de fábrica são o exemplo: ao lado
+das barras, a linha parecia de outro app.
+
+O mecanismo é `TweenAnimationBuilder` com `begin: 0`, e ele responde pelos dois
+casos de uma vez: na primeira montagem a barra sobe do chão; da segunda em
+diante o `begin` é ignorado e a animação parte de **onde a barra está** para o
+valor novo. É o mesmo widget resolvendo "a tela abriu" e "o período mudou", sem
+guardar estado nenhum. O card sempre vai como `child` do builder, nunca montado
+dentro dele: senão cada quadro remontaria o gráfico inteiro.
+
+Duas exceções, e as duas são o mesmo raciocínio — só se cresce a partir de um
+zero que existe:
+
+- **A barra de proporção não anima na entrada** (`begin` = `end` na primeira
+  montagem). Partindo de zero, todas as fatias apareceriam **iguais** no
+  primeiro quadro: uma divisão que nunca foi verdade, e que só depois se
+  acertaria. Ela anima a redistribuição quando o período muda, que é o que
+  interessa ali.
+- **A linha não anima na entrada** porque `AnimatedWidgetBaseState` não dispara
+  na primeira montagem. Forçar uma entrada exigiria desenhar uma série falsa
+  antes da verdadeira, e uma linha subindo do zero seria um faturamento que não
+  existiu.
+
+A tela inteira entra em fade uma vez, quando o stream traz a primeira lista e o
+indicador de carregamento sai. Trocar de período **não** repete o fade: piscar a
+tela a cada chip esconderia justamente o movimento que a troca ganhou.
 
 ## Estados da tela
 

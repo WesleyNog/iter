@@ -8,6 +8,32 @@ class ChartStat {
   final String value;
 }
 
+/// O tempo e a curva de **toda** animação de gráfico da tela.
+///
+/// Num lugar só, e neste arquivo, porque é o que todo card de gráfico já
+/// importa. A tela mostra cinco carrosséis ao mesmo tempo: barra, preenchimento
+/// e linha cada um no seu ritmo não lê como uma tela reagindo à troca de
+/// período, e sim como três widgets independentes fazendo coisas ao mesmo
+/// tempo.
+///
+/// O que se anima é sempre a **grandeza** — altura de barra, largura de
+/// preenchimento, fatia da proporção. Número e rótulo trocam secos, de
+/// propósito: texto em transição é texto ilegível, e é justamente o número que
+/// o leitor está tentando ler enquanto o desenho se move.
+abstract final class ChartMotion {
+  /// O desenho indo até o valor novo.
+  static const draw = Duration(milliseconds: 650);
+
+  /// A tela aparecendo depois do carregamento. Mais curta de propósito: é
+  /// troca de estado, não leitura de dado.
+  static const enter = Duration(milliseconds: 300);
+
+  /// Rápida no começo e freando no fim: o valor **chega**, em vez de parar
+  /// seco. `Curves.linear` é o padrão do `fl_chart` e é o que faz a linha
+  /// parecer um slide passando em vez de um dado se ajustando.
+  static const curve = Curves.easeOutCubic;
+}
+
 /// A paleta de um card: o fundo, as barras do ranking e a barra de progresso.
 ///
 /// Existe porque o carrossel de insucessos passou a ter um fundo próprio, e
@@ -127,15 +153,15 @@ class ChartCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
-        // Sobre o fundo claro da tela, e sem nunca se encostarem, os cards
-        // liam sem sombra. Na pilha eles se sobrepõem: dois cards da mesma
-        // família de cor encostados viram um bloco só, e é a sombra que
-        // devolve a borda entre um e outro.
+        // Sem sombra, e não por esquecimento: todo `ChartCard` é página de um
+        // `PageView`, que instala um `ClipRect` do tamanho exato da página.
+        // Sombra só pinta **fora** do retângulo do widget, então ela seria
+        // recortada inteira — pendurar uma aqui é código morto com cara de
+        // enfeite. `chartCard_test.dart` prova o recorte, para ninguém
+        // "consertar" a falta sem antes descobrir por que ela não aparecia.
         //
-        // Os valores são os da `GlassPill` (glassNavBar.dart) — a sombra de
-        // "flutuando sobre o conteúdo" que o app já tem — para não nascer uma
-        // terceira variante. O card da lista de rotas não serve de fonte: ele
-        // é `elevation: 0` e se separa por uma borda cinza, que sobre um
+        // Na pilha, o que separa um card do outro é o **tamanho**: quem fica
+        // para trás encolhe um degrau (`StackedScroll.shrink`).
         gradient: LinearGradient(
           colors: palette.gradient,
           begin: Alignment.topLeft,
@@ -283,9 +309,22 @@ class ChartProgressBar extends StatelessWidget {
         color: Colors.white.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(50),
       ),
-      child: FractionallySizedBox(
-        alignment: Alignment.centerLeft,
-        widthFactor: fraction.clamp(0.0, 1.0),
+      // `begin: 0` é a entrada: a barra enche a partir do vazio na primeira
+      // montagem. Da segunda em diante o `begin` é ignorado — o
+      // `TweenAnimationBuilder` parte de onde a barra **está** e vai para o
+      // valor novo, que é o que faz a troca de período parecer o mesmo
+      // indicador mudando, e não outro indicador aparecendo.
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: fraction.clamp(0.0, 1.0)),
+        duration: ChartMotion.draw,
+        curve: ChartMotion.curve,
+        // O preenchimento vai como `child`: a cada quadro só o
+        // `FractionallySizedBox` é reconstruído, nunca o gradiente.
+        builder: (context, factor, child) => FractionallySizedBox(
+          alignment: Alignment.centerLeft,
+          widthFactor: factor,
+          child: child,
+        ),
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(50),

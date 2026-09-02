@@ -27,6 +27,8 @@ class StackedCard {
 ///
 /// No fim da rolagem o topo é uma pilha de bordas — uma por card já passado —
 /// que diz quantos blocos ficaram para trás sem ocupar espaço de conteúdo.
+/// Cada card que fica para trás encolhe um degrau, e encolhe de novo a cada
+/// card novo que pousa em cima: é o que separa a pilha de um bloco só de cor.
 ///
 /// Só apresentação: não sabe o que há dentro dos cards e não muda nada do que
 /// eles mostram.
@@ -36,6 +38,8 @@ class StackedScroll extends StatefulWidget {
     required this.cards,
     this.gap = 20,
     this.peek = 12,
+    this.shrink = 0.03,
+    this.shrinkRange = 72,
     this.padding = EdgeInsets.zero,
   });
 
@@ -46,6 +50,20 @@ class StackedScroll extends StatefulWidget {
 
   /// Quanto de cada card encaixado continua aparecendo. É a altura da faixa.
   final double peek;
+
+  /// Quanto o card perde de tamanho a cada nível de profundidade na pilha.
+  ///
+  /// Zero desliga o efeito e devolve a pilha de faixas todas do mesmo tamanho.
+  final double shrink;
+
+  /// Em quantos pixels **finais** da cobertura o card encolhe o seu degrau.
+  ///
+  /// O encolhimento é concentrado no fim de propósito. Espalhado pela cobertura
+  /// inteira, o card do topo da pilha passaria a maior parte da rolagem mais
+  /// estreito do que o card que o está cobrindo — os ombros dele aparecendo de
+  /// fora, que é o contrário do empilhamento. Nos últimos pixels o card já é
+  /// quase só a faixa, e a diferença de largura lê como profundidade.
+  final double shrinkRange;
 
   final EdgeInsets padding;
 
@@ -143,17 +161,30 @@ class _StackedScrollState extends State<StackedScroll> {
                       offset: Offset(0, _topOf(index, naturalTops, offset)),
                       child: Align(
                         alignment: Alignment.topCenter,
-                        // A faixa que sobra de um card coberto é o **topo** do
-                        // card, e o topo do card é o topo do `PageView` dele —
-                        // ninguém a cobre, então ela continuava recebendo
-                        // toque. Medido: arrastar de lado na faixa trocava a
-                        // página de um carrossel invisível, e o usuário só
-                        // descobria ao rolar de volta. Ignorando o ponteiro, o
-                        // arrasto vertical passa direto para a rolagem, que é
-                        // o único gesto que a faixa deve aceitar.
-                        child: IgnorePointer(
-                          ignoring: _isCovered(index, naturalTops, offset),
-                          child: child,
+                        // A escala é ancorada no **topo** do card, e não no
+                        // centro: o topo é a faixa, a única parte que ainda
+                        // aparece. Ancorada no centro, encolher desceria a
+                        // faixa junto e a distância entre duas faixas deixaria
+                        // de ser o `peek` — a pilha se desmancharia sozinha.
+                        //
+                        // `Transform` é transformação de pintura: nada é
+                        // remedido, e o gráfico lá dentro não refaz layout
+                        // nenhum por causa do encolhimento.
+                        child: Transform.scale(
+                          scale: _scaleOf(index, naturalTops, offset),
+                          alignment: Alignment.topCenter,
+                          // A faixa que sobra de um card coberto é o **topo** do
+                          // card, e o topo do card é o topo do `PageView` dele —
+                          // ninguém a cobre, então ela continuava recebendo
+                          // toque. Medido: arrastar de lado na faixa trocava a
+                          // página de um carrossel invisível, e o usuário só
+                          // descobria ao rolar de volta. Ignorando o ponteiro, o
+                          // arrasto vertical passa direto para a rolagem, que é
+                          // o único gesto que a faixa deve aceitar.
+                          child: IgnorePointer(
+                            ignoring: _isCovered(index, naturalTops, offset),
+                            child: child,
+                          ),
                         ),
                       ),
                     );
@@ -183,6 +214,46 @@ class _StackedScrollState extends State<StackedScroll> {
     );
   }
 
+  /// Quanto do card [index] ainda aparece, do topo dele ao topo do seguinte.
+  ///
+  /// Solto, é a altura inteira mais o `gap`; coberto, é a faixa.
+  double _visibleOf(int index, List<double> naturalTops, double offset) =>
+      _topOf(index + 1, naturalTops, offset) -
+      _topOf(index, naturalTops, offset);
+
+  /// O quanto o card [index] já foi coberto pelo seguinte, de 0 a 1.
+  double _coverOf(int index, List<double> naturalTops, double offset) {
+    if (index >= widget.cards.length - 1) return 0;
+
+    final sobra = _visibleOf(index, naturalTops, offset) - widget.peek;
+    return (1 - sobra / widget.shrinkRange).clamp(0.0, 1.0);
+  }
+
+  /// A escala do card [index]: um degrau menor por card empilhado sobre ele.
+  ///
+  /// A profundidade é **contínua** — a soma de quanto cada card daqui para
+  /// baixo já foi coberto — e não a contagem de quantos encaixaram. Contada em
+  /// número inteiro, a pilha inteira daria um pulo de tamanho no quadro em que
+  /// o card seguinte pousa; somada assim, ela acompanha o dedo. Como os cards
+  /// encaixam em ordem, cada parcela só começa a crescer quando a anterior
+  /// chegou a 1, e a soma anda de degrau em degrau sem nunca voltar.
+  ///
+  /// A conta é multiplicativa: cada nível tira uma fração do tamanho **atual**,
+  /// nunca do original. `1 - shrink * profundidade` zera a escala no nível
+  /// `1/shrink` e a inverte depois dele — e este widget não sabe quantos cards
+  /// vai receber. De quebra, os degraus vão ficando menores conforme afundam,
+  /// que é como uma pilha de verdade recua.
+  double _scaleOf(int index, List<double> naturalTops, double offset) {
+    if (widget.shrink <= 0) return 1;
+
+    var depth = 0.0;
+    for (var i = index; i < widget.cards.length - 1; i++) {
+      depth += _coverOf(i, naturalTops, offset);
+    }
+
+    return math.pow(1 - widget.shrink, depth).toDouble();
+  }
+
   /// Do card sobrou **só a faixa**.
   ///
   /// A régua é o que ainda aparece, e não se há sobreposição: durante a
@@ -197,12 +268,8 @@ class _StackedScrollState extends State<StackedScroll> {
   bool _isCovered(int index, List<double> naturalTops, double offset) {
     if (index == widget.cards.length - 1) return false;
 
-    final visivel =
-        _topOf(index + 1, naturalTops, offset) -
-        _topOf(index, naturalTops, offset);
-
     // Meio pixel de folga: as posições saem de contas com `double`, e a faixa
     // exata vira 11.999999 com facilidade.
-    return visivel <= widget.peek + 0.5;
+    return _visibleOf(index, naturalTops, offset) <= widget.peek + 0.5;
   }
 }

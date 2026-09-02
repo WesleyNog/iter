@@ -102,9 +102,34 @@ class ShareBar extends StatelessWidget {
           child: Row(
             children: [
               for (final slice in slices)
-                Expanded(
-                  flex: (slice.value / total * 1000).round().clamp(1, 1000),
-                  child: Container(height: 12, color: slice.color),
+                // Esta é a única grandeza da tela **sem** animação de entrada,
+                // e é de propósito: a barra de proporção não tem um zero de
+                // onde crescer. Todas as fatias partindo de `begin: 0` viram
+                // fatias iguais no primeiro quadro — uma divisão que nunca foi
+                // verdade — e só depois se acertam. Com `begin` igual ao `end`,
+                // a primeira montagem não anima e o que anima é o que interessa:
+                // a redistribuição quando o período muda.
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: _weightOf(slice), end: _weightOf(slice)),
+                  duration: ChartMotion.draw,
+                  curve: ChartMotion.curve,
+                  // O `Expanded` sai de dentro do `builder`, e não da lista:
+                  // ele é `ParentDataWidget` e o que ele exige é ter o
+                  // `RenderFlex` como render pai — o `TweenAnimationBuilder`
+                  // não cria render nenhum, então o encaixe continua valendo.
+                  // `child!` porque `Expanded` não aceita filho nulo e o
+                  // `child` acima nunca é: quem constrói é este mesmo widget.
+                  builder: (context, weight, child) =>
+                      Expanded(flex: weight.round(), child: child!),
+                  // A cor segue a **posição** na barra, e a posição troca de
+                  // dono quando a ordem muda: animada, ela vira uma cor na
+                  // outra em vez de piscar no meio do movimento.
+                  child: AnimatedContainer(
+                    duration: ChartMotion.draw,
+                    curve: ChartMotion.curve,
+                    height: 12,
+                    color: slice.color,
+                  ),
                 ),
             ],
           ),
@@ -119,6 +144,13 @@ class ShareBar extends StatelessWidget {
       ],
     );
   }
+
+  /// Peso da fatia na barra, em milésimos do total.
+  ///
+  /// Nunca zero: `flex: 0` tira a fatia da barra em vez de deixá-la fininha, e
+  /// uma empresa com R$ 3 no mês sumiria da legenda que continua a citando.
+  double _weightOf(ShareSlice slice) =>
+      (slice.value / total * 1000).roundToDouble().clamp(1, 1000);
 
   Widget _legendItem(ShareSlice slice) {
     final share = total > 0 ? slice.value / total * 100 : 0.0;
