@@ -298,6 +298,10 @@ semRota`) gates the provision, so the fuel burned driving to the CD is charged
 like any other. That getter exists because the condition used to be written three
 times — and `addIter._withProvision`'s copy runs *first*, so fixing only
 `vehicleCost.dart` provisioned nothing, with the unit test green.
+`routeStats.ranRoutes()` is that same getter as a list filter, for the charts
+whose subject is kilometres: the KM-per-company page uses it, and the
+KM-per-stop page deliberately does not — the trip has kilometres and no stops,
+so it would inflate the ratio from the numerator alone.
 
 **No average may divide money from one population by the count of another.** With
 the trip in `total` and out of `count`, `total / count` inflates — the side that

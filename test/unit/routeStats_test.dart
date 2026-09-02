@@ -18,6 +18,8 @@ NewRouteModal _route({
   Map<String, int> insucessoPorBairro = const {},
   int? packages,
   int? stops,
+  double? kmInitial,
+  double? kmFinal,
   String? weather,
 }) {
   final start = startAt ?? DateTime(2026, 8, 10, 8);
@@ -34,6 +36,8 @@ NewRouteModal _route({
     value: value,
     packages: packages,
     stops: stops,
+    kmInitial: kmInitial,
+    kmFinal: kmFinal,
     adress: adress,
     startAt: start,
     isInsucesso: isInsucesso,
@@ -831,6 +835,169 @@ void main() {
     });
   });
 
+  group('KM por empresa', () {
+    test('soma o KM rodado de cada empresa', () {
+      final ranking = kmPerCompany([
+        _route(company: Company.mercadolivre, kmInitial: 100, kmFinal: 180),
+        _route(company: Company.mercadolivre, kmInitial: 180, kmFinal: 230),
+        _route(company: Company.amazon, kmInitial: 10, kmFinal: 55),
+      ]);
+
+      expect(_valueOf(ranking, 'Mercado Livre'), 130);
+      expect(_valueOf(ranking, 'Amazon'), 45);
+    });
+
+    test('rota sem odômetro conta zero e não some do ranking', () {
+      final ranking = kmPerCompany([
+        _route(company: Company.shopee, kmInitial: 0, kmFinal: 60),
+        _route(company: Company.amazon),
+      ]);
+
+      expect(_valueOf(ranking, 'Shopee'), 60);
+      expect(_has(ranking, 'Amazon'), isTrue);
+      expect(_valueOf(ranking, 'Amazon'), 0);
+    });
+
+    test('odômetro que não avança não vira quilômetro', () {
+      // Mesma guarda da provisão e do card da rota: diferença não positiva é
+      // dado incompleto, não uma rota de zero quilômetro. Sem ela, um `128800`
+      // digitado como `12880` entraria como KM negativo e comeria o total da
+      // empresa inteira.
+      final ranking = kmPerCompany([
+        _route(company: Company.amazon, kmInitial: 128800, kmFinal: 12880),
+        _route(company: Company.amazon, kmInitial: 100, kmFinal: 190),
+      ]);
+
+      expect(_valueOf(ranking, 'Amazon'), 90);
+    });
+  });
+
+  group('ranRoutes', () {
+    test('a ida sem rota entra, a agendada não', () {
+      final ran = ranRoutes([
+        _route(id: 'a', status: StatusRoute.concluido),
+        _route(id: 'b', status: StatusRoute.pago),
+        _route(id: 'c', status: StatusRoute.semRota),
+        _route(id: 'd', status: StatusRoute.agendado),
+        _route(id: 'e', status: StatusRoute.andamento),
+      ]);
+
+      expect(ran.map((route) => route.id), ['a', 'b', 'c']);
+    });
+
+    test('o KM da ida sem rota conta na empresa dela', () {
+      // É a régua do quilômetro: a ida ao CD queimou gasolina de verdade, e o
+      // card por empresa da aba Resumo já a conta assim.
+      final ranking = kmPerCompany(
+        ranRoutes([
+          _route(
+            company: Company.mercadolivre,
+            status: StatusRoute.semRota,
+            kmInitial: 0,
+            kmFinal: 30,
+          ),
+          _route(
+            company: Company.mercadolivre,
+            kmInitial: 30,
+            kmFinal: 120,
+          ),
+        ]),
+      );
+
+      expect(_valueOf(ranking, 'Mercado Livre'), 120);
+    });
+  });
+
+  group('KM por parada', () {
+    test('divide o KM pelas paradas da mesma empresa', () {
+      final ranking = kmPerStopPerCompany([
+        _route(
+          company: Company.amazon,
+          kmInitial: 0,
+          kmFinal: 90,
+          stops: 60,
+        ),
+        _route(
+          company: Company.amazon,
+          kmInitial: 90,
+          kmFinal: 120,
+          stops: 40,
+        ),
+        _route(
+          company: Company.shopee,
+          kmInitial: 0,
+          kmFinal: 40,
+          stops: 20,
+        ),
+      ]);
+
+      // 120 km / 100 paradas e 40 / 20.
+      expect(_valueOf(ranking, 'Amazon'), 1.2);
+      expect(_valueOf(ranking, 'Shopee'), 2);
+      expect(ranking.first.label, 'Shopee');
+    });
+
+    test('a ida sem rota fica de fora, mesmo tendo rodado KM', () {
+      // O caso que a regra existe para impedir: quilômetro no numerador com o
+      // denominador parado infla a razão, e para cima é o lado que faz a rota
+      // parecer pior do que foi.
+      final comIda = kmPerStopPerCompany([
+        _route(company: Company.amazon, kmInitial: 0, kmFinal: 90, stops: 60),
+        _route(
+          company: Company.amazon,
+          status: StatusRoute.semRota,
+          kmInitial: 90,
+          kmFinal: 130,
+        ),
+      ]);
+
+      expect(_valueOf(comIda, 'Amazon'), 1.5);
+    });
+
+    test('rota sem paradas informadas não entra em lado nenhum da conta', () {
+      final ranking = kmPerStopPerCompany([
+        _route(company: Company.shopee, kmInitial: 0, kmFinal: 50, stops: 25),
+        _route(company: Company.shopee, kmInitial: 50, kmFinal: 150),
+      ]);
+
+      expect(_valueOf(ranking, 'Shopee'), 2);
+    });
+
+    test('empresa sem rota elegível fica fora, e não com zero', () {
+      // Zero km por parada afirmaria um dado que ninguém coletou.
+      final ranking = kmPerStopPerCompany([
+        _route(company: Company.shopee, kmInitial: 0, kmFinal: 50, stops: 25),
+        _route(company: Company.amazon, stops: 30),
+      ]);
+
+      expect(_has(ranking, 'Shopee'), isTrue);
+      expect(_has(ranking, 'Amazon'), isFalse);
+    });
+
+    test('o geral é a soma dos dois lados, não a média das empresas', () {
+      // A média das razões (2,0 e 0,5) daria 1,25 e trataria a rota de 10
+      // paradas como igual à de 200.
+      final routes = [
+        _route(company: Company.shopee, kmInitial: 0, kmFinal: 20, stops: 10),
+        _route(
+          company: Company.amazon,
+          kmInitial: 0,
+          kmFinal: 100,
+          stops: 200,
+        ),
+      ];
+
+      expect(kmPerStop(routes), closeTo(120 / 210, 0.0001));
+    });
+
+    test('sem ninguém informando os dois lados, o geral é nulo', () {
+      // `null` é "não dá para saber". Zero afirmaria que se roda zero
+      // quilômetro por parada.
+      expect(kmPerStop([_route(stops: 30)]), isNull);
+      expect(kmPerStop(const []), isNull);
+    });
+  });
+
   group('rankings por clima', () {
     test('noite entra no mesmo degrau do dia', () {
       // O eixo é o **céu**, não a hora. Metade das rotas noturnas está gravada
@@ -1035,6 +1202,10 @@ void main() {
       expect(failureRatePerCompany([]), isEmpty);
       expect(routesPerBairro([]), isEmpty);
       expect(failuresPerBairro([]), isEmpty);
+      expect(ranRoutes([]), isEmpty);
+      expect(kmPerCompany([]), isEmpty);
+      expect(kmPerStopPerCompany([]), isEmpty);
+      expect(kmPerStop([]), isNull);
       expect(valuePerWeekday([]), everyElement(0));
     });
   });

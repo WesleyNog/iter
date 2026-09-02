@@ -71,6 +71,15 @@ class _GraficsScreenState extends State<GraficsScreen> {
 
   String _oneDecimal(double value) => value.toStringAsFixed(1);
 
+  /// KM com separador de milhar e uma casa: o mesmo formato do card por empresa
+  /// da aba Resumo. Um mês passa dos mil quilômetros, e `3000.0` ao lado de
+  /// `3.000,0` na outra tela pareceria outra conta.
+  String _km(double value) => formatNumber(value, decimals: 1);
+
+  /// KM por parada anda entre 0 e 3. Uma casa só esconderia a diferença entre
+  /// 0,75 e 0,83 — que é exatamente o que se compara nesse card.
+  String _kmRatio(double value) => formatNumber(value, decimals: 2);
+
   double _sum(List<RankEntry> entries) =>
       entries.fold(0, (total, entry) => total + entry.value);
 
@@ -161,6 +170,14 @@ class _GraficsScreenState extends State<GraficsScreen> {
   /// existem.
   static const _recorteRodadas = 'Rotas concluídas e pagas';
 
+  /// O recorte do KM total, que é o **terceiro** desta tela.
+  ///
+  /// A ida sem rota queimou gasolina de verdade, e é assim que ela conta em
+  /// todo lugar do app onde o assunto é quilômetro — o card por empresa da aba
+  /// Resumo inclusive. Deixá-la de fora aqui faria duas telas mostrarem KM
+  /// diferente para a mesma empresa no mesmo mês, sem nada explicando por quê.
+  static const _recorteComIda = 'Concluídas, pagas e idas sem rota';
+
   /// [routes] chega com **todos** os status do período.
   ///
   /// Os cards de dinheiro do topo usam o período inteiro — é lá que o
@@ -224,15 +241,24 @@ class _GraficsScreenState extends State<GraficsScreen> {
             pages: _bairroPages(done),
           ),
           _stacked(const ValueKey('tempo'), height: 330, pages: _timePages(done)),
-          // O insucesso fecha a tela. Antes vinha em segundo, com o argumento
-          // de ser o que se acompanha todo dia — mas ele é o único bloco de
-          // notícia ruim, e abrir a tela por ele enterrava o dinheiro e a
-          // análise embaixo. No fim, o fundo laranja o separa do resto sem
+          // O insucesso vem depois da análise. Antes vinha em segundo, com o
+          // argumento de ser o que se acompanha todo dia — mas ele é o único
+          // bloco de notícia ruim, e abrir a tela por ele enterrava o dinheiro
+          // e a análise embaixo. O fundo laranja o separa do resto sem
           // precisar de aviso nenhum.
           _stacked(
             const ValueKey('insucessos'),
             height: 340,
             pages: _insucessoPages(doneSummary, done),
+          ),
+          // O KM fecha a tela, e o laranja do insucesso passa a ser o
+          // penúltimo card. No meio da pilha aquele fundo separa o bloco de
+          // notícia ruim tão bem quanto separava no fim, e terminar num card
+          // azul devolve a tela ao tom do resto dela.
+          _stacked(
+            const ValueKey('km'),
+            height: 340,
+            pages: _kmPages(ranRoutes(routes), done),
           ),
         ],
       ),
@@ -490,6 +516,60 @@ class _GraficsScreenState extends State<GraficsScreen> {
         ),
       ],
     );
+  }
+
+  // --- KM -----------------------------------------------------------------
+
+  /// Quilômetro rodado: o total por empresa e quanto ele rende por parada.
+  ///
+  /// **As duas páginas não têm o mesmo recorte, e cada uma diz o seu no
+  /// eyebrow.** O total inclui a ida sem rota porque ela é quilômetro de
+  /// verdade; o KM por parada não pode incluí-la, porque ela não tem parada
+  /// nenhuma — o quilômetro entraria no numerador com o denominador parado e a
+  /// conta subiria sozinha. É a mesma regra que já vale para as médias de
+  /// dinheiro: nenhuma média divide uma população pela contagem de outra.
+  ///
+  /// Por isso [ran] e [done] chegam separados, em vez de um filtro só aqui
+  /// dentro: são de fato dois recortes, e escondê-los num parâmetro faria a
+  /// próxima página herdar o errado sem ninguém notar.
+  List<Widget> _kmPages(List<NewRouteModal> ran, List<NewRouteModal> done) {
+    final byCompany = kmPerCompany(ran);
+    final perStop = kmPerStopPerCompany(done);
+    final overall = kmPerStop(done);
+
+    return [
+      BarRankChart(
+        title: 'KM por empresa',
+        eyebrow: _recorteComIda,
+        entries: byCompany,
+        formatValue: _km,
+        emptyMessage: 'Nenhuma rota rodada no período.',
+        stats: [
+          ChartStat('TOTAL', _km(_sum(byCompany))),
+          ChartStat('MAIOR', _highest(byCompany, _km)),
+          ChartStat('MENOR', _lowest(byCompany, _km)),
+        ],
+      ),
+      BarRankChart(
+        title: 'KM por parada',
+        eyebrow: _recorteRodadas,
+        entries: perStop,
+        formatValue: _kmRatio,
+        // Participação desligada: somar o km/parada de três empresas para
+        // tirar a porcentagem de cada uma não significa nada — é a mesma razão
+        // pela qual o índice de insucesso também não a mostra.
+        showShare: false,
+        footnote: 'Considera só rotas com KM e paradas informados.',
+        emptyMessage: 'Nenhuma rota do período informou KM e paradas.',
+        stats: [
+          // `Σ km ÷ Σ paradas` do período, e não a média das três barras: a
+          // empresa de duas rotas pesaria igual à de quarenta.
+          ChartStat('GERAL', overall == null ? '—' : _kmRatio(overall)),
+          ChartStat('MAIOR', _highest(perStop, _kmRatio)),
+          ChartStat('MENOR', _lowest(perStop, _kmRatio)),
+        ],
+      ),
+    ];
   }
 
   // --- Empresas -----------------------------------------------------------

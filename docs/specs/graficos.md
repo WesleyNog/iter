@@ -22,6 +22,8 @@ o dado é deste app.
 | 5 | Bairros mais rodados | Carrossel Bairros, pág. 1 |
 | 6 | Bairros com mais insucesso | Carrossel Bairros, pág. 2 |
 | 4 | Valor por dia da semana e por faixa de horário | Carrossel Tempo, pág. 1 e 2 |
+| 8 | KM rodado por empresa no período | Carrossel KM, pág. 1 (desde 2026-09-01) |
+| 9 | KM por parada, por empresa | Carrossel KM, pág. 2 (desde 2026-09-01) |
 
 Usuário: o entregador. Sucesso = ele escolhe um mês e entende, sem abrir rota
 nenhuma, quanto fez, com qual empresa vale mais a pena rodar, onde está perdendo
@@ -150,6 +152,14 @@ usam as rotas com `startAt` dentro do período (comparando só a data, início e
 fim inclusive), **em qualquer status**. Os gráficos de análise usam esse mesmo
 período restrito a `concluido` ou `pago`.
 
+Desde 2026-09-01 há uma **terceira** faixa, e ela vale para uma página só: o KM
+total por empresa usa `ranRoutes` (`concluido` + `pago` + `semRota`). A ida sem
+rota queimou gasolina de verdade, e é assim que ela conta em todo lugar do app
+onde o assunto é quilômetro — o card por empresa da aba Resumo inclusive.
+Deixá-la de fora aqui faria duas telas mostrarem KM diferente para a mesma
+empresa no mesmo mês. Quem diz qual faixa está valendo continua sendo o eyebrow
+de cada página.
+
 **1. Total do período.** `Σ value`. O card resumo mostra também a quantidade de
 rotas e a média por rota (`routeTotal ÷ count` — **não** `total ÷ quantidade`:
 desde `sem-rota.md` o total inclui as idas sem rota e a contagem não, e dividir
@@ -182,6 +192,27 @@ gravadas antes daquela entrega — continua inteiramente rateada: 3 insucessos
 numa rota de 3 bairros dá 1,0 para cada. Em qualquer combinação o total do
 ranking bate com o total real de insucessos do período. Valores fracionados
 aparecem com uma casa decimal.
+
+**8. KM por empresa.** `Σ (kmFinal − kmInitial)` por empresa, via `kmOf` — a
+mesma definição de "KM rodado" da provisão e do card da rota, com a guarda de
+diferença não positiva: odômetro incompleto (ou `128.800` digitado como
+`12.880`) é dado faltando, não rota de zero quilômetro. Rota sem odômetro soma
+**zero** e continua no ranking, pela regra de pacotes e paradas: tirá-la mudaria
+o eixo para "quanto rodei nas rotas em que anotei o odômetro".
+
+**9. KM por parada.** `Σ km ÷ Σ paradas` por empresa, contando **só rotas com os
+dois lados informados**. É a regra do índice de insucesso, e aqui ela tem um
+caso concreto esperando: a ida sem rota tem quilômetro e não tem parada nenhuma
+— somá-la no numerador com o denominador parado inflaria a razão, e para cima é
+o lado que faz a rota parecer pior do que foi. Por isso esta página é a única do
+carrossel que **não** usa `ranRoutes`.
+
+Empresa sem nenhuma rota elegível fica fora do ranking em vez de aparecer com 0.
+O GERAL do card é `Σ km ÷ Σ paradas` do período inteiro, e não a média das três
+barras: essa daria à empresa de duas rotas o mesmo peso da de quarenta. Duas
+casas decimais porque o número anda entre 0 e 3, e uma só esconderia a diferença
+entre 0,75 e 0,83 — que é exatamente o que se compara ali. Participação (`%`)
+fica desligada: somar km/parada de empresas diferentes não significa nada.
 
 **4a. Por dia da semana.** `Σ value` agrupado por `startAt.weekday`, sempre com
 os 7 pontos (Seg→Dom), inclusive os zerados — buraco no gráfico de linha lê
@@ -229,7 +260,12 @@ seção viraram uma linha dentro de cada card. Ver `docs/specs/pilha-de-graficos
 Cada card encaixa no topo ao chegar lá e o seguinte desliza por cima, deixando
 12px do anterior à mostra — e o que fica para trás **encolhe** um degrau, mais
 um a cada card que pousa em cima dele. A ordem é dinheiro → empresas → bairros
-→ tempo → insucessos.
+→ tempo → insucessos → KM.
+
+O KM entrou por último em 2026-09-01 e o insucesso deixou de fechar a tela. Ele
+continua onde está pelo mesmo motivo de antes — abrir o painel pela notícia ruim
+enterraria o dinheiro e a análise —, e no meio da pilha o fundo laranja separa
+aquele bloco tão bem quanto separava no fim. O KM é azul, como todo o resto.
 
 Carrosséis separados em vez de um único gigante: uma fileira longa de bolinhas
 vira um ponto onde o usuário perde a conta de onde está, e o agrupamento já diz

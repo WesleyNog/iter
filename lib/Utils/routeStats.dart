@@ -1,5 +1,8 @@
 import 'package:iter/Utils/insucessoBairro.dart';
 import 'package:iter/Utils/routeStyle.dart';
+// `kmOf` mora lá porque é ela que vira dinheiro provisionado. Importar em vez
+// de reescrever a subtração é o que mantém uma definição só de "KM rodado".
+import 'package:iter/Utils/vehicleCost.dart';
 import 'package:iter/Utils/weather.dart';
 import 'package:iter/model/newRouteModal.dart';
 import 'package:iter/services/openWeather.dart';
@@ -212,6 +215,18 @@ List<NewRouteModal> realizedInPeriod(
   required DateTime end,
 }) => realized(inPeriod(routes, start: start, end: end));
 
+/// Tudo que **rodou**: a rota realizada e a ida que não virou rota.
+///
+/// É `NewRouteModal.hasRun` — o mesmo getter que decide se há combustível a
+/// provisionar — e não uma quarta cópia da condição, que já esteve escrita em
+/// três arquivos. Serve ao que é **quilômetro**: a ida ao CD queimou gasolina
+/// de verdade e fica fora de [realized] justamente por não ser uma rota.
+///
+/// Nunca use para contagem, pacotes, paradas ou bairro: é a régua do KM e do
+/// dinheiro, e o resto do arquivo continua lendo [realized].
+List<NewRouteModal> ranRoutes(List<NewRouteModal> routes) =>
+    routes.where((route) => route.hasRun).toList();
+
 /// Rotas rodadas que ainda não foram pagas.
 ///
 /// `concluido` é exatamente esse estado: o serviço acabou e o pagamento não
@@ -394,6 +409,76 @@ List<RankEntry> packagesPerCompany(List<NewRouteModal> routes) =>
 /// Paradas por empresa. Mesma regra de [packagesPerCompany].
 List<RankEntry> stopsPerCompany(List<NewRouteModal> routes) =>
     _rankCompanies(routes, (route) => (route.stops ?? 0).toDouble());
+
+/// KM rodado por empresa.
+///
+/// `kmOf` e não a subtração à mão: é a mesma definição de "KM rodado" que a
+/// provisão, o card da rota e o resumo por empresa usam, com a guarda de
+/// diferença não positiva — odômetro incompleto não é rota de zero quilômetro.
+///
+/// Rota sem KM informado soma **zero** e continua no ranking, pela mesma regra
+/// de [packagesPerCompany]: tirá-la mudaria o eixo de "quanto rodei por
+/// empresa" para "quanto rodei nas rotas em que anotei o odômetro".
+List<RankEntry> kmPerCompany(List<NewRouteModal> routes) =>
+    _rankCompanies(routes, (route) => kmOf(route) ?? 0);
+
+/// KM por parada, por empresa: quanto se roda para cada porta.
+///
+/// Só entra rota com os **dois** lados informados, KM e paradas. É a regra de
+/// [failureRatePerCompany] pelo mesmo motivo, e aqui ela tem um caso concreto
+/// esperando para acontecer: a ida sem rota tem quilômetro e não tem parada
+/// nenhuma, então somá-la no numerador sem nada entrar no denominador inflaria
+/// o resultado — e para cima é o lado que faz a rota parecer pior do que foi.
+///
+/// Empresa sem nenhuma rota elegível fica **fora** do ranking em vez de
+/// aparecer com 0: zero km por parada afirmaria um dado que ninguém coletou.
+List<RankEntry> kmPerStopPerCompany(List<NewRouteModal> routes) {
+  final km = <String, double>{};
+  final stops = <String, double>{};
+  _accumulateKmPerStop(routes, km, stops);
+
+  return _sorted([
+    for (final entry in km.entries)
+      RankEntry(entry.key, entry.value / stops[entry.key]!),
+  ]);
+}
+
+/// KM por parada do período inteiro, ou `null` quando nenhuma rota informou os
+/// dois lados.
+///
+/// `Σ km ÷ Σ paradas`, e **não** a média das razões por empresa: essa daria à
+/// empresa de duas rotas o mesmo peso da de quarenta.
+double? kmPerStop(List<NewRouteModal> routes) {
+  final km = <String, double>{};
+  final stops = <String, double>{};
+  _accumulateKmPerStop(routes, km, stops);
+
+  final totalStops = stops.values.fold<double>(0, (a, b) => a + b);
+  if (totalStops <= 0) return null;
+
+  return km.values.fold<double>(0, (a, b) => a + b) / totalStops;
+}
+
+/// Acumula KM e paradas por empresa contando só a rota que informou os dois.
+///
+/// Uma função e não o corpo copiado nos dois lugares acima: a elegibilidade é
+/// exatamente o que não pode divergir entre o ranking e o número geral, ou o
+/// card mostraria um GERAL que nenhuma barra explica.
+void _accumulateKmPerStop(
+  List<NewRouteModal> routes,
+  Map<String, double> km,
+  Map<String, double> stops,
+) {
+  for (final route in routes) {
+    final routeKm = kmOf(route);
+    final routeStops = route.stops ?? 0;
+    if (routeKm == null || routeStops <= 0) continue;
+
+    final label = companyLabel(route.company);
+    _add(km, label, routeKm);
+    _add(stops, label, routeStops.toDouble());
+  }
+}
 
 /// Insucessos por empresa, em quantidade absoluta.
 ///
