@@ -19,8 +19,11 @@
  */
 
 import { initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 
+import { apagarDadosDe } from './conta.js';
+import { bucket } from './firebase.js';
 import { mesDeFortaleza } from './tempo.js';
 
 const db = getFirestore(initializeApp({ projectId: 'iter-mn' }));
@@ -223,6 +226,189 @@ await espera(2000);
 await db.doc('posts/p2').update({ deleted: true, text: '', imagePath: null });
 await espera(2000);
 await curtir('p2', 'joao');
+await espera(6000);
+
+// ─── Exclusão de conta ──────────────────────────────────────────────────────
+//
+// O Zeca tem de tudo: rotas, perfil, apelido, dois aparelhos, post com foto,
+// amizade com a Lara, convite pendente da Mika, bloqueio no Nino, curtida e
+// comentário no post da Lara, relato de preço, denúncia e avisos de ranking.
+// Apaga-se o usuário **no Auth** — o gatilho é esse, não uma chamada — e
+// confere-se documento por documento o que sumiu e o que tinha de ficar.
+//
+// As estatísticas vão ANTES das amizades de propósito: gravar balde com amigo
+// dispara o ranking, e a contagem de avisos lá em cima é exata.
+
+await semear({
+  zeca: 'Zeca Diniz',
+  lara: 'Lara Pontes',
+  mika: 'Mika Torres',
+  nino: 'Nino Sales',
+});
+await getAuth().createUser({ uid: 'zeca', displayName: 'Zeca Diniz' });
+
+const token = (n) => n.toString(16).padStart(64, '0');
+const foto = (caminho) =>
+  bucket().file(caminho).save(Buffer.from('jpg'), { contentType: 'image/jpeg' });
+
+await db.doc('user/zeca').set({ id: 'zeca', cpf: '000.000.000-00', nickName: 'zeca.diniz' });
+await db.doc('nicknames/zeca.diniz').set({ uid: 'zeca' });
+await db.doc('nicknames/lara.pontes').set({ uid: 'lara' });
+await gravarBalde('zeca', MES, balde({ rotas: 3 }));
+await gravarBalde('zeca', 'all', balde({ rotas: 30 }));
+
+for (const colecao of ['routes', 'vehicles', 'supply', 'maintenance', 'posts']) {
+  await db.doc(`iter/zeca/${colecao}/x1`).set({ id: 'x1' });
+}
+
+await db.doc('posts/p-zeca').set({
+  uid: 'zeca', text: 'meu post', imagePath: 'posts/zeca/p-zeca.jpg',
+  createdAt: new Date(), deleted: false,
+});
+await publicar('p-lara', 'lara', 'post da Lara');
+await foto('posts/zeca/p-zeca.jpg');
+await foto('posts/lara/p-lara.jpg');
+
+await curtir('p-zeca', 'lara');
+await comentar('p-zeca', 'c-lara-1', 'lara', 'comentário da Lara no post do Zeca');
+await curtir('p-lara', 'zeca');
+await comentar('p-lara', 'c-zeca-1', 'zeca', 'comentário do Zeca');
+await curtir('p-lara', 'nino');
+await comentar('p-lara', 'c-lara-2', 'lara', 'a Lara no próprio post');
+
+await db.doc('gastop/st1').set({ updatedBy: 'zeca', prices: { gasolina: 6.19 } });
+await db.doc('gastop/st1/precos/pr-zeca').set({ uid: 'zeca', price: 6.19, fuel: 'gasolina' });
+await db.doc('gastop/st1/precos/pr-lara').set({ uid: 'lara', price: 6.29, fuel: 'gasolina' });
+await db.doc('gastop/st2').set({ updatedBy: 'lara', prices: { etanol: 4.5 } });
+
+await db.doc('reports/p_p-lara__zeca').set({ uid: 'zeca', postId: 'p-lara', reason: 'spam' });
+await db.doc('blocks/zeca/list/nino').set({ at: new Date() });
+await db.doc('blocks/nino/list/zeca').set({ at: new Date() });
+
+for (const id of [
+  'zeca_lara_rotas_2026-09_2026-09-16',
+  'lara_zeca_ritmo_2026-09_2026-09-16',
+  'lara_nino_rotas_2026-09_2026-09-16',
+  // `zeca` está contido em `zecao`: um `includes` apagaria este.
+  'zecao_lara_rotas_2026-09_2026-09-16',
+]) {
+  await db.doc(`avisosRanking/${id}`).set({ at: new Date() });
+}
+
+await amizade('zeca', 'lara');
+await amizade('lara', 'mika');
+// Convite pendente da Mika para o Zeca.
+await convidar('mika', 'zeca');
+// **A armadilha da ordem.** Um `outgoing` da Lara para o Zeca com a amizade de
+// pé — o estado do convite mútuo antes do aceite limpar tudo. Se a limpeza
+// apagasse o marcador antes da aresta, `aceite` poderia ler a aresta ainda viva
+// e mandar "Zeca aceitou seu convite" para a Lara. O `run-emulador.sh` proíbe o
+// sintoma, mas **não prova a ordem**: o gatilho lê depois, e com a ordem
+// invertida a aresta quase sempre já teria sumido. Quem garante é o código.
+await db.doc('friendRequests/lara/outgoing/zeca').set({ at: new Date() });
+await espera(6000);
+
+// Os aparelhos entram **por último**, depois de todo aviso do cenário. Não há
+// emulador de FCM: o token de mentira vai ao FCM de verdade, volta
+// `invalid-argument`, e o `push.js` o apaga como registro morto. Semeados
+// antes, os do Zeca sumiriam pelo convite da Mika — e "apagado" passaria sem
+// a limpeza apagar nada. O que tem de ficar é do Nino, que não recebe aviso.
+await db.doc(`fcmTokens/${token(1)}`).set({ uid: 'zeca', token: 't1', platform: 'android' });
+await db.doc(`fcmTokens/${token(2)}`).set({ uid: 'zeca', token: 't2', platform: 'ios' });
+await db.doc(`fcmTokens/${token(3)}`).set({ uid: 'nino', token: 't3', platform: 'android' });
+
+await getAuth().deleteUser('zeca');
+
+// Espera o gatilho em vez de um sono fixo: `user/zeca` é o último passo.
+let gatilhoRodou = false;
+for (let i = 0; i < 60 && !gatilhoRodou; i += 1) {
+  await espera(1000);
+  gatilhoRodou = !(await db.doc('user/zeca').get()).exists;
+}
+
+const conferencias = [];
+const confere = (descricao, ok) => {
+  conferencias.push(ok);
+  console.log(`EXCLUSAO ${ok ? 'ok   ' : 'FALHA'} ${descricao}`);
+};
+const existe = async (caminho) => (await db.doc(caminho).get()).exists;
+const dados = async (caminho) => (await db.doc(caminho).get()).data();
+const fotoExiste = async (caminho) => (await bucket().file(caminho).exists())[0];
+
+confere('o gatilho do Auth rodou', gatilhoRodou);
+
+for (const caminho of [
+  'user/zeca',
+  'profiles/zeca',
+  `profiles/zeca/stats/${MES}`,
+  'profiles/zeca/stats/all',
+  'nicknames/zeca.diniz',
+  `fcmTokens/${token(1)}`,
+  `fcmTokens/${token(2)}`,
+  'iter/zeca/routes/x1',
+  'iter/zeca/vehicles/x1',
+  'iter/zeca/supply/x1',
+  'iter/zeca/maintenance/x1',
+  'iter/zeca/posts/x1',
+  'friends/zeca/list/lara',
+  'friends/lara/list/zeca',
+  'friendRequests/zeca/incoming/mika',
+  'friendRequests/mika/outgoing/zeca',
+  'friendRequests/lara/outgoing/zeca',
+  'blocks/zeca/list/nino',
+  'posts/p-lara/likes/zeca',
+  'posts/p-lara/comments/c-zeca-1',
+  'avisosRanking/zeca_lara_rotas_2026-09_2026-09-16',
+  'avisosRanking/lara_zeca_ritmo_2026-09_2026-09-16',
+]) {
+  confere(`apagado: ${caminho}`, !(await existe(caminho)));
+}
+confere('apagada: foto posts/zeca/p-zeca.jpg', !(await fotoExiste('posts/zeca/p-zeca.jpg')));
+
+const lapide = await dados('posts/p-zeca');
+confere('o post do Zeca virou lápide',
+  lapide?.deleted === true && lapide.text === '' && lapide.imagePath === null);
+
+const relato = await dados('gastop/st1/precos/pr-zeca');
+confere('o relato de preço ficou, sem o uid', relato?.price === 6.19 && !('uid' in relato));
+confere('o posto ficou, sem o updatedBy', (await dados('gastop/st1'))?.updatedBy === undefined);
+
+for (const caminho of [
+  'profiles/lara',
+  'nicknames/lara.pontes',
+  `fcmTokens/${token(3)}`,
+  'posts/p-lara',
+  'posts/p-zeca/likes/lara',
+  'posts/p-zeca/comments/c-lara-1',
+  'posts/p-lara/likes/nino',
+  'posts/p-lara/comments/c-lara-2',
+  'reports/p_p-lara__zeca',
+  'blocks/nino/list/zeca',
+  'friends/lara/list/mika',
+  'friends/mika/list/lara',
+  'avisosRanking/lara_nino_rotas_2026-09_2026-09-16',
+  'avisosRanking/zecao_lara_rotas_2026-09_2026-09-16',
+]) {
+  confere(`ficou: ${caminho}`, await existe(caminho));
+}
+confere('ficou: foto posts/lara/p-lara.jpg', await fotoExiste('posts/lara/p-lara.jpg'));
+confere('o relato da Lara continua com o uid dela',
+  (await dados('gastop/st1/precos/pr-lara'))?.uid === 'lara');
+confere('o posto da Lara continua com o updatedBy dela',
+  (await dados('gastop/st2'))?.updatedBy === 'lara');
+
+// O `failurePolicy` repete a função inteira: a segunda passada não pode lançar.
+let repetiu = true;
+try {
+  await apagarDadosDe('zeca');
+} catch (e) {
+  console.log(`EXCLUSAO erro na repetição: ${e.message}`);
+  repetiu = false;
+}
+confere('rodar a limpeza de novo não quebra', repetiu);
+
+const falhas = conferencias.filter((ok) => !ok).length;
+console.log(`EXCLUSAO: ${conferencias.length} conferências, ${falhas} falhas`);
 await espera(6000);
 
 console.log('EMULADOR: cenários concluídos.');

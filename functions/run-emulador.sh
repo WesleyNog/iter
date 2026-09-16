@@ -25,7 +25,7 @@ trap 'rm -f "$SAIDA"' EXIT
 
 # `--project iter-mn` explícito: não existe `.firebaserc` na raiz, então sem a
 # flag o destino é o que o `firebase use` global apontar por último.
-( cd .. && firebase emulators:exec --only firestore,functions --project iter-mn \
+( cd .. && firebase emulators:exec --only firestore,functions,auth,storage --project iter-mn \
     'node functions/emulador.mjs' ) 2>&1 | tee "$SAIDA"
 
 echo
@@ -109,8 +109,11 @@ par 1 helo gil \
 # ── Marcos ────────────────────────────────────────────────────────────────
 # `grep -E` com a borda `[,}]` porque `"marco":1` casa com `"marco":10` — foi
 # exatamente o que fez esta asserção acusar 2 onde havia 1.
+#
+# Presa ao post `p1`: o cenário de exclusão de conta também curte e comenta, e
+# a primeira curtida do post do Zeca é outro "marco 1" legítimo.
 marco() {
-  n=$(grep "\"message\":\"$2\"" "$SAIDA" | grep -cE "\"marco\":$3[,}]" || true)
+  n=$(grep "\"message\":\"$2\"" "$SAIDA" | grep '"postId":"p1"' | grep -cE "\"marco\":$3[,}]" || true)
   if [ "$n" -eq "$1" ]; then
     echo "  ok    $4 (achei $n)"
   else
@@ -129,6 +132,19 @@ marco 1 comentarios 5 \
   'cinco comentários anunciam o marco 5 uma vez'
 proibido '"postId":"p2"' \
   'post com lápide NÃO notifica, mesmo com a curtida gravada'
+
+# ── Exclusão de conta ─────────────────────────────────────────────────────
+# As conferências de documento rodam dentro do `emulador.mjs`, que enxerga o
+# banco; aqui fica o que só o log mostra.
+
+esperado '"message":"conta exclu' \
+  'a exclusão no Auth acordou a limpeza'
+esperado 'EXCLUSAO: [0-9]* conferências, 0 falhas' \
+  'tudo o que devia sumir sumiu, e tudo o que devia ficar ficou'
+proibido '"message":"aceite".*"para":"lara"\|"para":"lara".*"message":"aceite"' \
+  'a Lara NÃO recebe aceite falso (sintoma; a ordem em si não é provada aqui)'
+proibido '"message":"aceite".*"para":"mika"\|"para":"mika".*"message":"aceite"' \
+  'retirar o convite pendente da Mika NÃO vira aceite'
 
 proibido 'Your function was killed' 'nenhuma função morreu'
 

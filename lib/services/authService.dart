@@ -138,6 +138,64 @@ class GoogleSignInService {
     }
   }
 
+  /// Exclui a conta de quem está logado. Ver `docs/specs/exclusao-de-conta.md`.
+  ///
+  /// Devolve `false` quando a pessoa desiste no seletor do Google — igual ao
+  /// `null` de [signInWithGoogle]; qualquer outra falha é lançada para a tela.
+  ///
+  /// **Só apaga o usuário do Auth.** Rotas, perfil, amizades, fotos e o resto
+  /// quem apaga é a Function `excluirConta`, que dispara com a exclusão — o
+  /// cliente não tem permissão para metade daquilo, e não precisa ter.
+  ///
+  /// **Pede o Google de novo sempre**, em vez de tentar o `delete()` e reagir a
+  /// `requires-recent-login`: a reautenticação é também a segunda confirmação
+  /// de um gesto que não tem volta. Escolher outra conta Google no seletor dá
+  /// `user-mismatch` no `reauthenticateWithCredential`, antes de apagar nada.
+  static Future<bool> deleteAccount() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(code: 'no-current-user');
+    }
+
+    await initSignIn();
+
+    final GoogleSignInAccount googleUser;
+    try {
+      googleUser = await _googleSignIn.authenticate();
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) return false;
+      rethrow;
+    }
+
+    final idToken = googleUser.authentication.idToken;
+    if (idToken == null) {
+      throw FirebaseAuthException(code: 'missing-google-id-token');
+    }
+
+    await user.reauthenticateWithCredential(
+      GoogleAuthProvider.credential(idToken: idToken),
+    );
+
+    // Antes do `delete()`, pela razão do `signOut`: depois dele não há
+    // `request.auth` para a regra deixar apagar. A Function apaga os tokens de
+    // todos os aparelhos de qualquer jeito; isto aqui desliga o listener de
+    // rotação deste, para ele não tentar regravar um token sem dono.
+    await PushMessaging.instance.desregistrarAparelho();
+
+    await user.delete();
+
+    // Revoga o acesso do iter à conta Google, para o próximo login pedir
+    // consentimento de novo. Melhor esforço: a conta já não existe, e falhar
+    // aqui não desfaz nada.
+    try {
+      await _googleSignIn.disconnect();
+    } catch (e) {
+      debugPrint('Conta excluída, mas o disconnect do Google falhou: $e');
+    }
+
+    return true;
+  }
+
   // Get current user
   static User? getCurrentUser() {
     return _auth.currentUser;

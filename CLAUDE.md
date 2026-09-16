@@ -654,6 +654,55 @@ Firebase Android app, so both SHA-1s (Play Console → App integrity, and the
 upload key's) must be registered there and `google-services.json` re-downloaded
 — otherwise the build from the store cannot log in, and login is Google-only.
 
+## Deleting an account: the Auth trigger cleans, the app only deletes the user
+
+`GoogleSignInService.deleteAccount()` reauthenticates with Google (always — it
+doubles as the second confirmation) and calls `user.delete()`. **Everything
+else** is `excluirConta` in `functions/conta.js`, a 1st-gen
+`auth.user().onDelete` (2nd gen has no user-deletion trigger). The client
+could not do it: `fcmTokens` is unreadable even by its owner, `precos` is
+immutable, and finding someone's comments on other people's posts needs a
+collection-group query. Because the trigger is the Auth deletion, deleting a
+user in the Firebase console — how a request from the web page is served —
+cleans up the same way. See `docs/specs/exclusao-de-conta.md`.
+
+The app never learns whether cleanup finished, so the function has
+`failurePolicy: true` and **every step must stay safe to repeat**. The
+emulator suite runs it twice to prove that.
+
+Three things are easy to break:
+
+- **Friendship edges before invite markers.** `aceite` fires on the deletion of
+  `friendRequests/{a}/outgoing/{b}` and reads `friends/{a}/list/{b}`. With the
+  edge still there, the ex-friend gets "fulano aceitou seu convite" from a
+  deleted account. The order lives in `desfazerVinculos` (all edges awaited
+  before any marker). The emulator's "no false aceite" check is **not** proof of
+  it: the trigger reads asynchronously, and with the order reversed the edges
+  would usually be gone by then anyway.
+- **`firestore.indexes.json` holds collection-group overrides** on `uid` for
+  `comments`, `likes` and `precos`. The emulator does not enforce indexes, so
+  the suite passes without them, and production dies with
+  `FAILED_PRECONDITION` — then retries for seven days. A field override
+  replaces the automatic indexes on that field, which is why each entry repeats
+  the three collection-scope ones.
+- **Deploy order:** indexes (wait for "Enabled"), then the function, then the app
+  with the button. With the button live and no function, `user.delete()`
+  succeeds and every document stays behind with nobody holding the uid.
+
+What stays is decided by who can read it: posts become the same tombstone as
+`PostController.erase` (other people's comments under them are theirs), price
+reports stay but **lose `uid`** because `precos` is world-listable and the feed
+hands out uids, and reports stay as they are because only the console reads
+them.
+
+The emulator has no FCM: a fake token seeded before any notification is sent to
+real FCM, comes back `invalid-argument`, and `push.js` deletes it as dead. Seed
+tokens **after** the last notification of a scenario, or a "was deleted" check
+passes without the code under test doing anything.
+
+`site/` is Firebase Hosting (`/privacidade`, `/excluir-conta`), the two URLs the
+Play listing requires.
+
 ## Known incomplete work
 
 Two files are intentionally empty placeholders: `lib/route.dart` and

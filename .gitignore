@@ -52,3 +52,6 @@ app.*.map.json
 firestore-tests/node_modules/
 functions/node_modules/
 *-debug.log
+
+# Cache do deploy do Firebase Hosting.
+.firebase/

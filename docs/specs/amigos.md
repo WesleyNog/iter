@@ -936,10 +936,12 @@ todo o resto do app — "não dá para calcular" nunca vira um número —, e a 
   real não é o feed: é uma Function em laço (uma trigger que escreve no
   documento que a dispara). Antes da primeira Function, ligar orçamento e
   alerta de faturamento no console.
-- **Apagar a conta** — não existe fluxo hoje, e passa a deixar rastro: arestas
-  de amizade em listas alheias e uma projeção pública órfã. O `FriendTile`
-  desenha `@apelido` e inicial genérica quando `profiles/{friendUid}` falta, em
-  vez de linha em branco.
+- **Apagar a conta** — **entregue em 16/09/2026**: a Function `excluirConta`
+  dispara na exclusão do usuário no Auth e apaga as arestas dos dois lados, os
+  marcadores e a projeção pública. Ver `docs/specs/exclusao-de-conta.md`. O
+  `FriendTile` continua desenhando `@apelido` e inicial genérica quando
+  `profiles/{friendUid}` falta, que agora só acontece com a aresta órfã que a
+  spec nova registra como fora de escopo.
 - **UI para trocar o próprio apelido** — `NicknameController.change()` existe e
   nunca foi ligado a uma tela. A metade que incomodava — *para alguém te achar,
   você precisa conseguir passar o seu apelido* — foi **entregue em 24/08/2026**:
