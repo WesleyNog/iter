@@ -639,6 +639,21 @@ done
 A related symptom of the same corruption is
 `unable to rename temporary '…/round_robin.o.tmp'` while building gRPC-Core.
 
+## Android release signing
+
+`android/app/build.gradle.kts` signs `release` with the Play **upload key**
+described in `android/key.properties` (gitignored, holds the passwords and an
+absolute `storeFile` path — Gradle does not expand `~`). The keystore lives
+outside the repo, in `~/keystores/`. Without `key.properties` the release falls
+back to the debug key with a warning, so a fresh clone still builds; the Play
+Console rejects that bundle on upload, which is where the mistake should surface.
+
+Play re-signs the app with its own **app signing key**, whose SHA-1 is not the
+upload key's. Google Sign-In matches the installed app's SHA-1 against the
+Firebase Android app, so both SHA-1s (Play Console → App integrity, and the
+upload key's) must be registered there and `google-services.json` re-downloaded
+— otherwise the build from the store cannot log in, and login is Google-only.
+
 ## Known incomplete work
 
 Two files are intentionally empty placeholders: `lib/route.dart` and
