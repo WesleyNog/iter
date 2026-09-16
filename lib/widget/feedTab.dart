@@ -9,10 +9,11 @@ import 'package:iter/model/post.dart';
 import 'package:iter/model/publicProfile.dart';
 import 'package:iter/model/report.dart';
 import 'package:iter/screens/addPost.dart';
+import 'package:iter/services/feedBanners.dart';
 import 'package:iter/services/postImage.dart';
 import 'package:iter/widget/blockDialog.dart';
 import 'package:iter/widget/commentsSheet.dart';
-import 'package:iter/widget/feedAdSlot.dart';
+import 'package:iter/widget/feedBannerSlot.dart';
 import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/postCard.dart';
 import 'package:iter/widget/reportSheet.dart';
@@ -66,6 +67,14 @@ class _FeedTabState extends State<FeedTab> {
   static const int _maxChainedPages = 5;
 
   final _posts = <Post>[];
+
+  /// Os banners do mural, um por âncora, vivos enquanto a aba viver.
+  ///
+  /// Aqui no `State` e não em algo global: a `home.dart` desmonta a aba ao
+  /// trocar de tela, e é esse `dispose` que libera as views nativas. Voltar ao
+  /// mural pede os anúncios de novo — que é o que se quer de uma tela que foi
+  /// fechada. Ver `docs/specs/anuncios-no-feed.md`.
+  final _banners = FeedBanners();
   final _likes = <String, int>{};
   final _liked = <String>{};
   final _comments = <String, int>{};
@@ -133,6 +142,7 @@ class _FeedTabState extends State<FeedTab> {
   @override
   void dispose() {
     _scroll.dispose();
+    _banners.dispose();
     super.dispose();
   }
 
@@ -522,7 +532,11 @@ class _FeedTabState extends State<FeedTab> {
         // na lista. Com o `as`, um `FeedSlot` novo compilaria e estouraria em
         // execução, na tela de outra pessoa.
         return switch (slots[index - 1]) {
-          AdSlot(:final anchorId) => FeedAdSlot(key: ValueKey('ad-$anchorId')),
+          AdSlot(:final anchorId) => FeedBannerSlot(
+            key: ValueKey('ad-$anchorId'),
+            anchorId: anchorId,
+            banners: _banners,
+          ),
           PostSlot(:final post) => _card(post),
         };
       },

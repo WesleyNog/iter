@@ -26,8 +26,6 @@ void main() {
 
     expect(find.text('PUBLICIDADE'), findsOneWidget);
     expect(find.byKey(const Key('anuncio')), findsOneWidget);
-    // E o placeholder some, para não haver dois fundos empilhados.
-    expect(find.text('Espaço reservado para anúncio'), findsNothing);
   });
 
   testWidgets('não imita o card de post', (tester) async {
@@ -107,6 +105,18 @@ void main() {
       padding.padding.vertical,
       greaterThanOrEqualTo(48),
     ); // 24 em cima e embaixo
+  });
+
+  testWidgets('a moldura vazia não escreve nada dentro', (tester) async {
+    // O "Espaço reservado para anúncio" da etapa 1 era texto de validação. Com
+    // o SDK ligado, a moldura vazia é o anúncio a caminho — e um texto ali
+    // seria conteúdo do app formatado como anúncio, a outra metade da regra.
+    await _pump(tester);
+
+    expect(
+      find.descendant(of: find.byType(FeedAdSlot), matching: find.byType(Text)),
+      findsOneWidget, // só o rótulo
+    );
   });
 
   testWidgets('reserva altura antes de o anúncio existir', (tester) async {

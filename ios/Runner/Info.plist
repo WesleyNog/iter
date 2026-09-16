@@ -47,6 +47,11 @@
 	     localização, sem mostrar diálogo nenhum. -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Para mostrar os postos de combustível perto de você ao registrar um abastecimento.</string>
+	<!-- AdMob: o App ID real do iter. Sem ele o SDK de anúncios derruba o app
+	     na abertura. Real ou demonstração é decidido pelo bloco pedido, em
+	     lib/Utils/adUnits.dart. Ver docs/specs/anuncios-no-feed.md. -->
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-8153139669866970~5951899863</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Para tirar uma foto do seu veículo ou de uma publicação no mural, e para ler o QR Code de um amigo.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

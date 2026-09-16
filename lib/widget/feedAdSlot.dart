@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:iter/Utils/adUnits.dart';
 
-/// O espaço do anúncio no mural.
+/// A moldura do anúncio no mural: rótulo, borda e folga.
 ///
-/// Na etapa 1 ele é um **placeholder**: desenha a moldura, o rótulo e a folga
-/// definitivos, sem nenhum SDK de anúncio por trás. É isso que permite validar
-/// a cadência e o respiro no aparelho antes de o `google_mobile_ads` entrar —
-/// e antes de existir conta AdMob servindo qualquer coisa. Ver
-/// `docs/specs/anuncios-no-feed.md`.
+/// Nasceu como placeholder na etapa 1, para validar a cadência e o respiro no
+/// aparelho antes do SDK; na etapa 2 quem decide o que vai dentro é o
+/// `FeedBannerSlot`, e esta moldura ficou igual de propósito — o que foi
+/// validado é o que aparece. Ver `docs/specs/anuncios-no-feed.md`.
 ///
 /// **Três coisas aqui são política, não estética**, e é por isso que elas estão
 /// neste widget e não numa folha de estilo:
@@ -28,10 +28,8 @@ import 'package:flutter/material.dart';
 class FeedAdSlot extends StatelessWidget {
   const FeedAdSlot({super.key, this.child});
 
-  /// O anúncio de verdade, quando houver. `null` desenha o placeholder.
-  ///
-  /// A moldura, o rótulo e a folga são os mesmos nos dois casos de propósito:
-  /// o que a etapa 1 valida no aparelho é o que a etapa 2 vai mostrar.
+  /// O banner, quando chegou. `null` desenha a moldura vazia na altura
+  /// reservada, para a lista não saltar quando ele chegar.
   final Widget? child;
 
   /// A folga acima e abaixo. Decisão registrada na spec: 24 px contra os 12 px
@@ -45,14 +43,13 @@ class FeedAdSlot extends StatelessWidget {
   /// que vem embaixo é o cabeçalho do próximo post, que é texto e foto.
   static const double gap = 24;
 
-  /// A altura reservada enquanto não há anúncio.
-  ///
-  /// O banner inline adaptativo tem altura calculada a partir da largura da
-  /// tela, e ela precisa ser conhecida **antes** de o anúncio carregar — senão
-  /// a lista salta quando ele chega. Este número é o do banner adaptativo
-  /// típico em telefone; a etapa 2 troca a constante pelo valor que o SDK
-  /// devolve.
-  static const double reservedHeight = 100;
+  /// A altura reservada enquanto o banner não chega — o mesmo teto com que ele
+  /// é pedido (`kFeedBannerMaxHeight`), para nunca chegar maior que o espaço.
+  static const double reservedHeight = kFeedBannerMaxHeight;
+
+  /// A espessura da borda. O banner é pedido com a largura **de dentro** dela,
+  /// e é por isso que o número mora aqui e não só no `Border.all`.
+  static const double borderWidth = 1;
 
   @override
   Widget build(BuildContext context) {
@@ -87,18 +84,16 @@ class FeedAdSlot extends StatelessWidget {
               // nenhuma: são as duas diferenças que fazem o slot ler como
               // outro objeto ao rolar depressa.
               borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: Colors.grey.shade300),
+              border: Border.all(
+                color: Colors.grey.shade300,
+                width: borderWidth,
+              ),
             ),
             alignment: Alignment.center,
-            child:
-                child ??
-                Text(
-                  'Espaço reservado para anúncio',
-                  // `shade400` sobre branco dá 1,88:1 — ilegível. Este texto é
-                  // temporário, mas é justamente ele que o dono precisa
-                  // enxergar no aparelho para validar a cadência.
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                ),
+            // `clipBehavior` porque a view nativa do banner não respeita o raio
+            // da moldura por conta própria.
+            clipBehavior: Clip.antiAlias,
+            child: child,
           ),
         ],
       ),

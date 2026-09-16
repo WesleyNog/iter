@@ -9,6 +9,7 @@ import 'package:iter/firebase_options.dart';
 import 'package:iter/screens/addIter.dart';
 import 'package:iter/screens/home.dart';
 import 'package:iter/screens/login.dart';
+import 'package:iter/services/ads.dart';
 import 'package:iter/services/appCheck.dart';
 import 'package:iter/services/pushMessaging.dart';
 
@@ -57,6 +58,11 @@ Future<void> main() async {
   // Sem `await`: o primeiro quadro não espera rede. Se a resposta chegar depois
   // de a Home montar, o `ValueNotifier` do serviço avisa.
   unawaited(PushMessaging.instance.ligarToques());
+
+  // Sem `await`, pelo mesmo motivo: o SDK de anúncios faz rede para acordar os
+  // adaptadores, e o único anúncio do app mora no mural. O banner espera por
+  // `AdsService.pronto` antes de pedir.
+  AdsService.ativar();
 
   runApp(const MyApp());
 }

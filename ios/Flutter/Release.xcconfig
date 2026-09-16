@@ -1,2 +1,20 @@
 #include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
 #include "Generated.xcconfig"
+
+// google_mobile_ads 9.1.0 não compila sem isto.
+//
+// `FLTAd_Internal.h:22` e `FLTAdPreloader.h:17` importam
+// <GoogleMobileAds/GoogleMobileAds_Beta.h>, e esse header mora em
+// PrivateHeaders do framework — fora do module map. O clang recusa:
+// "include of non-modular header inside framework module".
+//
+// A flag precisa estar **aqui**, no alvo que importa o módulo, e não só no
+// pod: a validação do módulo acontece no contexto de quem o importa, e quem
+// importa é o GeneratedPluginRegistrant do Runner. Pôr só no pod (tentativa
+// anterior, via post_install) não muda nada — verificado: a flag chegou ao
+// pbxproj do plugin e o build falhou igual.
+//
+// É defeito do plugin com a própria dependência dele: 9.1.0 pede
+// Google-Mobile-Ads-SDK ~> 13.7, o 13.7.0 foi instalado, e o header está em
+// PrivateHeaders mesmo. Sai daqui quando o plugin corrigir.
+CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES = YES

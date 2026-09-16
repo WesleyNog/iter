@@ -703,6 +703,37 @@ passes without the code under test doing anything.
 `site/` is Firebase Hosting (`/privacidade`, `/excluir-conta`), the two URLs the
 Play listing requires.
 
+## Ads: demo units unless production says otherwise
+
+The feed shows AdMob banners (`docs/specs/anuncios-no-feed.md`). The ad unit
+comes from `feedBannerUnit()` in `lib/Utils/adUnits.dart`, and the **real**
+unit needs both a release build **and** `--dart-define=ANUNCIOS_REAIS=true`.
+Everything else — debug, profile, and the release uploaded to the closed test —
+requests Google's demo units, which belong to no account. The closed-test
+testers are the owner's acquaintances; real ads in their hands is the invalid
+traffic that gets AdMob accounts suspended. Only the production build passes
+the flag.
+
+Requests are always `AdRequest(nonPersonalizedAds: true)`: that is what lets the
+app skip a consent form under LGPD. Personalized ads need UMP consent first and
+a privacy policy change with it.
+
+`FeedBanners` caches one `BannerAd` per **anchor post id**, never per list index
+(an `AdWidget` cannot reuse an `Ad`), keeps them while the tab lives, and never
+re-requests an anchor that got no fill — the slot collapses instead. The slot
+requests after the frame, never from `build`, with its measured inner width, and
+asks for an inline adaptive banner capped at `kFeedBannerMaxHeight`, the same
+height the frame reserves, so the list never jumps down.
+
+The App IDs in `AndroidManifest.xml` and `Info.plist` are the real ones; without
+them the SDK kills the app at launch. `ios/Flutter/*.xcconfig` carries
+`CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES` because
+google_mobile_ads 9.1.0 does not compile without it. XML comments cannot contain
+`--`, which is why the manifest comment spells the flag without it.
+
+`site/app-ads.txt` is served from `iter-mn.web.app`; the Play listing has to name
+that site for AdMob's crawler to find it.
+
 ## Known incomplete work
 
 Two files are intentionally empty placeholders: `lib/route.dart` and

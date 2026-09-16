@@ -1,40 +1,81 @@
 # Spec: Anúncios entre os posts do feed
 
-Status: **etapa 1 entregue em 24/08/2026** (commit `c47fc8c`) · O **portão do
-protótipo passou** no mesmo dia: o formato banner está aprovado por medição em
-aparelho · A **etapa 2 está pausada, e não por falta de trabalho** — ver
-"O que destrava a etapa 2"
+Status: **etapa 2 implementada em 16/09/2026** — banners de verdade no mural,
+com blocos de **demonstração** em todo build que não seja o de produção. Etapa 1
+entregue em 24/08/2026 (commit `c47fc8c`); o portão do protótipo passou no mesmo
+dia · Falta **verificar no aparelho** que o banner de demonstração aparece e
+rola liso, e — para receita — o app sair em produção
 
-## O que destrava a etapa 2
+## Etapa 2: o que entrou, e as duas decisões novas
 
-Nada aqui é código deste repositório, e é por isso que a spec para. Em ordem de
-dependência:
+| arquivo | papel |
+|---|---|
+| `lib/Utils/adUnits.dart` | qual bloco pedir: demonstração ou real |
+| `lib/services/ads.dart` | inicializa o SDK e carrega um banner (`AdsService`) |
+| `lib/services/feedBanners.dart` | cache de banner **por âncora**, vivo enquanto a aba vive |
+| `lib/widget/feedBannerSlot.dart` | pede depois do quadro e escolhe entre moldura, banner ou nada |
+| `lib/widget/feedAdSlot.dart` | a moldura da etapa 1, sem o texto de validação |
+| `AndroidManifest.xml`, `Info.plist` | os App IDs **reais** — sem eles o SDK derruba o app na abertura |
+| `ios/Flutter/*.xcconfig` | o contorno de build que o plugin 9.1.0 exige (seção abaixo) |
+| `site/app-ads.txt` | em `iter-mn.web.app`, que declara o publisher |
 
-1. **O `release` do Android precisa parar de assinar com a chave de debug.** É o
-   que impede publicar na Play, e está registrado no `CLAUDE.md` desde antes
-   desta spec.
-2. **O app precisa estar numa loja suportada.** Sem isso o AdMob não faz o *app
-   readiness review* e o app fica em *limited ad serving* — nenhum anúncio de
-   verdade é servido, por mais correto que o código esteja.
-3. **App Check e um orçamento de faturamento**, que a `amigos.md` já marca como
-   "faça antes do app sair do seu celular". Publicar sem isso expõe uma coleção
-   globalmente gravável num projeto Blaze.
-4. **`app-ads.txt`**, que exige um domínio de site de desenvolvedor declarado na
-   ficha da loja. Não bloqueia servir anúncio; a ausência custa receita por
-   inventário não autorizado.
-5. **A escolha LGPD no console**: público 100% brasileiro exige oferecer a
-   escolha entre anúncio personalizado e não personalizado, ou servir só não
-   personalizado.
+**6. Anúncio real exige duas travas.** `feedBannerUnit` só devolve o bloco real
+num build de **release** feito com `--dart-define=ANUNCIOS_REAIS=true`. Todo o
+resto — debug, profile e o release que vai para o **teste fechado** — pede os
+blocos de demonstração do Google, que não pertencem à conta. Aprovado pelo dono
+em 16/09/2026. A razão é a que esta spec já registrava como risco dominante:
+os doze testadores do teste fechado são conhecidos do dono, e conhecido que
+clica "para ajudar" é o padrão que o antifraude pune — com suspensão que pode
+levar os ganhos. De quebra, em teste fechado o AdMob ainda nem serve anúncio de
+verdade (item 2 abaixo). **O build de produção é o único que leva a flag.**
 
-**O que já está pronto esperando esses cinco**, e não precisa ser redescoberto:
-o desenho da etapa 2 inteiro (cache de `BannerAd` por âncora, `AdWidget` com
-objeto único, formato inline adaptativo), as duas regras que o protótipo
-produziu, o contorno de build sem o qual o plugin não compila, os quatro
-identificadores do AdMob, e a branch `prototipo-banners` com tudo isso rodando.
+**7. Só anúncio não personalizado.** `AdsService.request` é
+`AdRequest(nonPersonalizedAds: true)`. Aprovado em 16/09/2026. Cumpre o item 5
+abaixo pelo lado mais simples: sem tela de consentimento, e a política de
+privacidade cabe no legítimo interesse. O custo é eCPM menor, que na escala de
+hoje (ver "A conta") é centavo. Personalizar exige o formulário de
+consentimento (UMP) **antes**, e a política junto.
 
-Retomar é: `git checkout prototipo-banners`, trocar as unidades demo pelas
-reais **só em release**, e cadastrar os dois iPhones como test devices antes da
-primeira requisição real.
+**Três escolhas de implementação que não são óbvias:**
+
+- **O banner é pedido com teto de altura** (`getInlineAdaptiveBannerAdSize(largura,
+  100)`), e 100 é a mesma altura que a moldura reserva (`kFeedBannerMaxHeight`).
+  O anúncio nunca chega maior que o espaço guardado, e a lista não salta para
+  baixo debaixo do dedo.
+- **O pedido sai do slot, depois do quadro, e não de quando a página chega.**
+  O `ListView.builder` só constrói o que está perto da tela, então só se pede o
+  anúncio que alguém vai ver. E a largura é a **medida** da moldura menos a
+  borda, não a da tela.
+- **Anúncio que não veio faz o slot sumir inteiro**, rótulo incluído, e aquela
+  âncora não é pedida de novo enquanto a aba viver. Sem preenchimento é o caso
+  comum de app pequeno; um buraco com "PUBLICIDADE" em cima é pior que nada.
+
+O `loadBanner` tem prazo de 30 s, e **quem fecha o `Completer` primeiro decide
+e libera** — sem isso, um banner que carregasse depois do prazo seria entregue a
+ninguém e liberado duas vezes. `FeedBanners` também libera o banner que chega
+depois de a aba fechar.
+
+**Armadilha que custou um build:** comentário XML não aceita `--`. Um
+`--dart-define` escrito no comentário do `AndroidManifest.xml` derruba o
+`processDebugMainManifest` com "Error parsing AndroidManifest.xml".
+
+## O que destrava a etapa 2 — e onde cada item está
+
+1. ~~O `release` do Android assina com a chave de debug.~~ **Resolvido em
+   16/09/2026** (`android/key.properties`, ver `CLAUDE.md`).
+2. **O app precisa estar numa loja suportada.** Continua valendo, e é por isso
+   que o teste fechado usa blocos de demonstração: até a produção, o AdMob não
+   faz o *app readiness review* e o app fica em *limited ad serving*.
+3. **App Check e um orçamento de faturamento** — pendentes, e são passos de
+   console. Fazer antes de chamar os doze testadores.
+4. ~~`app-ads.txt` exige um domínio.~~ **Publicado em 16/09/2026** em
+   `https://iter-mn.web.app/app-ads.txt`. Falta declarar esse site na ficha da
+   Play (Configurações da loja → site) para o crawler do AdMob achá-lo.
+5. ~~A escolha LGPD.~~ **Decidida: só não personalizado** (decisão 7).
+
+**Antes do primeiro build de produção:** cadastrar os aparelhos do dono como
+*test devices* no AdMob — é a regra "unidade real nunca no aparelho do dono"
+valendo também quando o app vier da loja.
 
 ## Objetivo
 
@@ -492,6 +533,9 @@ enxerga clique acidental. Aprovado em 24/08/2026.
 **3. O rótulo é "Publicidade".** Aprovado em 24/08/2026. Fica no slot, visível,
 e é metade do que impede o anúncio de ser confundido com post; a outra metade é
 o slot não imitar o `Container` do card.
+
+**6 e 7** — anúncio real com duas travas, e só não personalizado — estão em
+"Etapa 2: o que entrou", no topo.
 
 ## Os identificadores
 

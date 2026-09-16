@@ -44,6 +44,17 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
+        <!-- AdMob: o App ID **real** do iter. Sem esta linha o SDK de anúncios
+             derruba o app na abertura. O App ID não decide se o anúncio é real
+             ou de demonstração — quem decide é o bloco pedido, e ele só é real
+             num build de produção feito com a flag ANUNCIOS_REAIS=true do
+             dart-define (lib/Utils/adUnits.dart). Nada de dois hífens seguidos
+             aqui: XML não aceita isso dentro de comentário, e o build morre ao
+             ler o manifesto. Ver docs/specs/anuncios-no-feed.md. -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-8153139669866970~8362440786"/>
+
         <!-- Notificações push (FCM). Ver docs/specs/notificacoes.md.
 
              O ícone é obrigatório: sem ele o FCM cai no ic_launcher, que é 100%
