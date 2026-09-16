@@ -1,10 +1,11 @@
 # Spec: Excluir a conta
 
-Status: **implementada e publicada** · Criada, aprovada, implementada e com
-deploy em 2026-09-16 (índices, Function `excluirConta` e Hosting em
-`iter-mn.web.app`) · Falta confirmar os três índices como "Ativado" no console
-antes de o app com o botão chegar a alguém, e a primeira exclusão real em
-produção
+Status: **implementada, publicada e verificada** · Criada, aprovada,
+implementada e com deploy em 2026-09-16 (índices, Function `excluirConta` e
+Hosting em `iter-mn.web.app`) · **Primeira exclusão real no mesmo dia**, pelo
+simulador iOS, numa conta de teste com amigos: uma execução, 1,7 s, status
+`ok`, sem repetição; nenhum `aceite` nem `convite` disparado, e o `ranking`
+acordou uma vez por balde apagado e saiu na primeira linha, como previsto
 
 ## Objetivo
 
