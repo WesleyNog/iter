@@ -29,7 +29,17 @@ service firebase.storage {
 
       // Apagar o próprio, para o post que vira tombstone poder levar a foto
       // junto. Não há cascata: o Storage não sabe que o documento sumiu.
-      allow delete: if request.auth != null && request.auth.uid == userId;
+      //
+      // O admin também apaga: a lápide do painel anula o `imagePath`, mas os
+      // bytes continuariam legíveis por qualquer autenticado que guardou o
+      // caminho — e remover a imagem é metade do motivo de remover o post.
+      // O uid é o MESMO literal de `isAdmin()` em `firestore.rules`, que este
+      // arquivo não enxerga: mudar um é mudar os dois, como o regex de
+      // apelido que vive lá e em `NicknameController`. Só `delete`: o admin
+      // não escreve nem lê nada aqui que qualquer autenticado já não possa.
+      allow delete: if request.auth != null
+                    && (request.auth.uid == userId
+                        || request.auth.uid == 'nn0pMX9g14WP4T0KSVbJoV2A2pl2');
     }
 
     // Nada mais no bucket. Sem esta negação explícita, um caminho novo

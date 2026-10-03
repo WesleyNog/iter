@@ -457,7 +457,9 @@ post, which is what stops the harassment everyone *else* would still see.
 
 `reports/p_{postId}__{uid}` (or `c_{postId}_{commentId}__{uid}`) is the report,
 and **the document is the channel**: there is no server, so the queue is read in
-the Firebase console and hiding a post is an admin write. `get` and `list` are
+the admin panel (`site/admin.html`, see below) — the console remains the
+emergency route, but its writes bypass the rules, which is exactly what the
+panel exists to avoid. `get` and `list` are
 `false` for everyone, reporter included — a readable report collection is the
 list of who denounced whom. The id gives one report per person per target by
 *shape*, the reason is a closed list (never free text — that field would be the
@@ -482,6 +484,36 @@ moderation channel the feature has.
 Reporting hides the post locally and does not persist that: blocking is what
 solves it for good, and storing "posts this user hid" would be another
 collection and another read per feed open.
+
+## Admin panel: the moderator goes through the rules, not over them
+
+`site/admin.html` + `site/admin.js` (plain JS, Firebase web SDK via CDN, no
+build) is the moderation queue, served at `/admin` on the existing Hosting.
+Access is decided by `function isAdmin()` in `firestore.rules` — a **fixed
+uid**, not a custom claim, because a claim needs a service-account key and a
+uid is not a secret (`list` on `posts` hands them out). The **same uid literal
+is duplicated in `storage.rules`** (admin delete under `posts/{uid}/…`) —
+change both together. The rules tests extract the literal from
+`firestore.rules` itself, so swapping the uid never desynchronizes them.
+
+What the admin gets: `get, list` on `reports`; the **same pinned tombstone**
+on other people's posts (not arbitrary update — the shape conditions apply to
+him too); `delete` on any comment; and `moderation/{alvo}` (admin-only), where
+the id is the **target** (`p_{postId}` / `c_{postId}_{commentId}`), so one
+decision settles every report of that target. Reports stay immutable; the
+pending queue is `reports` grouped by target minus `moderation`, joined
+client-side. What he deliberately does not get: reading `user/{uid}` (CPF),
+real post deletes, writing `norouterule` — the "o raio do admin PARA aqui"
+test pins that down; if it fails, someone turned `isAdmin()` into a superuser.
+
+The panel never checks "is admin" in JS: it just reads, and
+`permission-denied` renders as "esta conta não tem acesso" — a different
+sentence from "fila vazia" and from "sem rede", the `getWeather` rule again.
+Reported text goes into the DOM via `textContent` only, never innerHTML —
+reported content is by definition the app's most hostile text. When App Check
+arrives, the panel's Web App (`1:87511151381:web:…`) needs a reCAPTCHA
+provider registered or the panel stops working. See
+`docs/specs/painel-admin.md`.
 
 Comment threads use `snapshots()` while the wall uses `get()` — a listener on
 the wall re-delivers documents on every like by anyone, to everyone with the app
@@ -745,10 +777,11 @@ Two files are intentionally empty placeholders: `lib/route.dart` and
   left there is **App Check plus a billing budget and alert** — the one item
   `docs/specs/amigos.md` marks as "do it before the app leaves your phone",
   because a globally writable collection on Blaze without App Check is a
-  ten-line script making you pay. Also missing: automatic moderation (today the
-  report queue is read by hand in the console) and the Function that would
-  delete the likes/comments subcollections of a tombstoned post — that one is
-  quota economy, not correctness.
+  ten-line script making you pay. Also missing: automatic moderation (the
+  report queue is read in the admin panel at `/admin`, but nothing notifies
+  the owner when a report arrives) and the Function that would delete the
+  likes/comments subcollections of a tombstoned post — that one is quota
+  economy, not correctness.
 
 `AddIter._saveRoute()` **is** wired (`addIter.dart:838`) and its guard is correct
 (`if (!validate()) { notify; return; }`); the save button really writes to

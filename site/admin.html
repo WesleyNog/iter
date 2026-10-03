@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Moderação · iter</title>
+  <!-- A URL é pública e a página é inerte sem a conta do admin: quem decide o
+       acesso é o firestore.rules, não este HTML. Ver docs/specs/painel-admin.md. -->
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="/estilo.css">
+  <style>
+    .acoes { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    button {
+      font: inherit;
+      border: 1px solid var(--linha);
+      border-radius: 8px;
+      padding: 8px 16px;
+      background: var(--papel);
+      color: var(--texto);
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: default; }
+    button.perigo { border-color: var(--perigo); color: var(--perigo); }
+    button.primario { background: var(--marca); border-color: var(--marca); color: #fff; }
+    .selo {
+      display: inline-block;
+      background: var(--linha);
+      border-radius: 999px;
+      padding: 2px 10px;
+      font-size: 0.85rem;
+      margin: 2px 4px 2px 0;
+    }
+    .conteudo {
+      border-left: 3px solid var(--linha);
+      padding: 4px 12px;
+      margin: 12px 0;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .conteudo img { max-width: 100%; max-height: 320px; border-radius: 8px; display: block; margin-top: 8px; }
+    .oculto { display: none; }
+    #erro { color: var(--perigo); }
+    .topo { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="topo">
+      <div>
+        <a class="marca" href="/">iter</a>
+        <h1>Moderação</h1>
+        <p class="suave">Denúncias pendentes, com o conteúdo denunciado ao lado.</p>
+      </div>
+      <button id="sair" class="oculto">Sair</button>
+    </header>
+
+    <section id="entrar" class="cartao oculto">
+      <h2>Entrar</h2>
+      <p>Use a conta do administrador para abrir a fila.</p>
+      <div class="acoes"><button id="botao-entrar" class="primario">Entrar com Google</button></div>
+    </section>
+
+    <section id="carregando" class="cartao oculto"><p>Carregando a fila…</p></section>
+
+    <section id="sem-acesso" class="cartao oculto">
+      <h2>Esta conta não tem acesso</h2>
+      <p>O painel é restrito ao administrador. Você está logado, mas esta conta
+         não é a dele — e nada foi lido.</p>
+    </section>
+
+    <section id="erro" class="cartao oculto">
+      <h2>Não deu para carregar</h2>
+      <p>Falha de rede ou serviço, <strong>não</strong> de permissão. Tente de novo.</p>
+      <div class="acoes"><button id="tentar-de-novo">Tentar de novo</button></div>
+    </section>
+
+    <section id="vazio" class="cartao oculto">
+      <h2>Nenhuma denúncia pendente</h2>
+      <p class="suave">Tudo tratado. As baixas ficam em <code>moderation</code>; as denúncias nunca são apagadas.</p>
+    </section>
+
+    <div id="fila"></div>
+
+    <footer class="suave">
+      <p>Remover um post grava a mesma lápide do app e é conferido pelas regras.
+         A denúncia em si nunca é apagada.</p>
+    </footer>
+  </main>
+  <script type="module" src="/admin.js"></script>
+</body>
+</html>

@@ -32,10 +32,18 @@ const ANA = 'uid-ana'
 const BIA = 'uid-bia'
 const ZECA = 'uid-zeca'
 
+// As regras são lidas uma vez e o uid do admin sai do literal de `isAdmin()`
+// no próprio arquivo: a fonte é uma só, então trocar o uid lá (ou um clone
+// rodar com o placeholder) não dessincroniza este teste — ele testa o que
+// está escrito, seja lá o que for.
+const REGRAS = readFileSync('../firestore.rules', 'utf8')
+const ADMIN = REGRAS.match(/function isAdmin\(\)[\s\S]*?==\s*'([^']+)'/)[1]
+
 let env
 let ana
 let bia
 let zeca
+let admin
 
 /** O corpo que a regra aceita: só `at`, e preso a `request.time`. */
 const stamp = () => ({ at: serverTimestamp() })
@@ -52,7 +60,7 @@ before(async () => {
   env = await initializeTestEnvironment({
     projectId: 'iter-mn',
     firestore: {
-      rules: readFileSync('../firestore.rules', 'utf8'),
+      rules: REGRAS,
       host: '127.0.0.1',
       port: 8080,
     },
@@ -61,6 +69,7 @@ before(async () => {
   ana = env.authenticatedContext(ANA).firestore()
   bia = env.authenticatedContext(BIA).firestore()
   zeca = env.authenticatedContext(ZECA).firestore()
+  admin = env.authenticatedContext(ADMIN).firestore()
 })
 
 after(async () => {
@@ -1329,5 +1338,171 @@ describe('marcos do post — o marcador que ninguém pode tocar', () => {
         at: serverTimestamp(),
       }),
     )
+  })
+})
+
+describe('painel admin — o moderador passa pelas regras, não por cima delas', () => {
+  // O que o console nunca deu: a lápide do admin conferida por regra. Uma
+  // escrita de admin no console não passa por este arquivo; a do painel passa
+  // — e estes testes são a diferença entre as duas.
+  before(async () => {
+    await seed()
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(doc(db, 'posts', 'p1'), {
+        uid: ANA,
+        text: 'Post denunciado',
+        imagePath: `posts/${ANA}/foto.jpg`,
+        createdAt: new Date(),
+        deleted: false,
+      })
+      await setDoc(doc(db, 'posts', 'p1', 'comments', 'c1'), {
+        uid: BIA,
+        text: 'Comentário denunciado',
+        createdAt: new Date(),
+      })
+      // Duas denúncias do mesmo post (a fila agrupa por alvo) e uma do
+      // comentário.
+      await setDoc(doc(db, 'reports', `p_p1__${BIA}`), {
+        uid: BIA, postId: 'p1', reason: 'ofensa', at: new Date(),
+      })
+      await setDoc(doc(db, 'reports', `p_p1__${ZECA}`), {
+        uid: ZECA, postId: 'p1', reason: 'spam', at: new Date(),
+      })
+      await setDoc(doc(db, 'reports', `c_p1_c1__${ZECA}`), {
+        uid: ZECA, postId: 'p1', commentId: 'c1', reason: 'golpe',
+        at: new Date(),
+      })
+    })
+  })
+
+  it('o admin lista a fila; conta comum e anônimo, não', async () => {
+    // Afirmar o tamanho, não só que a leitura passou: um `list` autorizado
+    // sobre coleção vazia também "passa" — com o seed esquecido este teste
+    // continuaria verde sem provar nada, a armadilha que o bloco de
+    // `norouterule` já documenta.
+    const fila = await assertSucceeds(getDocs(collection(admin, 'reports')))
+    assert.equal(fila.size, 3)
+    await assertSucceeds(getDoc(doc(admin, 'reports', `p_p1__${BIA}`)))
+
+    await assertFails(getDocs(collection(bia, 'reports')))
+    const anonimo = env.unauthenticatedContext().firestore()
+    await assertFails(getDocs(collection(anonimo, 'reports')))
+  })
+
+  it('a forma pinada da lápide vale para o admin também', async () => {
+    // O admin não ganhou update: ganhou o direito à única forma que já era
+    // permitida. Texto que sobrevive, imagem que aponta para outro caminho e
+    // edição sem apagar continuam negados — para ele inclusive.
+    await assertFails(
+      updateDoc(doc(admin, 'posts', 'p1'), {
+        deleted: true,
+        text: 'x'.repeat(1000),
+        imagePath: null,
+      }),
+    )
+    await assertFails(
+      updateDoc(doc(admin, 'posts', 'p1'), {
+        deleted: true,
+        text: '',
+        imagePath: `posts/${BIA}/foto.jpg`,
+      }),
+    )
+    await assertFails(updateDoc(doc(admin, 'posts', 'p1'), { text: 'censurado' }))
+  })
+
+  it('remove o post de OUTRA pessoa com a lápide exata', async () => {
+    await assertSucceeds(
+      updateDoc(doc(admin, 'posts', 'p1'), {
+        deleted: true,
+        text: '',
+        imagePath: null,
+      }),
+    )
+  })
+
+  it('delete real continua negado — para o admin inclusive', async () => {
+    // Apagar é marcar, e o moderador não é exceção: o delete real deixaria as
+    // curtidas órfãs, libertaria o id e quebraria o `get()` das próprias
+    // regras de moderação.
+    await assertFails(deleteDoc(doc(admin, 'posts', 'p1')))
+  })
+
+  it('apaga o comentário denunciado — de terceiro, sob post de terceiro', async () => {
+    await assertSucceeds(deleteDoc(doc(admin, 'posts', 'p1', 'comments', 'c1')))
+  })
+
+  it('dá baixa por alvo, e dar baixa de novo não é erro', async () => {
+    const baixa = () => ({ resolution: 'removido', at: serverTimestamp() })
+    await assertSucceeds(setDoc(doc(admin, 'moderation', 'p_p1'), baixa()))
+    // Sobrescrever é o reparo da baixa errada — `delete` é que não existe.
+    await assertSucceeds(
+      setDoc(doc(admin, 'moderation', 'p_p1'), {
+        resolution: 'ignorado',
+        at: serverTimestamp(),
+      }),
+    )
+    await assertSucceeds(setDoc(doc(admin, 'moderation', 'c_p1_c1'), baixa()))
+  })
+
+  it('baixa fora da forma é negada — mesmo vinda do admin', async () => {
+    await assertFails(
+      setDoc(doc(admin, 'moderation', 'p_p1'), {
+        resolution: 'porque sim',
+        at: serverTimestamp(),
+      }),
+    )
+    await assertFails(
+      setDoc(doc(admin, 'moderation', 'p_p1'), {
+        resolution: 'removido',
+        at: serverTimestamp(),
+        nota: 'texto livre',
+      }),
+    )
+    await assertFails(
+      setDoc(doc(admin, 'moderation', 'p_p1'), {
+        resolution: 'removido',
+        at: new Date('9999-12-31'),
+      }),
+    )
+    // Id que não casa com alvo nenhum não dá baixa em nada — e o regex é o
+    // que impede a coleção de virar depósito de ids inventados.
+    await assertFails(
+      setDoc(doc(admin, 'moderation', 'qualquer'), {
+        resolution: 'removido',
+        at: serverTimestamp(),
+      }),
+    )
+    await assertFails(
+      setDoc(doc(admin, 'moderation', `p_${'z'.repeat(65)}`), {
+        resolution: 'removido',
+        at: serverTimestamp(),
+      }),
+    )
+  })
+
+  it('baixa não se apaga, e conta comum não lê nem escreve', async () => {
+    await assertFails(deleteDoc(doc(admin, 'moderation', 'p_p1')))
+    await assertFails(getDoc(doc(bia, 'moderation', 'p_p1')))
+    await assertFails(getDocs(collection(bia, 'moderation')))
+    await assertFails(
+      setDoc(doc(bia, 'moderation', 'c_p1_c1'), {
+        resolution: 'ignorado',
+        at: serverTimestamp(),
+      }),
+    )
+  })
+
+  it('o raio do admin PARA aqui — CPF, bloqueios e configuração seguem fechados', async () => {
+    // A moderação precisa do conteúdo, não da pessoa: `user/{uid}` (CPF,
+    // telefone) não abre nem para o moderador, e `norouterule` continua sendo
+    // escrita de console. Se um destes passar, alguém transformou `isAdmin()`
+    // em superusuário — que é exatamente o que a spec proíbe.
+    await assertFails(getDoc(doc(admin, 'user', ANA)))
+    await assertFails(getDocs(collection(admin, 'blocks', ANA, 'list')))
+    await assertFails(
+      setDoc(doc(admin, 'norouterule', 'amazon'), { percent: 0 }),
+    )
+    await assertFails(getDocs(collection(admin, 'fcmTokens')))
   })
 })

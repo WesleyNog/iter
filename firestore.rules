@@ -38,6 +38,25 @@ service cloud.firestore {
              + '__' + uid;
     }
 
+    // O admin do painel de moderação (`site/admin.html`) — uma conta só,
+    // decidida pelo uid. Ver `docs/specs/painel-admin.md`.
+    //
+    // Uid fixo e não custom claim, de propósito: gravar um claim exige uma
+    // service-account key, que seria o artefato mais perigoso do projeto em
+    // disco, e uid não é segredo — o `list` de `posts` entrega o de qualquer
+    // um que publique. Se um dia houver um segundo moderador, esta função
+    // vira `request.auth.token.admin == true` num commit só.
+    //
+    // O MESMO uid está em `storage.rules` (delete em `posts/{uid}/…`), que
+    // não enxerga este arquivo — mudar os dois juntos, como o regex de
+    // apelido que vive aqui e em `NicknameController`. Os testes extraem o
+    // literal desta função do próprio arquivo, então trocar o uid não os
+    // dessincroniza.
+    function isAdmin() {
+      return request.auth != null
+             && request.auth.uid == 'nn0pMX9g14WP4T0KSVbJoV2A2pl2';
+    }
+
     // O app grava user/{uid} no primeiro login (GoogleSignInService).
     // Cada usuário só lê e escreve o próprio documento.
     match /user/{userId} {
@@ -540,7 +559,11 @@ service cloud.firestore {
       // Storage. Por isso a lápide é presa à forma exata que
       // `PostController.erase` grava, e não a um conjunto de chaves.
       allow update: if request.auth != null
-                    && resource.data.uid == request.auth.uid
+                    // O admin remove post denunciado gravando ESTA MESMA
+                    // lápide: ele não ganha update arbitrário, ganha o
+                    // direito à única forma que já era permitida — a pinagem
+                    // abaixo vale para ele também.
+                    && (resource.data.uid == request.auth.uid || isAdmin())
                     && request.resource.data.diff(resource.data)
                          .affectedKeys()
                          .hasOnly(['deleted', 'text', 'imagePath'])
@@ -648,7 +671,11 @@ service cloud.firestore {
                       && resource != null
                       && (resource.data.uid == request.auth.uid
                           || get(/databases/$(database)/documents/posts/$(postId))
-                               .data.uid == request.auth.uid);
+                               .data.uid == request.auth.uid
+                          // E o admin, para o comentário denunciado que o
+                          // dono do post não removeu — mesma moderação, um
+                          // moderador a mais.
+                          || isAdmin());
       }
 
       // Os marcos já anunciados deste post: `curtidas_10`, `comentarios_5`.
@@ -669,15 +696,17 @@ service cloud.firestore {
 
     // ── Denúncia ──────────────────────────────────────────────────────────
     //
-    // Não há servidor, então **o documento é o canal**: a denúncia é lida no
-    // console do Firebase, e esconder o conteúdo é uma escrita de admin, que
-    // não passa por estas regras. Uma Function que recebe, esconde e notifica
-    // continua sendo o passo seguinte — e continua custando dinheiro por uso.
+    // Não há servidor, então **o documento é o canal**: a fila é lida no
+    // painel admin (`site/admin.html`), que passa por estas regras — ao
+    // contrário do console, que segue servindo como rota de emergência. Uma
+    // Function que notifica a chegada de denúncia continua sendo o passo
+    // seguinte — e continua custando dinheiro por uso.
     match /reports/{reportId} {
-      // Ninguém lê pelo app, nem quem denunciou. Uma coleção de denúncias
-      // legível é a lista de quem delatou quem, e entre entregadores que se
-      // conhecem do galpão isso é pior do que o conteúdo denunciado.
-      allow get, list: if false;
+      // Só o admin lê: a fila é o canal DELE. Para todo o resto continua
+      // fechada, quem denunciou incluído — uma coleção de denúncias legível
+      // é a lista de quem delatou quem, e entre entregadores que se conhecem
+      // do galpão isso é pior do que o conteúdo denunciado.
+      allow get, list: if isAdmin();
 
       // O id é `p_{postId}__{quem}` ou `c_{postId}_{commentId}__{quem}` — a
       // técnica de `nicknames/{apelido}` outra vez: uma denúncia por pessoa
@@ -722,6 +751,44 @@ service cloud.firestore {
 
       // Denúncia que se apaga não é denúncia — mesma razão de `precos` não ter
       // `update` nem `delete`.
+      allow delete: if false;
+    }
+
+    // ── Baixa de moderação ────────────────────────────────────────────────
+    //
+    // `moderation/{alvo}` registra que o admin já tratou aquele alvo; a fila
+    // pendente do painel é `reports` menos os alvos presentes aqui. O id é o
+    // **alvo** (`p_{postId}` ou `c_{postId}_{commentId}`), não o id da
+    // denúncia: três pessoas denunciando o mesmo post são três documentos em
+    // `reports` e UMA decisão — a baixa por alvo resolve as três de uma vez,
+    // sem varrer sufixos `__{uid}`.
+    //
+    // A denúncia em si permanece intocada — "denúncia que se apaga não é
+    // denúncia" —, e é por isso que a baixa é coleção à parte, e não um campo
+    // em `reports`, cujo `update` está preso à forma de quem denuncia.
+    //
+    // `resolution` é lista fechada, como o `reason` da denúncia e pela mesma
+    // razão: texto livre seria canal de recado. `delete: if false`: baixa
+    // errada se corrige sobrescrevendo (o `update` passa pela mesma condição),
+    // não apagando — apagar devolveria o alvo à fila sem dizer por quê.
+    match /moderation/{targetId} {
+      allow get, list: if isAdmin();
+
+      // O regex prende o id à forma dos alvos reais: uma baixa que não casa
+      // com denúncia nenhuma não dá baixa em nada, e o `_` fora do alfabeto
+      // dos ids de post/comentário é o que mantém o separador sem ambiguidade
+      // — a mesma razão do prefixo em `idDaDenuncia`.
+      allow create, update: if isAdmin()
+                            && (targetId.matches('^p_[A-Za-z0-9-]{1,64}$')
+                                || targetId.matches('^c_[A-Za-z0-9-]{1,64}_[A-Za-z0-9-]{1,64}$'))
+                            && request.resource.data.keys().hasAll(
+                                 ['resolution', 'at'])
+                            && request.resource.data.keys().hasOnly(
+                                 ['resolution', 'at'])
+                            && request.resource.data.resolution in
+                                 ['removido', 'ignorado']
+                            && request.resource.data.at == request.time;
+
       allow delete: if false;
     }
 
