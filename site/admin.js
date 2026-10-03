@@ -11,6 +11,9 @@
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js'
 import {
+  initializeAppCheck, ReCaptchaEnterpriseProvider,
+} from 'https://www.gstatic.com/firebasejs/12.3.0/firebase-app-check.js'
+import {
   getAuth, GoogleAuthProvider, onAuthStateChanged,
   signInWithPopup, signInWithRedirect, signOut,
 } from 'https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js'
@@ -32,6 +35,23 @@ const app = initializeApp({
   messagingSenderId: '87511151381',
   appId: '1:87511151381:web:336e4e82ab8d469d6d6f1c',
 })
+// App Check: o painel prova que é o painel, como o app prova que é o app —
+// ver docs/specs/app-check-imposicao.md. `ReCaptchaEnterpriseProvider` (o
+// "Fraud Defense") e NÃO o `ReCaptchaV3Provider`: o clássico foi
+// descontinuado. A chave de site é pública por desenho. Antes de qualquer
+// leitura, senão a primeira requisição sai sem atestado; em try/catch
+// porque, com a imposição desligada, falhar aqui não pode derrubar a
+// página — e com ela ligada, o erro certo é o permission-denied da fila,
+// que a tela já distingue.
+try {
+  initializeAppCheck(app, {
+    provider: new ReCaptchaEnterpriseProvider('6LfAKN0tAAAAAPlEvvz8z9KblRNB4Rvp9Y-Mx_ld'),
+    isTokenAutoRefreshEnabled: true,
+  })
+} catch (e) {
+  console.warn('appcheck: não foi possível ativar:', e)
+}
+
 const auth = getAuth(app)
 const db = getFirestore(app)
 const storage = getStorage(app)
