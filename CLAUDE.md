@@ -515,6 +515,50 @@ arrives, the panel's Web App (`1:87511151381:web:…`) needs a reCAPTCHA
 provider registered or the panel stops working. See
 `docs/specs/painel-admin.md`.
 
+## Automatic moderation: the machine triages, the owner judges
+
+`functions/moderacao.js` runs on every post and comment creation
+(`onDocumentCreated`, **never `onWrite`** — the tombstone it writes would
+re-fire an `onWrite`, which is the self-paying trigger loop). The classifier
+is Gemini (`gemini.js`, `gemini-2.5-flash-lite` via **Vertex AI**, service
+account, no key on disk; image goes inline in the same call — no OCR); the
+decision table is `veredito.js`, a pure module like `texto.js`.
+
+**The tombstone destroys** (`text: ''`, no way back through the rules), so
+the design is two tiers: GRAVES (`sexual-menores`, `ameaca`) at confidence
+≥ 0.8 are removed — but only after the original is copied to
+`quarentena/{alvo}` (Firestore doc + photo moved to `quarentena/…` in
+Storage, which is what revokes the any-authenticated read). Everything else
+(AMBIGUAS: `racismo`, `golpe`, `sexual-explicito`) only files an automatic
+report `reports/{alvo}__maquina` into the panel's queue. **Racism is
+deliberately tier 2** — weakest classifier precision in pt-BR; promote it
+with the panel's data, not by guess. The quarantine serves both errors:
+machine wrong → restorable; machine right → evidence, which is preserved and
+reported (SaferNet), never destroyed.
+
+Order inside a removal is the spec: quarantine doc → photo move → tombstone
+→ report. Everything reads from `event.data` (the created snapshot), never a
+re-read, so retries (`retry: true`) rewrite the same bytes — the emulator
+suite runs `moderar()` twice to prove it. **API failure never removes**: the
+function throws, the platform retries, and the worst case is the post stays
+up with the human report channel intact. Vertex refusing the input
+(`PROHIBITED_CONTENT`) is a *signal*, not a failure — it is Google's
+highest-precision filter firing, and it removes; generic `SAFETY` blocks
+only file a report. Safety settings are `BLOCK_NONE` on the configurable
+categories because a filter that faints before what it came to judge judges
+nothing.
+
+In the emulator the classifier is a deterministic fake (marker-driven:
+`[[grave:ameaca]]` etc.), selected by `FUNCTIONS_EMULATOR`/
+`FIRESTORE_EMULATOR_HOST` — unlike FCM, the real call costs money and needs
+credentials the emulator lacks. One emulator scenario (M6) kills the
+function **on purpose** (fail-open is throwing); `run-emulador.sh` therefore
+asserts exactly **one** `Your function was killed`, not zero. The admin uid
+literal now lives in **three** places: `isAdmin()` in `firestore.rules` and
+two matches in `storage.rules` (posts delete, quarentena read) — change all
+three. `quarentena` is admin-read-only, client-write-never, Admin SDK only.
+See `docs/specs/moderacao-automatica.md`.
+
 Comment threads use `snapshots()` while the wall uses `get()` — a listener on
 the wall re-delivers documents on every like by anyone, to everyone with the app
 open; a listener on a thread re-delivers one post's comments to the person

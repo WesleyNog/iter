@@ -24,6 +24,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 
 import { apagarDadosDe } from './conta.js';
 import { bucket } from './firebase.js';
+import { moderar } from './moderacao.js';
 import { mesDeFortaleza } from './tempo.js';
 
 const db = getFirestore(initializeApp({ projectId: 'iter-mn' }));
@@ -227,6 +228,128 @@ await db.doc('posts/p2').update({ deleted: true, text: '', imagePath: null });
 await espera(2000);
 await curtir('p2', 'joao');
 await espera(6000);
+
+// ─── Moderação automática ───────────────────────────────────────────────────
+//
+// O classificador é o de mentira de `gemini.js` (o emulador define
+// `FIRESTORE_EMULATOR_HOST`), dirigido por marcadores no texto. O que se
+// prova aqui é tudo MENOS o Gemini: a ordem quarentena → lápide → denúncia,
+// o ambíguo que nunca remove, o fail-open, e que repetir a passada não
+// quebra nem duplica. Ids `mod-*` de propósito: `p1` e `p2` têm asserções
+// próprias no run-emulador.sh.
+
+await semear({ olga: 'Olga Furtado', pablo: 'Pablo Reis' });
+
+const enviarFoto = (caminho) =>
+  bucket().file(caminho).save(Buffer.from('jpg'), { contentType: 'image/jpeg' });
+
+// M1. Grave com foto: lápide exata, foto movida para a quarentena, denúncia.
+await enviarFoto('posts/olga/mod-grave.jpg');
+const dadosGrave = {
+  uid: 'olga',
+  text: 'vou te pegar na saída [[grave:ameaca]]',
+  imagePath: 'posts/olga/mod-grave.jpg',
+  createdAt: new Date(),
+  deleted: false,
+};
+await db.doc('posts/mod-grave').set(dadosGrave);
+
+// M2. Ambíguo: fica no ar e vira denúncia — racismo nunca remove sozinho.
+await publicar('mod-suspeito', 'olga', 'piada duvidosa [[suspeito:racismo]]');
+
+// M3. Limpo: nenhum rastro, nenhum documento.
+await publicar('mod-limpo', 'olga', 'dia tranquilo, 80 pacotes sem insucesso');
+
+// M4. Grave ABAIXO do corte: denúncia, nunca remoção.
+await publicar('mod-fraco', 'olga', 'ameaça talvez [[fraco:ameaca]]');
+
+// M5. Bloqueado pelo filtro irredutível do Vertex: remove.
+await publicar('mod-bloqueado', 'olga', 'o que o Vertex recusa [[bloqueado]]');
+
+// M6. Transporte caiu: a função LANÇA (o retry é da plataforma) e o post fica.
+await publicar('mod-erro', 'olga', 'classificador fora do ar [[erro]]');
+
+// M7. Comentário grave sob post limpo: o comentário some, o post fica.
+await publicar('mod-palco', 'pablo', 'post inocente da plateia');
+await espera(4000);
+await comentar('mod-palco', 'cm1', 'olga', 'aliciamento [[grave:sexual-menores]]');
+
+await espera(12000);
+
+// A repetição: o retry re-entrega o MESMO evento, então `moderar` roda de
+// novo com os MESMOS dados — o `apagarDadosDe` duas vezes da exclusão.
+await moderar({ tipo: 'post', postId: 'mod-grave', dados: dadosGrave });
+await espera(2000);
+
+const conferenciasMod = [];
+const confereMod = (descricao, ok) => {
+  conferenciasMod.push(ok);
+  console.log(`MODERACAO ${ok ? 'ok   ' : 'FALHA'} ${descricao}`);
+};
+const docDe = async (caminho) => (await db.doc(caminho).get()).data();
+const temDoc = async (caminho) => (await db.doc(caminho).get()).exists;
+const temFoto = async (caminho) => (await bucket().file(caminho).exists())[0];
+
+const graveDepois = await docDe('posts/mod-grave');
+confereMod('M1: o post grave virou a lápide exata',
+  graveDepois?.deleted === true && graveDepois.text === ''
+  && graveDepois.imagePath === null);
+confereMod('M1: a foto saiu de posts/', !(await temFoto('posts/olga/mod-grave.jpg')));
+confereMod('M1: a foto está na quarentena',
+  await temFoto('quarentena/p_mod-grave/mod-grave.jpg'));
+const qGrave = await docDe('quarentena/p_mod-grave');
+confereMod('M1: a quarentena guarda o texto original',
+  qGrave?.texto === dadosGrave.text && qGrave.uid === 'olga');
+const dGrave = await docDe('reports/p_mod-grave__maquina');
+confereMod('M1: a denúncia automática caiu na fila',
+  dGrave?.reason === 'ameaca' && dGrave.removeu === true);
+
+confereMod('M2: o ambíguo CONTINUA no ar',
+  (await docDe('posts/mod-suspeito'))?.deleted === false);
+confereMod('M2: e virou denúncia sem remoção',
+  (await docDe('reports/p_mod-suspeito__maquina'))?.removeu === false);
+confereMod('M2: ambíguo não vai para a quarentena',
+  !(await temDoc('quarentena/p_mod-suspeito')));
+
+confereMod('M3: post limpo não gera denúncia',
+  !(await temDoc('reports/p_mod-limpo__maquina')));
+confereMod('M3: nem quarentena', !(await temDoc('quarentena/p_mod-limpo')));
+
+confereMod('M4: grave abaixo do corte NÃO remove',
+  (await docDe('posts/mod-fraco'))?.deleted === false);
+confereMod('M4: mas denuncia',
+  (await docDe('reports/p_mod-fraco__maquina'))?.removeu === false);
+
+confereMod('M5: bloqueio irredutível remove',
+  (await docDe('posts/mod-bloqueado'))?.deleted === true);
+confereMod('M5: com a razão dita',
+  (await docDe('reports/p_mod-bloqueado__maquina'))?.reason === 'bloqueado-pelo-filtro');
+
+confereMod('M6: falha de transporte deixa o post DE PÉ',
+  (await docDe('posts/mod-erro'))?.deleted === false);
+confereMod('M6: sem denúncia', !(await temDoc('reports/p_mod-erro__maquina')));
+confereMod('M6: sem quarentena', !(await temDoc('quarentena/p_mod-erro')));
+
+confereMod('M7: o comentário grave sumiu',
+  !(await temDoc('posts/mod-palco/comments/cm1')));
+confereMod('M7: o post da plateia ficou',
+  (await docDe('posts/mod-palco'))?.deleted === false);
+confereMod('M7: a quarentena do comentário guarda o texto',
+  (await docDe('quarentena/c_mod-palco_cm1'))?.texto?.includes('aliciamento') === true);
+confereMod('M7: a denúncia carrega o commentId',
+  (await docDe('reports/c_mod-palco_cm1__maquina'))?.commentId === 'cm1');
+
+const graveRepetido = await docDe('posts/mod-grave');
+confereMod('repetição: a lápide continua a lápide',
+  graveRepetido?.deleted === true && graveRepetido.text === '');
+confereMod('repetição: a foto continua na quarentena, e só lá',
+  await temFoto('quarentena/p_mod-grave/mod-grave.jpg')
+  && !(await temFoto('posts/olga/mod-grave.jpg')));
+confereMod('repetição: a quarentena continua com o original',
+  (await docDe('quarentena/p_mod-grave'))?.texto === dadosGrave.text);
+
+const falhasMod = conferenciasMod.filter((ok) => !ok).length;
+console.log(`MODERACAO: ${conferenciasMod.length} conferências, ${falhasMod} falhas`);
 
 // ─── Exclusão de conta ──────────────────────────────────────────────────────
 //

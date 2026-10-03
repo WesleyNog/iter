@@ -146,7 +146,25 @@ proibido '"message":"aceite".*"para":"lara"\|"para":"lara".*"message":"aceite"' 
 proibido '"message":"aceite".*"para":"mika"\|"para":"mika".*"message":"aceite"' \
   'retirar o convite pendente da Mika NÃO vira aceite'
 
-proibido 'Your function was killed' 'nenhuma função morreu'
+# ── Moderação automática ─────────────────────────────────────────────────
+# As conferências de documento rodam no `emulador.mjs`; aqui, o que só o
+# log mostra.
+
+esperado 'MODERACAO: [0-9]* conferências, 0 falhas' \
+  'moderação: o que devia sumir sumiu, o que devia ficar ficou, repetir não quebrou'
+contagem 6 '"message":"moderacao"' \
+  'seis ações — M1, M2, M4, M5, M7 e a repetição; limpo e erro ficam mudos'
+esperado 'classificador de mentira: fora do ar' \
+  'a falha de transporte aparece no log, e o retry fica com a plataforma'
+proibido '"message":"moderacao".*mod-limpo' \
+  'post limpo não aciona nada'
+
+# O M6 da moderação derruba a função DE PROPÓSITO: fail-open é lançar e
+# deixar o retry com a plataforma, e o emulador registra a morte. UMA morte
+# é o desenho; a segunda é um crash de verdade — era `proibido` até existir
+# o cenário que morre por contrato.
+contagem 1 'Your function was killed' \
+  'a única função que morre é a do M6, de propósito'
 
 echo "──────────────────────────────────────────────────────────────"
 [ "$falhou" -eq 0 ] && echo "EMULADOR: tudo certo." || { echo "EMULADOR: falhou."; exit 1; }

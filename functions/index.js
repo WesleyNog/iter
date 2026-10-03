@@ -22,3 +22,4 @@ export { convite, aceite } from './amizade.js';
 export { ranking } from './ranking.js';
 export { curtidas, comentarios } from './posts.js';
 export { excluirConta } from './conta.js';
+export { moderacaoPosts, moderacaoComentarios } from './moderacao.js';

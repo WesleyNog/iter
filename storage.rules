@@ -42,6 +42,18 @@ service firebase.storage {
                         || request.auth.uid == 'nn0pMX9g14WP4T0KSVbJoV2A2pl2');
     }
 
+    // A foto que a moderação automática tirou do ar: movida de `posts/…`
+    // para cá pelo Admin SDK (`functions/moderacao.js`), que não passa por
+    // estas regras. Sair de `posts/` é o que revoga a leitura de "qualquer
+    // autenticado"; esta match devolve a leitura SÓ ao admin, que julga o
+    // julgamento da máquina no painel. O uid é o mesmo literal de
+    // `isAdmin()` em `firestore.rules` — terceira cópia, mudar as três.
+    match /quarentena/{allPaths=**} {
+      allow read: if request.auth != null
+                  && request.auth.uid == 'nn0pMX9g14WP4T0KSVbJoV2A2pl2';
+      allow write: if false;
+    }
+
     // Nada mais no bucket. Sem esta negação explícita, um caminho novo
     // nasceria fechado por padrão — mas o silêncio não diz que foi escolha.
     match /{allPaths=**} {

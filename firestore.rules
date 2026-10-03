@@ -47,10 +47,11 @@ service cloud.firestore {
     // um que publique. Se um dia houver um segundo moderador, esta função
     // vira `request.auth.token.admin == true` num commit só.
     //
-    // O MESMO uid está em `storage.rules` (delete em `posts/{uid}/…`), que
-    // não enxerga este arquivo — mudar os dois juntos, como o regex de
-    // apelido que vive aqui e em `NicknameController`. Os testes extraem o
-    // literal desta função do próprio arquivo, então trocar o uid não os
+    // O MESMO uid está em `storage.rules` (duas matches: o delete em
+    // `posts/{uid}/…` e a leitura de `quarentena/…`), que não enxerga este
+    // arquivo — mudar as três cópias juntas, como o regex de apelido que
+    // vive aqui e em `NicknameController`. Os testes extraem o literal
+    // desta função do próprio arquivo, então trocar o uid não os
     // dessincroniza.
     function isAdmin() {
       return request.auth != null
@@ -790,6 +791,26 @@ service cloud.firestore {
                             && request.resource.data.at == request.time;
 
       allow delete: if false;
+    }
+
+    // ── Quarentena da moderação automática ───────────────────────────────
+    //
+    // `quarentena/{alvo}` guarda o ORIGINAL do que a máquina removeu — a
+    // lápide destrói (`text: ''`, sem volta pelas regras), e a cópia existe
+    // pelos dois erros possíveis: se a máquina errou, é o que permite
+    // restaurar; se acertou, é evidência, e evidência não se destrói — se
+    // preserva e se denuncia. Ver `docs/specs/moderacao-automatica.md`.
+    //
+    // Quem escreve é só o Admin SDK (`functions/moderacao.js`), que não
+    // passa por aqui — a regra existe pela razão de `avisosRanking`: sem
+    // ela tudo funcionaria igual, e ninguém notaria que qualquer conta
+    // autenticada podia ler o acervo do pior conteúdo do app, ou gravar
+    // por cima da evidência.
+    //
+    // O admin lê pelo painel, para julgar o julgamento da máquina.
+    match /quarentena/{targetId} {
+      allow get, list: if isAdmin();
+      allow write: if false;
     }
 
     // ── Marcadores de notificação ─────────────────────────────────────────

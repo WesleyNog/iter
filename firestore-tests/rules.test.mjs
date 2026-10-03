@@ -1493,6 +1493,36 @@ describe('painel admin — o moderador passa pelas regras, não por cima delas',
     )
   })
 
+  it('quarentena: o admin lê, cliente nenhum escreve — nem ele', async () => {
+    // Quem escreve é o Admin SDK da moderação automática, que não passa
+    // pelas regras. Um `write` aberto aqui deixaria qualquer conta gravar
+    // por cima da evidência — e um `read` aberto faria da coleção o acervo
+    // do pior conteúdo do app, legível por quem quisesse.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'quarentena', 'p_p1'), {
+        alvo: 'p_p1',
+        tipo: 'post',
+        texto: 'original preservado',
+      })
+    })
+
+    const original = await assertSucceeds(getDoc(doc(admin, 'quarentena', 'p_p1')))
+    assert.equal(original.data().texto, 'original preservado')
+    await assertSucceeds(getDocs(collection(admin, 'quarentena')))
+
+    await assertFails(getDoc(doc(bia, 'quarentena', 'p_p1')))
+    await assertFails(getDocs(collection(bia, 'quarentena')))
+    await assertFails(
+      setDoc(doc(bia, 'quarentena', 'p_p1'), { texto: 'adulterado' }),
+    )
+    // O admin TAMBÉM não escreve pelo cliente: o painel lê e dá baixa em
+    // `moderation`; reescrever quarentena não é moderar, é editar evidência.
+    await assertFails(
+      setDoc(doc(admin, 'quarentena', 'p_p1'), { texto: 'adulterado' }),
+    )
+    await assertFails(deleteDoc(doc(admin, 'quarentena', 'p_p1')))
+  })
+
   it('o raio do admin PARA aqui — CPF, bloqueios e configuração seguem fechados', async () => {
     // A moderação precisa do conteúdo, não da pessoa: `user/{uid}` (CPF,
     // telefone) não abre nem para o moderador, e `norouterule` continua sendo

@@ -42,6 +42,13 @@ const MOTIVOS = {
   improprio: 'Conteúdo impróprio',
   golpe: 'Golpe',
   outro: 'Outro',
+  // Os motivos da moderação automática (`reports/{alvo}__maquina`).
+  'sexual-menores': 'Teor sexual com menores',
+  'ameaca': 'Ameaça',
+  'racismo': 'Racismo',
+  'sexual-explicito': 'Teor sexual explícito',
+  'bloqueado-pelo-filtro': 'Bloqueado pelo filtro do Google',
+  'resposta-invalida': 'Classificador respondeu fora da forma',
 }
 
 const secoes = ['entrar', 'carregando', 'sem-acesso', 'erro', 'vazio']
@@ -153,7 +160,13 @@ async function cartao(alvo, denuncias) {
 
   const selos = el('p')
   for (const d of denuncias) {
-    selos.appendChild(el('span', 'selo', `${MOTIVOS[d.reason] ?? d.reason} · ${quando(d.at)}`))
+    // A denúncia da máquina se distingue da humana no selo — e diz se ela
+    // removeu ou só sinalizou, que é a diferença entre revisar um ato e
+    // decidir um.
+    const prefixo = d.uid === 'maquina'
+      ? (d.removeu ? 'Automática (removeu): ' : 'Automática: ')
+      : ''
+    selos.appendChild(el('span', 'selo', `${prefixo}${MOTIVOS[d.reason] ?? d.reason} · ${quando(d.at)}`))
   }
   card.appendChild(selos)
 
@@ -173,6 +186,25 @@ async function cartao(alvo, denuncias) {
     card.appendChild(el('p', 'suave', info.tipo === 'post'
       ? 'O post já foi removido (pelo autor ou pela moderação). Falta só a baixa.'
       : 'O comentário já foi apagado. Falta só a baixa.'))
+
+    // Se foi a máquina que removeu, o original está em quarentena — e o
+    // julgamento dela se revisa olhando o que ela viu, não a lápide.
+    const q = await getDoc(doc(db, 'quarentena', alvo)).catch(() => null)
+    if (q?.exists()) {
+      const dadosQ = q.data()
+      card.appendChild(el('p', 'suave',
+        `Original em quarentena (categorias: ${(dadosQ.categorias ?? []).join(', ')}):`))
+      const conteudoQ = el('div', 'conteudo', dadosQ.texto ?? '')
+      if (dadosQ.imagePathQuarentena) {
+        try {
+          const img = document.createElement('img')
+          img.src = await getDownloadURL(ref(storage, dadosQ.imagePathQuarentena))
+          img.alt = 'Imagem em quarentena'
+          conteudoQ.appendChild(img)
+        } catch { /* sem a imagem o texto ainda julga */ }
+      }
+      card.appendChild(conteudoQ)
+    }
   } else {
     if (autorUid) {
       const perfil = await getDoc(doc(db, 'profiles', autorUid)).catch(() => null)
