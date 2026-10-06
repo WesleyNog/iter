@@ -204,6 +204,7 @@ class NewRouteModal {
   final int? packages;
   final int? stops;
   final List<String>? adress;
+
   /// Início da rota com data e hora. Obrigatório: a rota já é agendada
   /// sabendo a que horas começa.
   final DateTime startAt;
@@ -220,6 +221,19 @@ class NewRouteModal {
   /// gravado antes deste campo existir — e o gráfico volta a ratear nesse caso.
   /// Pode cobrir só parte de [insucessoQnt]: o resto vai para o rateio.
   final Map<String, int> insucessoPorBairro;
+
+  /// Quantos pacotes foram para cada bairro: bairro → quantidade.
+  ///
+  /// Só o leitor de pacotes escreve isto — é o único momento em que o app vê a
+  /// carga pacote por pacote; fechada a tela, a informação some. Vazio
+  /// significa "não medido", que é o estado de toda rota digitada à mão, e o
+  /// índice de insucesso por bairro volta a ratear `packages` por igual nesse
+  /// caso. Pode cobrir só parte de [packages] (pacote sem bairro legível): o
+  /// resto vai para o rateio, como em [insucessoPorBairro].
+  ///
+  /// Mesmo formato no Firestore e mesmas regras de `Utils/insucessoBairro.dart`.
+  /// Ver `docs/specs/leitor-de-pacotes.md`.
+  final Map<String, int> pacotesPorBairro;
 
   /// Quanto esta rota custou, congelado quando ela foi concluída.
   ///
@@ -260,6 +274,10 @@ class NewRouteModal {
     isInsucesso: isInsucesso,
     insucessoQnt: insucessoQnt,
     insucessoPorBairro: insucessoPorBairro,
+    // Mesma armadilha da linha de baixo, e mais cara: este save é o que
+    // **conclui** a rota, e é concluída que ela vira dado de gráfico. Sem esta
+    // linha, a medição do leitor sumiria exatamente na hora de ser usada.
+    pacotesPorBairro: pacotesPorBairro,
     provision: provision,
     // Esta linha é a única defesa contra apagar o bloco congelado no mesmo save
     // que o criou: os parâmetros são nomeados e opcionais, então omiti-la não
@@ -311,6 +329,7 @@ class NewRouteModal {
     this.isInsucesso,
     this.insucessoQnt,
     this.insucessoPorBairro = const {},
+    this.pacotesPorBairro = const {},
     this.provision,
     this.noRoutePayment,
     required this.createdAt,
@@ -340,6 +359,7 @@ class NewRouteModal {
       isInsucesso = map['isInsucesso'],
       insucessoQnt = map['insucessoQnt'],
       insucessoPorBairro = distributionFromList(map['insucessoPorBairro']),
+      pacotesPorBairro = distributionFromList(map['pacotesPorBairro']),
       // Ausente em toda rota gravada antes deste campo existir, e o `is Map`
       // segura um documento corrompido sem derrubar a leitura da rota.
       provision = map['provision'] is Map
@@ -374,6 +394,7 @@ class NewRouteModal {
     'isInsucesso': isInsucesso,
     'insucessoQnt': insucessoQnt,
     'insucessoPorBairro': distributionToList(insucessoPorBairro),
+    'pacotesPorBairro': distributionToList(pacotesPorBairro),
     'provision': provision?.toMap(),
     'noRoutePayment': noRoutePayment?.toMap(),
     'createdAt': createdAt,

@@ -131,6 +131,11 @@ class _AddIterState extends State<AddIter> {
   /// o que sobra é rateado pelo gráfico.
   Map<String, int> insucessoPorBairro = {};
 
+  /// Quantos pacotes o leitor contou em cada bairro. O formulário **não mostra**
+  /// isto e não deixa editar: só carrega de volta o que estava gravado, para o
+  /// `set` do save não apagar a medição — ver [_packagesToSave].
+  Map<String, int> pacotesPorBairro = {};
+
   TextEditingController valueController = TextEditingController();
   TextEditingController kmInicialController = TextEditingController();
   TextEditingController kmFinalController = TextEditingController();
@@ -245,6 +250,7 @@ class _AddIterState extends State<AddIter> {
     isInsucessoSelected = route.isInsucesso ?? false;
     insucessoQnt = route.insucessoQnt ?? 1;
     insucessoPorBairro = {...route.insucessoPorBairro};
+    pacotesPorBairro = {...route.pacotesPorBairro};
 
     // O campo espera o texto já formatado, igual ao que o formatador produz.
     //
@@ -296,6 +302,20 @@ class _AddIterState extends State<AddIter> {
       total: insucessoQnt,
     );
   }
+
+  /// A medição do leitor, ajustada ao que a tela tem agora.
+  ///
+  /// O save é um `set` do documento inteiro, então o que não for carregado
+  /// aqui é **apagado** — e esta tela é por onde a rota lida vira Concluída,
+  /// que é quando ela entra no gráfico. A reconciliação é a mesma do
+  /// insucesso: bairro tirado da lista leva a parte dele para o rateio, e
+  /// baixar Pacotes abaixo do que foi lido corta a partir do último bairro
+  /// (o de menos pacotes, pela ordem que o leitor grava).
+  Map<String, int> _packagesToSave() => reconcileDistribution(
+    distribution: pacotesPorBairro,
+    bairros: selectedBairros,
+    total: int.tryParse(pctInicialController.text) ?? 0,
+  );
 
   void _loadWeather() async {
     double lat = -3.71722;
@@ -1371,6 +1391,7 @@ class _AddIterState extends State<AddIter> {
       isInsucesso: _isNoRoute ? false : isInsucessoSelected,
       insucessoQnt: _isNoRoute || !isInsucessoSelected ? null : insucessoQnt,
       insucessoPorBairro: _isNoRoute ? const {} : _distributionToSave(),
+      pacotesPorBairro: _isNoRoute ? const {} : _packagesToSave(),
       provision: widget.route?.provision,
       createdAt: widget.route?.createdAt ?? now,
     );

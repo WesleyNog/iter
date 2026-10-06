@@ -272,4 +272,42 @@ void main() {
       expect(_route().profit, isNull);
     });
   });
+
+  group('NewRouteModal.pacotesPorBairro', () {
+    NewRouteModal lida() => NewRouteModal(
+      id: 'r1',
+      company: Company.mercadolivre,
+      dateRoute: '01/07/2026',
+      weekday: 3,
+      status: StatusRoute.andamento,
+      value: 250,
+      packages: 48,
+      adress: const ['Aeroporto', 'Vila União'],
+      pacotesPorBairro: const {'Aeroporto': 40, 'Vila União': 8},
+      startAt: DateTime(2026, 7, 1, 8),
+      createdAt: '2026-07-01T08:00:00.000',
+    );
+
+    test('grava e lê', () {
+      final back = NewRouteModal.fromMap(lida().toMap());
+
+      expect(back.pacotesPorBairro, {'Aeroporto': 40, 'Vila União': 8});
+    });
+
+    test('rota digitada à mão, sem o campo, lê vazio', () {
+      final map = lida().toMap()..remove('pacotesPorBairro');
+
+      expect(NewRouteModal.fromMap(map).pacotesPorBairro, isEmpty);
+    });
+
+    test('withProvision não apaga a medição', () {
+      // É o save que conclui a rota — e é concluída que ela entra no gráfico.
+      // Parâmetro nomeado e opcional: esquecê-lo ali não dá erro nenhum.
+      final concluded = lida().withProvision(
+        provisionFor(_fiorino(), _route(), now: _fixedNow),
+      );
+
+      expect(concluded.pacotesPorBairro, {'Aeroporto': 40, 'Vila União': 8});
+    });
+  });
 }

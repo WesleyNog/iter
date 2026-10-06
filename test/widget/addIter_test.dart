@@ -53,6 +53,7 @@ NewRouteModal _concluida() => NewRouteModal(
   packages: 120,
   stops: 45,
   adress: const ['Aldeota'],
+  pacotesPorBairro: const {'Aldeota': 120},
   isInsucesso: true,
   insucessoQnt: 3,
   startAt: DateTime(2026, 6, 15, 8),
@@ -518,6 +519,77 @@ void main() {
       expect(salva.isInsucesso, isFalse);
       expect(salva.insucessoQnt, isNull);
       expect(salva.insucessoPorBairro, isEmpty);
+      expect(salva.pacotesPorBairro, isEmpty);
+    });
+  });
+
+  group('a medição do leitor de pacotes', () {
+    // A tela não mostra `pacotesPorBairro` — e é exatamente por isso que pode
+    // apagá-lo sem ninguém ver: o save é um `set` do documento inteiro.
+    NewRouteModal lida() => NewRouteModal(
+      id: 'r1',
+      company: Company.mercadolivre,
+      dateRoute: '15/06/2026',
+      weekday: 1,
+      status: StatusRoute.andamento,
+      value: 250,
+      packages: 48,
+      stops: 30,
+      adress: const ['Aeroporto', 'Vila União'],
+      pacotesPorBairro: const {'Aeroporto': 40, 'Vila União': 8},
+      startAt: DateTime(2026, 6, 15, 8),
+      createdAt: '2026-06-15T08:00:00.000',
+    );
+
+    testWidgets('salvar sem tocar em nada mantém', (tester) async {
+      final gravacao = _Gravacao();
+      await _pump(tester, route: lida(), saver: gravacao.call);
+
+      await _tapSave(tester, 'Salvar alterações');
+
+      expect(gravacao.route!.pacotesPorBairro, {
+        'Aeroporto': 40,
+        'Vila União': 8,
+      });
+    });
+
+    testWidgets('concluir a rota lida mantém', (tester) async {
+      // O caminho que passa por `withProvision` com provisão calculada: é aqui
+      // que a rota vira dado de gráfico, e é aqui que um campo esquecido some.
+      final gravacao = _Gravacao();
+      await _pump(tester, route: lida(), saver: gravacao.call);
+
+      await _pickStatus(tester, 'Concluído');
+      await _tapSave(tester, 'Salvar alterações');
+
+      expect(gravacao.route!.status, StatusRoute.concluido);
+      expect(gravacao.route!.pacotesPorBairro, {
+        'Aeroporto': 40,
+        'Vila União': 8,
+      });
+    });
+
+    testWidgets('baixar Pacotes corta a partir do bairro de menos pacotes', (
+      tester,
+    ) async {
+      // A remoção de um bairro passa pela mesma `reconcileDistribution`, que
+      // tem os próprios testes; aqui o que se prova é a fiação com a tela.
+      final gravacao = _Gravacao();
+      await _pump(tester, route: lida(), saver: gravacao.call);
+
+      // `TextField`, não `TextFormField`: o campo de Pacotes não tem validação.
+      final pacotes = find.byWidgetPredicate(
+        (widget) => widget is TextField && widget.controller?.text == '48',
+      );
+      await tester.ensureVisible(pacotes);
+      await tester.enterText(pacotes, '44');
+      await _tapSave(tester, 'Salvar alterações');
+
+      expect(gravacao.route!.packages, 44);
+      expect(gravacao.route!.pacotesPorBairro, {
+        'Aeroporto': 40,
+        'Vila União': 4,
+      });
     });
   });
 
