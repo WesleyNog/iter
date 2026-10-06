@@ -53,7 +53,7 @@
 	<key>GADApplicationIdentifier</key>
 	<string>ca-app-pub-8153139669866970~5951899863</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Para tirar uma foto do seu veículo ou de uma publicação no mural, e para ler o QR Code de um amigo.</string>
+	<string>Para tirar uma foto do seu veículo ou de uma publicação no mural, para ler o QR Code de um amigo e para ler as etiquetas dos pacotes da rota.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Para escolher uma foto do seu veículo ou de uma publicação no mural.</string>
 	<key>UIApplicationSceneManifest</key>
