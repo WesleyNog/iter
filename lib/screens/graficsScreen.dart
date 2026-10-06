@@ -497,7 +497,8 @@ class _GraficsScreenState extends State<GraficsScreen> {
           : summary.failures / summary.packages * 100,
       footnote:
           'Considera só rotas com pacotes informados. '
-          'No bairro, os pacotes da rota são rateados entre eles.',
+          'No bairro, rota lida pelo leitor de pacotes conta pacote por '
+          'pacote; as outras têm os pacotes rateados entre os bairros.',
       rows: [
         FailureRateRow(
           axis: 'Empresa',

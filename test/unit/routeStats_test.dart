@@ -16,6 +16,7 @@ NewRouteModal _route({
   bool? isInsucesso,
   int? insucessoQnt,
   Map<String, int> insucessoPorBairro = const {},
+  Map<String, int> pacotesPorBairro = const {},
   int? packages,
   int? stops,
   double? kmInitial,
@@ -43,6 +44,7 @@ NewRouteModal _route({
     isInsucesso: isInsucesso,
     insucessoQnt: insucessoQnt,
     insucessoPorBairro: insucessoPorBairro,
+    pacotesPorBairro: pacotesPorBairro,
     createdAt: start.toIso8601String(),
   );
 }
@@ -780,6 +782,82 @@ void main() {
 
       final total = ranking.fold<double>(0, (sum, r) => sum + r.failures);
       expect(total, closeTo(5, 0.0001));
+    });
+
+    test('rota lida pelo leitor usa os pacotes de cada bairro', () {
+      // O mesmo caso do primeiro teste — 48 pacotes, Aeroporto e Vila União —
+      // agora com a medição que só o leitor tem: 40 e 8, não 24 e 24.
+      final ranking = failureRatePerBairro([
+        _route(
+          adress: ['Aeroporto', 'Vila União'],
+          packages: 48,
+          pacotesPorBairro: {'Aeroporto': 40, 'Vila União': 8},
+          isInsucesso: true,
+          insucessoQnt: 3,
+          insucessoPorBairro: {'Aeroporto': 3},
+        ),
+      ]);
+
+      expect(_rateOf(ranking, 'Aeroporto').packages, 40);
+      expect(_rateOf(ranking, 'Vila União').packages, 8);
+      expect(_rateOf(ranking, 'Aeroporto').rate, 7.5);
+    });
+
+    test('medição parcial rateia só o que ficou sem bairro', () {
+      // 50 pacotes, 40 lidos no Aeroporto e 10 sem bairro legível: os 10 vão
+      // por igual para os dois bairros da rota.
+      final ranking = failureRatePerBairro([
+        _route(
+          adress: ['Aeroporto', 'Vila União'],
+          packages: 50,
+          pacotesPorBairro: {'Aeroporto': 40},
+        ),
+      ]);
+
+      expect(_rateOf(ranking, 'Aeroporto').packages, 45);
+      expect(_rateOf(ranking, 'Vila União').packages, 5);
+    });
+
+    test('medição citando bairro que a rota não tem mais vai para o rateio', () {
+      // O Centro saiu da rota no formulário depois da leitura.
+      final ranking = failureRatePerBairro([
+        _route(
+          adress: ['Aeroporto', 'Vila União'],
+          packages: 40,
+          pacotesPorBairro: {'Centro': 30, 'Aeroporto': 10},
+        ),
+      ]);
+
+      expect(ranking.map((rate) => rate.label), isNot(contains('Centro')));
+      expect(_rateOf(ranking, 'Aeroporto').packages, 25);
+      expect(_rateOf(ranking, 'Vila União').packages, 15);
+    });
+
+    test('a soma dos pacotes no índice bate com os da rota', () {
+      final ranking = failureRatePerBairro([
+        _route(
+          adress: ['A', 'B', 'C'],
+          packages: 48,
+          pacotesPorBairro: {'A': 40, 'C': 3},
+        ),
+      ]);
+
+      final total = ranking.fold<double>(0, (sum, r) => sum + r.packages);
+      expect(total, closeTo(48, 0.0001));
+    });
+
+    test('bairro sem nenhum pacote medido fica fora, não com 0%', () {
+      // "Posto na rota depois da leitura": a medição cobre os 48, e o Centro
+      // não recebeu nenhum. Sem pacote não há taxa.
+      final ranking = failureRatePerBairro([
+        _route(
+          adress: ['Aeroporto', 'Centro'],
+          packages: 48,
+          pacotesPorBairro: {'Aeroporto': 48},
+        ),
+      ]);
+
+      expect(ranking.map((rate) => rate.label), ['Aeroporto']);
     });
   });
 

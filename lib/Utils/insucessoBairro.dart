@@ -1,4 +1,8 @@
-/// Regras da distribuição de insucessos entre os bairros de uma rota.
+/// Regras da distribuição de insucessos entre os bairros de uma rota — e,
+/// com as mesmas funções, da distribuição de **pacotes** que o leitor grava
+/// (`NewRouteModal.pacotesPorBairro`). As duas são "bairro → quantidade"
+/// limitadas a um total e aos bairros da rota, e o índice de insucesso divide
+/// uma pela outra: regras diferentes fariam a divisão mentir.
 ///
 /// Na memória a distribuição é um `Map<String, int>` (bairro → quantidade); no
 /// Firestore vira array de map, `[{'bairro': 'Aldeota', 'qnt': 2}]`. Array e

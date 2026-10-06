@@ -534,14 +534,19 @@ List<FailureRate> failureRatePerCompany(List<NewRouteModal> routes) {
 
 /// Índice de insucesso por bairro.
 ///
-/// **É estimativa, não medição**, e o card diz isso: `packages` é da rota
-/// inteira, não existe "pacotes do Aeroporto". Os pacotes são divididos por
-/// igual entre os bairros da rota, então uma rota de 48 pacotes em 2 bairros
-/// vira 24 para cada, mesmo que na prática tenham sido 40 e 8.
+/// **Medição quando a rota passou pelo leitor de pacotes, estimativa nas
+/// outras**, e o card diz isso. `packages` é da rota inteira; só o leitor sabe
+/// quantos foram para cada bairro (`pacotesPorBairro`). Sem ele, os pacotes
+/// são divididos por igual entre os bairros da rota, e uma rota de 48 pacotes
+/// em 2 bairros vira 24 para cada, mesmo que na prática tenham sido 40 e 8.
 ///
-/// O numerador é melhor que o denominador: usa a distribuição de insucesso que
-/// o usuário informou, e rateia só o resto — a mesma regra de
-/// [failuresPerBairro].
+/// Numerador e denominador passam pela **mesma** regra — [_attributeByBairro]:
+/// a parte exata pela distribuição gravada, o resto rateado. A distribuição do
+/// insucesso vem do formulário; a dos pacotes, do leitor.
+///
+/// Um bairro que, com a distribuição cobrindo tudo, fica sem nenhum pacote
+/// (posto na rota depois da leitura) fica **fora** do índice: 0 pacotes não
+/// tem taxa, e dizer 0% afirmaria um dado que não foi coletado.
 ///
 /// Bairro com pacotes e sem insucesso aparece com 0%, como as outras duas
 /// funções de índice: aqui o dado **foi** coletado, e "esse bairro não deu
@@ -551,15 +556,19 @@ List<FailureRate> failureRatePerBairro(List<NewRouteModal> routes) {
   final failures = <String, double>{};
 
   for (final route in routes) {
-    final routePackages = (route.packages ?? 0).toDouble();
+    final routePackages = route.packages ?? 0;
     if (routePackages <= 0) continue;
 
     final bairros = route.adress ?? const <String>[];
     if (bairros.isEmpty) continue;
 
-    final share = routePackages / bairros.length;
+    _attributeByBairro(
+      total: routePackages,
+      distribution: route.pacotesPorBairro,
+      bairros: bairros,
+      add: (bairro, amount) => _add(packages, bairro, amount),
+    );
     for (final bairro in bairros) {
-      _add(packages, bairro, share);
       // Garante o bairro no mapa de insucesso, para 0 insucesso virar 0% em
       // vez de sumir do ranking.
       _add(failures, bairro, 0);
@@ -617,23 +626,41 @@ List<RankEntry> failuresPerBairro(List<NewRouteModal> routes) {
 
 /// Distribui os insucessos de [route] pelos bairros dela, chamando [add] para
 /// cada pedaço. Ver [failuresPerBairro] para a regra.
-///
-/// Está separado porque o índice por bairro precisa exatamente da mesma
-/// atribuição — duas cópias divergiriam no primeiro ajuste do rateio.
 void _attributeFailures(
   NewRouteModal route,
   void Function(String bairro, double amount) add,
-) {
-  final failures = failuresOf(route);
-  if (failures == 0) return;
+) => _attributeByBairro(
+  total: failuresOf(route),
+  distribution: route.insucessoPorBairro,
+  bairros: route.adress ?? const <String>[],
+  add: add,
+);
 
-  final bairros = route.adress ?? const <String>[];
-  if (bairros.isEmpty) return;
+/// Reparte [total] entre os [bairros] de uma rota: a parte que [distribution]
+/// diz com exatidão, e o resto **por igual** entre todos eles.
+///
+/// Serve aos insucessos (`insucessoPorBairro`, do formulário) e aos pacotes
+/// (`pacotesPorBairro`, do leitor). Uma regra só porque o índice divide um
+/// pelo outro: duas cópias divergiriam no primeiro ajuste do rateio, e o
+/// índice passaria a comparar insucesso medido de um jeito com pacote medido
+/// de outro.
+///
+/// A distribuição gravada passa por [reconcileDistribution] antes — o que está
+/// no banco pode citar bairro que a rota não tem mais, ou passar do total, e
+/// nenhum dos dois pode virar ranking. Em qualquer caso, a soma do que [add]
+/// recebe é [total].
+void _attributeByBairro({
+  required int total,
+  required Map<String, int> distribution,
+  required List<String> bairros,
+  required void Function(String bairro, double amount) add,
+}) {
+  if (total <= 0 || bairros.isEmpty) return;
 
   final exact = reconcileDistribution(
-    distribution: route.insucessoPorBairro,
+    distribution: distribution,
     bairros: bairros,
-    total: failures,
+    total: total,
   );
 
   var attributed = 0;
@@ -642,7 +669,7 @@ void _attributeFailures(
     attributed += qnt;
   });
 
-  final leftover = failures - attributed;
+  final leftover = total - attributed;
   if (leftover > 0) {
     final share = leftover / bairros.length;
     for (final bairro in bairros) {
