@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:iter/Utils/insucessoBairro.dart';
+import 'package:iter/Utils/packageSession.dart';
 import 'package:iter/model/newRouteModal.dart';
 import 'package:iter/services/firebase.dart';
 
@@ -50,6 +52,63 @@ class RouteController {
       'status': storedStatus(status),
     });
   }
+
+  /// Agendado → Em rota com a carga que o leitor de pacotes conferiu.
+  ///
+  /// `update` com os cinco campos e nada mais, pelo motivo de [updateStatus]:
+  /// o que não é enviado não pode ser sobrescrito. E a troca é das que não
+  /// implicam recálculo — Agendado e Em rota não são `hasRun`, não têm
+  /// provisão nem `noRoutePayment`. Também não muda os números públicos do
+  /// perfil: `profileStats` só lê `realized`, e Em rota não é. Ver
+  /// `docs/specs/leitor-de-pacotes.md`.
+  static Future<void> startWithPackages(
+    String uid,
+    String routeId,
+    PackageLoad load,
+  ) {
+    return collectionOf(uid).doc(routeId).update(
+      packageFields(
+        status: StatusRoute.andamento,
+        packages: load.packages,
+        stops: load.stops,
+        adress: load.bairros,
+        pacotesPorBairro: load.pacotesPorBairro,
+      ),
+    );
+  }
+
+  /// O Desfazer de [startWithPackages]: os mesmos cinco campos, como estavam.
+  static Future<void> restoreBeforePackages(String uid, NewRouteModal before) {
+    return collectionOf(uid).doc(before.id).update(
+      packageFields(
+        status: before.status,
+        packages: before.packages,
+        stops: before.stops,
+        adress: before.adress,
+        pacotesPorBairro: before.pacotesPorBairro,
+      ),
+    );
+  }
+
+  /// Os campos que a leitura de pacotes escreve — montados **num lugar só**,
+  /// para o desfazer não ter como esquecer um campo que o salvar escreveu.
+  ///
+  /// Chaves e formatos são os de `NewRouteModal.toMap`; um teste compara os
+  /// dois, porque um `pacotesPorBairro` gravado como mapa aqui e lido como
+  /// lista lá sumiria em silêncio no `fromMap`.
+  static Map<String, dynamic> packageFields({
+    required StatusRoute status,
+    required int? packages,
+    required int? stops,
+    required List<String>? adress,
+    required Map<String, int> pacotesPorBairro,
+  }) => {
+    'status': storedStatus(status),
+    'packages': packages,
+    'stops': stops,
+    'adress': adress,
+    'pacotesPorBairro': distributionToList(pacotesPorBairro),
+  };
 
   static Future<void> delete(String uid, String routeId) {
     return collectionOf(uid).doc(routeId).delete();

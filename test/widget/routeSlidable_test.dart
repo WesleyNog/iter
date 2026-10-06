@@ -7,11 +7,12 @@ import 'package:iter/widget/routeSlidable.dart';
 NewRouteModal _route({
   String id = 'r1',
   StatusRoute status = StatusRoute.concluido,
+  Company company = Company.mercadolivre,
 }) {
   final start = DateTime(2026, 8, 10, 8);
   return NewRouteModal(
     id: id,
-    company: Company.mercadolivre,
+    company: company,
     dateRoute: '10/08/2026',
     weekday: start.weekday,
     status: status,
@@ -26,11 +27,13 @@ class _Taps {
   int edit = 0;
   int delete = 0;
   int paid = 0;
+  int read = 0;
 }
 
 Future<_Taps> _pump(
   WidgetTester tester, {
   StatusRoute status = StatusRoute.concluido,
+  Company company = Company.mercadolivre,
 }) async {
   final taps = _Taps();
 
@@ -38,10 +41,11 @@ Future<_Taps> _pump(
     MaterialApp(
       home: Scaffold(
         body: RouteSlidable(
-          route: _route(status: status),
+          route: _route(status: status, company: company),
           onEdit: () => taps.edit++,
           onDelete: () => taps.delete++,
           onMarkPaid: () => taps.paid++,
+          onReadPackages: () => taps.read++,
           // `Container` com cor, e não um `SizedBox` pelado: caixa vazia não
           // participa de hit test, e o `drag` acabava acertando o gesto do
           // `Slidable` por baixo. O painel abria e o teste passava — arrastando
@@ -78,6 +82,7 @@ void main() {
           onEdit: () {},
           onDelete: () {},
           onMarkPaid: () {},
+          onReadPackages: () {},
           child: const SizedBox(),
         ).canMarkPaid;
 
@@ -125,6 +130,62 @@ void main() {
       expect(taps.paid, 1);
       expect(taps.edit, 0);
       expect(taps.delete, 0);
+    });
+  });
+
+  group('quem pode ler pacotes', () {
+    test('só a agendada do Mercado Livre, nas 15 combinações', () {
+      for (final status in StatusRoute.values) {
+        for (final company in Company.values) {
+          final pode = RouteSlidable(
+            route: _route(status: status, company: company),
+            onEdit: () {},
+            onDelete: () {},
+            onMarkPaid: () {},
+            onReadPackages: () {},
+            child: const SizedBox(),
+          ).canReadPackages;
+
+          expect(
+            pode,
+            status == StatusRoute.agendado && company == Company.mercadolivre,
+            reason: '${status.name} × ${company.name}',
+          );
+        }
+      }
+    });
+
+    testWidgets('a agendada do Mercado Livre revela o leitor', (tester) async {
+      final taps = await _pump(tester, status: StatusRoute.agendado);
+      await _reveal(tester, 200);
+
+      expect(find.byKey(const ValueKey('acao-pagar')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('acao-ler-pacotes')));
+      await tester.pumpAndSettle();
+
+      expect(taps.read, 1);
+      expect(taps.paid, 0);
+    });
+
+    testWidgets('a agendada da Amazon não revela nada daquele lado', (
+      tester,
+    ) async {
+      // A etiqueta da Amazon tem outro leiaute: o leitor não saberia lê-la.
+      await _pump(tester, status: StatusRoute.agendado, company: Company.amazon);
+      await _reveal(tester, 200);
+
+      expect(find.byKey(const ValueKey('acao-ler-pacotes')), findsNothing);
+      expect(find.byKey(const ValueKey('acao-pagar')), findsNothing);
+    });
+
+    testWidgets('a concluída do Mercado Livre continua só com o pagar', (
+      tester,
+    ) async {
+      await _pump(tester);
+      await _reveal(tester, 200);
+
+      expect(find.byKey(const ValueKey('acao-pagar')), findsOneWidget);
+      expect(find.byKey(const ValueKey('acao-ler-pacotes')), findsNothing);
     });
   });
 

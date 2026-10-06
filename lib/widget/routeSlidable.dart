@@ -4,7 +4,7 @@ import 'package:iter/Utils/routeStyle.dart';
 import 'package:iter/model/newRouteModal.dart';
 
 /// O card de uma rota com os gestos de deslizar: editar e excluir de um lado,
-/// marcar como paga do outro.
+/// marcar como paga — ou ler os pacotes — do outro.
 ///
 /// Separado da tela porque a lista precisa de um `User` e de um stream do
 /// Firestore para existir — e a regra que decide **quando** o botão de pagar
@@ -17,6 +17,7 @@ class RouteSlidable extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.onMarkPaid,
+    required this.onReadPackages,
     required this.child,
   });
 
@@ -26,6 +27,10 @@ class RouteSlidable extends StatelessWidget {
 
   /// Chamado com a rota já sabidamente [canMarkPaid] — a tela grava só o status.
   final VoidCallback onMarkPaid;
+
+  /// Chamado com a rota já sabidamente [canReadPackages] — a tela abre o
+  /// leitor e grava o que ele devolver.
+  final VoidCallback onReadPackages;
 
   final Widget child;
 
@@ -46,29 +51,51 @@ class RouteSlidable extends StatelessWidget {
   /// continua oferecendo os cinco status e recalcula o que tem de recalcular.
   bool get canMarkPaid => route.status == StatusRoute.concluido;
 
+  /// O leitor de pacotes só existe na rota **agendada do Mercado Livre**.
+  ///
+  /// Mercado Livre porque é a etiqueta dele que o leitor sabe ler — o QR com o
+  /// número do envio, o endereço, a tarja R/C/A; a Amazon e a Shopee têm outro
+  /// leiaute. Agendada porque a leitura é a conferência da carga no CD, antes
+  /// de sair, e termina movendo a rota para Em rota: em qualquer outro status
+  /// ela reescreveria pacotes e bairros de uma rota que já começou.
+  ///
+  /// E o atalho é legítimo pelo mesmo argumento do pagar: Agendado e Em rota
+  /// não são `hasRun`, nenhum dos dois tem provisão, então trocar um pelo
+  /// outro não implica recálculo. Nunca disputa o lado com [canMarkPaid] — um
+  /// é só Concluído, o outro só Agendado. Ver `docs/specs/leitor-de-pacotes.md`.
+  bool get canReadPackages =>
+      route.status == StatusRoute.agendado &&
+      route.company == Company.mercadolivre;
+
   @override
   Widget build(BuildContext context) {
     return Slidable(
       key: ValueKey(route.id),
-      // Só existe para quem pode ser marcada como paga. Revelar um painel vazio
-      // — ou um botão que recusa — ensinaria o gesto errado em quatro dos cinco
-      // status.
+      // Pagar (Concluída) ou ler pacotes (Agendada do Mercado Livre) — nunca
+      // os dois, e nada nos outros casos. Ver [_startPane].
       startActionPane: canMarkPaid
-          ? ActionPane(
-              motion: const DrawerMotion(),
-              // Um ícone só: metade do espaço que os dois do outro lado pedem.
-              extentRatio: 0.2,
-              children: [
-                _action(
-                  keyName: 'acao-pagar',
-                  onPressed: onMarkPaid,
-                  // O mesmo ícone e a mesma cor do selo "Pago" no card: o gesto
-                  // e o resultado dizem a mesma coisa sem precisar de rótulo.
-                  icon: statusIcon(StatusRoute.pago),
-                  color: statusColor(StatusRoute.pago),
-                  tooltip: 'Marcar como paga',
-                ),
-              ],
+          ? _startPane(
+              _action(
+                keyName: 'acao-pagar',
+                onPressed: onMarkPaid,
+                // O mesmo ícone e a mesma cor do selo "Pago" no card: o gesto
+                // e o resultado dizem a mesma coisa sem precisar de rótulo.
+                icon: statusIcon(StatusRoute.pago),
+                color: statusColor(StatusRoute.pago),
+                tooltip: 'Marcar como paga',
+              ),
+            )
+          : canReadPackages
+          ? _startPane(
+              _action(
+                keyName: 'acao-ler-pacotes',
+                onPressed: onReadPackages,
+                // A cor é a do resultado (Em rota); o ícone é o do gesto. O
+                // carro de Em rota diria "iniciar", e não "ler as etiquetas".
+                icon: Icons.qr_code_scanner,
+                color: statusColor(StatusRoute.andamento),
+                tooltip: 'Ler pacotes e iniciar a rota',
+              ),
             )
           : null,
       endActionPane: ActionPane(
@@ -96,6 +123,17 @@ class RouteSlidable extends StatelessWidget {
       child: child,
     );
   }
+
+  /// O painel da esquerda, com uma ação só.
+  ///
+  /// Só existe para quem tem o que fazer daquele lado. Revelar um painel vazio
+  /// — ou um botão que recusa — ensinaria o gesto errado nos outros status.
+  ActionPane _startPane(Widget action) => ActionPane(
+    motion: const DrawerMotion(),
+    // Um ícone só: metade do espaço que os dois do outro lado pedem.
+    extentRatio: 0.2,
+    children: [action],
+  );
 
   /// Uma ação sem fundo, sem borda e sem rótulo — só o ícone, colorido.
   ///

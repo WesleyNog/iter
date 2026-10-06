@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:iter/Utils/packageSession.dart';
 import 'package:iter/Utils/routeFilter.dart';
 import 'package:iter/controller/profileController.dart';
 import 'package:iter/controller/routeController.dart';
@@ -10,6 +11,7 @@ import 'package:iter/controller/vehicleController.dart';
 import 'package:iter/model/newRouteModal.dart';
 import 'package:iter/model/vehicle.dart';
 import 'package:iter/screens/addIter.dart';
+import 'package:iter/screens/packageReader.dart';
 import 'package:iter/widget/companyFilter.dart';
 import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/routeCard.dart';
@@ -254,6 +256,7 @@ class _ListIterScreenState extends State<ListIterScreen> {
                 onEdit: () => _editRoute(route),
                 onDelete: () => _confirmDelete(route),
                 onMarkPaid: () => _markPaid(route),
+                onReadPackages: () => _readPackages(route),
                 child: RouteCard(
                   route: route,
                   isExpanded: _expandedId == route.id,
@@ -294,6 +297,65 @@ class _ListIterScreenState extends State<ListIterScreen> {
   /// dispensa uma confirmação que anularia o ganho de ser rápido.
   Future<void> _markPaid(NewRouteModal route) =>
       _changeStatus(route, StatusRoute.pago, 'Rota marcada como paga.');
+
+  /// Agendada do Mercado Livre → leitor de pacotes → Em rota com a carga.
+  ///
+  /// Quem pode é `RouteSlidable.canReadPackages`. O leitor só devolve a carga
+  /// conferida; gravar é daqui, como o pagar.
+  ///
+  /// **Não espera o servidor**, ao contrário de [_changeStatus]. A leitura
+  /// acontece no CD, onde o sinal não é garantido, e um `update` sem rede só
+  /// completa quando a rede volta — o aviso ficaria preso, com a lista já
+  /// mostrando "Em rota" pelo cache local. A escrita fica na fila do SDK; se o
+  /// servidor recusar, o erro aparece quando ele responder.
+  Future<void> _readPackages(NewRouteModal route) async {
+    final load = await Navigator.of(context).push<PackageLoad>(
+      MaterialPageRoute(builder: (_) => PackageReader(route: route)),
+    );
+    if (load == null || !mounted) return;
+
+    _watchWrite(
+      RouteController.startWithPackages(widget.user.uid, route.id, load),
+      'Não foi possível iniciar a rota com os pacotes lidos.',
+    );
+
+    showNotification(
+      context: context,
+      type: 'success',
+      msg: load.packages == 1
+          ? 'Rota iniciada com 1 pacote.'
+          : 'Rota iniciada com ${load.packages} pacotes.',
+      learnMoreText: 'Desfazer',
+      // Regrava os cinco campos como estavam — status, pacotes, paradas,
+      // bairros e a medição —, montados pela mesma função do salvar.
+      onLearnMoreTap: () {
+        _watchWrite(
+          RouteController.restoreBeforePackages(widget.user.uid, route),
+          'Não foi possível desfazer a leitura.',
+        );
+        showNotification(
+          context: context,
+          type: 'success',
+          msg: 'Leitura desfeita. A rota voltou para Agendado.',
+        );
+      },
+    );
+  }
+
+  /// Acompanha uma escrita que não foi esperada, e avisa só se ela falhar.
+  void _watchWrite(Future<void> write, String failure) {
+    unawaited(
+      write.catchError((Object e) {
+        debugPrint('Erro ao gravar a leitura de pacotes: $e');
+        if (!mounted) return;
+        showNotification(
+          context: context,
+          type: 'error',
+          msg: kDebugMode ? '$failure ($e)' : failure,
+        );
+      }),
+    );
+  }
 
   Future<void> _changeStatus(
     NewRouteModal route,

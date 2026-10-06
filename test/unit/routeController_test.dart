@@ -164,4 +164,61 @@ void main() {
       }
     });
   });
+
+  group('packageFields — o que a leitura de pacotes grava', () {
+    test('mesmas chaves e mesmos formatos do toMap', () {
+      // Se um lado gravasse `pacotesPorBairro` como mapa e o outro lesse como
+      // lista, a medição sumiria no `fromMap` sem erro nenhum.
+      final lida = NewRouteModal(
+        id: 'r1',
+        company: Company.mercadolivre,
+        dateRoute: '06/10/2026',
+        weekday: 2,
+        status: StatusRoute.andamento,
+        value: 250,
+        packages: 87,
+        stops: 74,
+        adress: const ['Papicu', 'Meireles'],
+        pacotesPorBairro: const {'Papicu': 50, 'Meireles': 37},
+        startAt: DateTime(2026, 10, 6, 7),
+        createdAt: '2026-10-05T20:00:00.000',
+      );
+
+      final fields = RouteController.packageFields(
+        status: StatusRoute.andamento,
+        packages: 87,
+        stops: 74,
+        adress: const ['Papicu', 'Meireles'],
+        pacotesPorBairro: const {'Papicu': 50, 'Meireles': 37},
+      );
+
+      final full = lida.toMap();
+      for (final key in fields.keys) {
+        expect(full.containsKey(key), isTrue, reason: key);
+        expect(fields[key], full[key], reason: key);
+      }
+      expect(fields.keys, {
+        'status',
+        'packages',
+        'stops',
+        'adress',
+        'pacotesPorBairro',
+      });
+    });
+
+    test('desfazer uma rota agendada sem nada devolve os vazios', () {
+      final fields = RouteController.packageFields(
+        status: StatusRoute.agendado,
+        packages: null,
+        stops: null,
+        adress: null,
+        pacotesPorBairro: const {},
+      );
+
+      expect(fields['status'], 'agendado');
+      expect(fields['packages'], isNull);
+      expect(fields['adress'], isNull);
+      expect(fields['pacotesPorBairro'], isEmpty);
+    });
+  });
 }
