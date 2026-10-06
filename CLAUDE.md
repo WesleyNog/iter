@@ -261,6 +261,49 @@ Vehicle card shows the **lifetime** number, the summary's expense card the
 different questions. `periodEconomy()` returns `null` unless every fill in the
 period belongs to one vehicle, a missing `vehicleId` included.
 
+## Postos da região: the list is not around whoever registers
+
+The fuel-up form holds only a `StationField`; the list lives in
+`StationsScreen` ("Postos da região"). It exists because the driver often
+registers **later, at home**, where a list around the GPS is a list around their
+house. "Outra localização" recenters it through Nominatim
+(`services/geocoding.dart`), **only on submit**: Nominatim's usage policy
+forbids autocomplete, and a widget test counts zero calls while typing. Nothing
+is preselected for the same reason — at home the nearest station is the wrong
+one. From "Outra localização", `Supply.lat/lng` are `null`: the GPS there is
+their house, and the station carries its own coordinates.
+
+The logo is `flagOf()` in `Utils/stationFlag.dart`, derived and never stored. A
+known `brand` wins; an **unknown** `brand` (SP, OM) is `semBandeira` even when
+the name says "Shell"; only without `brand` does the name count, as a whole
+word, so "Posto Brasil" is not BR. Assets only — a test checks every
+`StationFlag.asset` exists on disk, because a renamed asset throws inside
+`Image.asset`, in the middle of the list. The bairro is `addr:suburb` from the
+same Overpass response (half the stations have it); no extra query.
+
+The card's text is the station's **name, never the brand next to its own
+logo** (`stationTitle`): real name → `address` (`addr:street` + number) →
+"Posto sem nome". A `name` that only repeats the flag (`Shell`, "Posto BR") is
+no name — 42 stations in the metro area are tagged that way. Without a logo the
+old `label` stays, since "| SP" is then the only place the flag appears.
+
+The price strip has three states that must not collapse: `—` (nobody
+reported), a placeholder (loading), and a failure line — the `getWeather` rule
+again. Each price's age is `gastop/{id}.pricedAt.{fuel}`, **never** the
+document's `updatedAt`, which moves when *any* fuel is reported. Overpass down
+with a working GPS is `failure: null, stations: null` in `StationsSnapshot`,
+not a location failure — the old mapping told drivers to fix a GPS that was
+fine.
+
+`Supply.date` is the picked **day** (`expenseDateFor` in `Utils/dated.dart`):
+today stores now, another day stores noon. The price report carries that date,
+not the registration time. A same-day report is a `WriteBatch` (queues offline,
+at the pump); another day is a **transaction** that only replaces
+`prices`/`pricedAt` when newer (`shouldReplacePrice`) — otherwise Monday's
+price registered on Wednesday would erase Tuesday's. Offline, that transaction
+fails and the report is lost; the fuel-up is saved anyway. See
+`docs/specs/postos-da-regiao.md`.
+
 ## Sem Rota: money and kilometres, but not a route
 
 Sometimes Mercado Livre or Amazon offer a route, the driver accepts, drives to

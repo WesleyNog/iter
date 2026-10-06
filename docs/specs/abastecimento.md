@@ -3,6 +3,10 @@
 Status: **implementada** · Criada e aprovada em 2026-08-05 · Verificada em
 aparelho Android e iPhone em 2026-08-06
 
+> O bloco "Posto" desta spec foi substituído por "Postos da região" (logo,
+> bairro, preços, outra localização) e o formulário ganhou o campo Data — ver
+> `docs/specs/postos-da-regiao.md`.
+
 ## Objetivo
 
 Ligar o "Abastecimento" do menu "+", hoje marcado como *Em breve*, a uma tela de

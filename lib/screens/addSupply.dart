@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:iter/Utils/currencyFormat.dart';
+import 'package:iter/Utils/dated.dart';
 import 'package:iter/Utils/expenseRules.dart';
 import 'package:iter/Utils/fuelEconomy.dart';
 import 'package:iter/controller/stationController.dart';
@@ -11,22 +12,16 @@ import 'package:iter/model/supply.dart';
 import 'package:iter/model/vehicle.dart';
 import 'package:iter/services/location.dart';
 import 'package:iter/services/overpass.dart';
+import 'package:iter/widget/dataPicker.dart';
+import 'package:iter/screens/stationsScreen.dart';
 import 'package:iter/widget/notificationPush.dart';
-import 'package:iter/widget/stationPicker.dart';
+import 'package:iter/widget/stationField.dart';
 import 'package:uuid/uuid.dart';
-
-/// Resultado da busca por postos: a lista, ou o motivo de não ter dado.
-typedef StationsSnapshot = ({
-  List<NearbyStation>? stations,
-  double? lat,
-  double? lng,
-  LocationFailure? failure,
-});
 
 /// Registro de abastecimento.
 ///
-/// Os dois carregadores existem para o teste montar a tela sem Firestore, sem
-/// GPS e sem rede. Em produção ficam `null` e a tela usa os serviços de
+/// Os parâmetros opcionais existem para o teste montar a tela sem Firestore,
+/// sem GPS e sem rede. Em produção ficam `null` e a tela usa os serviços de
 /// verdade — a injeção não muda o caminho real, só o abre para inspeção.
 class AddSupply extends StatefulWidget {
   const AddSupply({
@@ -34,7 +29,9 @@ class AddSupply extends StatefulWidget {
     required this.uid,
     this.vehiclesLoader,
     this.stationsLoader,
+    this.stationPicker,
     this.suppliesLoader,
+    this.saver,
   });
 
   final String uid;
@@ -42,8 +39,20 @@ class AddSupply extends StatefulWidget {
   final Future<VehiclesSnapshot> Function()? vehiclesLoader;
   final Future<StationsSnapshot> Function()? stationsLoader;
 
+  /// Abre "Postos da região" e devolve a escolha. Em produção, a tela de
+  /// verdade; no teste, uma escolha pronta — a tela tem os testes dela.
+  final Future<StationChoice?> Function(
+    BuildContext context,
+    StationChoice? current,
+  )?
+  stationPicker;
+
   /// Abastecimentos já gravados, para medir o consumo depois de salvar.
   final Future<List<Supply>> Function()? suppliesLoader;
+
+  /// Grava o abastecimento. Em produção, `SupplyController.save` seguido do
+  /// relato em `gastop`; no teste, captura o que seria gravado.
+  final Future<void> Function(String uid, Supply supply)? saver;
 
   @override
   State<AddSupply> createState() => _AddSupplyState();
@@ -55,19 +64,24 @@ class _AddSupplyState extends State<AddSupply> {
   final _value = TextEditingController();
   final _liters = TextEditingController();
   final _odometer = TextEditingController();
-  final _typedStation = TextEditingController();
 
   List<Vehicle> _vehicles = const [];
   Vehicle? _vehicle;
   SupplyFuel _fuel = SupplyFuel.gasolina;
 
-  List<NearbyStation>? _stations;
-  FuelStation? _station;
-  bool _otherStation = false;
-  bool _loadingStations = false;
-  LocationFailure? _locationFailure;
-  double? _lat;
-  double? _lng;
+  /// O dia do abastecimento. Começa em hoje; quem registra no dia seguinte
+  /// volta um dia — e é só o dia, ver [expenseDateFor].
+  DateTime _date = DateTime.now();
+
+  /// A busca em volta do GPS, iniciada quando o formulário abre: ao tocar em
+  /// "Escolher posto" a lista costuma já estar pronta.
+  late Future<StationsSnapshot> _nearby;
+
+  /// Onde o aparelho estava, quando o GPS respondeu.
+  double? _gpsLat;
+  double? _gpsLng;
+
+  StationChoice? _choice;
 
   bool _saving = false;
 
@@ -75,7 +89,7 @@ class _AddSupplyState extends State<AddSupply> {
   void initState() {
     super.initState();
     _loadVehicles();
-    _loadStations();
+    _locate();
   }
 
   @override
@@ -83,7 +97,6 @@ class _AddSupplyState extends State<AddSupply> {
     _value.dispose();
     _liters.dispose();
     _odometer.dispose();
-    _typedStation.dispose();
     super.dispose();
   }
 
@@ -112,23 +125,22 @@ class _AddSupplyState extends State<AddSupply> {
     return (all: all, active: active);
   }
 
-  Future<void> _loadStations() async {
-    setState(() {
-      _loadingStations = true;
-      _locationFailure = null;
-    });
-
+  /// Começa (ou recomeça) a busca em volta do GPS.
+  ///
+  /// Devolve a busca para "Postos da região" usar no "tentar de novo", e a
+  /// guarda aqui para a próxima abertura da tela já vir com o resultado novo.
+  Future<StationsSnapshot> _locate() {
     final loader = widget.stationsLoader ?? _realStations;
-    final snapshot = await loader();
-    if (!mounted) return;
+    final search = loader();
+    _nearby = search;
 
-    setState(() {
-      _loadingStations = false;
-      _stations = snapshot.stations;
-      _lat = snapshot.lat;
-      _lng = snapshot.lng;
-      _locationFailure = snapshot.failure;
-    });
+    search.then((snapshot) {
+      if (!mounted || _nearby != search) return;
+      _gpsLat = snapshot.lat;
+      _gpsLng = snapshot.lng;
+    }).ignore();
+
+    return search;
   }
 
   Future<StationsSnapshot> _realStations() async {
@@ -150,9 +162,10 @@ class _AddSupplyState extends State<AddSupply> {
       stations: stations,
       lat: lat,
       lng: lng,
-      // A Overpass devolve `null` quando não deu para saber; para a tela isso
-      // é a mesma classe de problema que localização falhada.
-      failure: stations == null ? LocationFailure.failed : null,
+      // Overpass fora do ar **não** é falha de localização: o GPS respondeu.
+      // `stations: null` com `failure: null` faz a tela dizer "não foi possível
+      // buscar os postos" em vez de mandá-lo mexer no GPS que está certo.
+      failure: null,
     );
   }
 
@@ -185,7 +198,15 @@ class _AddSupplyState extends State<AddSupply> {
   // -------------------------------------------------------------- Salvar
 
   Supply _draft() {
-    final now = DateTime.now().toIso8601String();
+    final clock = DateTime.now();
+    final now = clock.toIso8601String();
+
+    // Em "Outra localização" o GPS é a casa de quem registra, não o lugar do
+    // abastecimento — e o posto escolhido já carrega as próprias coordenadas.
+    final nearMe = _choice?.nearMe ?? true;
+    final lat = nearMe ? _gpsLat : null;
+    final lng = nearMe ? _gpsLng : null;
+    final typed = _choice?.typedName;
 
     return Supply(
       id: const Uuid().v4(),
@@ -196,19 +217,16 @@ class _AddSupplyState extends State<AddSupply> {
       odometer: parseKm(_odometer.text),
       // Posto digitado à mão fica sem id, e é isso que impede
       // `StationController` de sujar a coleção global com ele.
-      station: _otherStation
-          ? (_typedStation.text.trim().isEmpty
-                ? null
-                : FuelStation(
-                    id: '',
-                    name: _typedStation.text.trim(),
-                    lat: _lat ?? 0,
-                    lng: _lng ?? 0,
-                  ))
-          : _station,
-      lat: _lat,
-      lng: _lng,
-      date: now,
+      station:
+          _choice?.station ??
+          (typed == null
+              ? null
+              : FuelStation(id: '', name: typed, lat: lat ?? 0, lng: lng ?? 0)),
+      lat: lat,
+      lng: lng,
+      // O dia escolhido, não o do registro: o gasto de ontem é de ontem no
+      // card de gastos, e o relato de preço leva a idade verdadeira.
+      date: expenseDateFor(_date, now: clock),
       createdAt: now,
     );
   }
@@ -222,9 +240,7 @@ class _AddSupplyState extends State<AddSupply> {
     EasyLoading.show(status: 'Salvando abastecimento...').ignore();
 
     try {
-      await SupplyController.save(widget.uid, supply);
-      // Guardado dentro do controller: só relata com posto da fonte e litros.
-      await StationController.report(supply, widget.uid);
+      await (widget.saver ?? _persist)(widget.uid, supply);
 
       if (!mounted) return;
       EasyLoading.dismiss().ignore();
@@ -250,6 +266,13 @@ class _AddSupplyState extends State<AddSupply> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  static Future<void> _persist(String uid, Supply supply) async {
+    await SupplyController.save(uid, supply);
+    // Guardado dentro do controller: só relata com posto da fonte, litros e
+    // data legível — e o de outro dia não apaga um preço mais novo.
+    await StationController.report(supply, uid);
   }
 
   /// O consumo medido deste veículo com este combustível, depois de salvar.
@@ -415,6 +438,8 @@ class _AddSupplyState extends State<AddSupply> {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: [
             if (_vehicles.isNotEmpty) ...[_vehiclePicker(), const SizedBox(height: 16)],
+            _dateField(),
+            const SizedBox(height: 16),
             _valueField(),
             const SizedBox(height: 8),
             _litersField(),
@@ -425,28 +450,7 @@ class _AddSupplyState extends State<AddSupply> {
             _odometerField(),
             const SizedBox(height: 24),
             _sectionTitle('Posto'),
-            StationPicker(
-              stations: _stations,
-              loading: _loadingStations,
-              failureMessage: _locationFailure == null
-                  ? null
-                  : locationFailureMessage(_locationFailure!),
-              canOpenSettings:
-                  _locationFailure != null && opensSettings(_locationFailure!),
-              selected: _station,
-              otherSelected: _otherStation,
-              onSelect: (station) => setState(() {
-                _station = station;
-                _otherStation = station == null;
-              }),
-              typedName: _typedStation,
-              onTypedName: (_) => setState(() {}),
-              onRetry: _loadStations,
-              // Sem isto o `canOpenSettings` acima não valia nada: o botão só
-              // aparece quando há para onde ir, e quem bloqueou a permissão de
-              // vez ficava sem saída nenhuma.
-              onOpenSettings: openLocationSettings,
-            ),
+            StationField(choice: _choice, onTap: _pickStation),
             const SizedBox(height: 28),
             SizedBox(
               height: 50,
@@ -457,6 +461,30 @@ class _AddSupplyState extends State<AddSupply> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickStation() async {
+    final pick = widget.stationPicker ?? _openStations;
+    final choice = await pick(context, _choice);
+
+    // Voltar sem escolher mantém o que estava.
+    if (choice == null || !mounted) return;
+    setState(() => _choice = choice);
+  }
+
+  Future<StationChoice?> _openStations(
+    BuildContext context,
+    StationChoice? current,
+  ) {
+    return Navigator.of(context).push<StationChoice>(
+      MaterialPageRoute(
+        builder: (_) => StationsScreen(
+          nearby: _nearby,
+          locate: _locate,
+          current: current,
         ),
       ),
     );
@@ -487,6 +515,49 @@ class _AddSupplyState extends State<AddSupply> {
         _fuel = SupplyFuel.fromVehicle(_vehicle!.fuel) ?? _fuel;
       }),
     );
+  }
+
+  /// O dia, nunca no futuro.
+  ///
+  /// Só o dia: quem registra depois lembra do dia, raramente da hora — e a
+  /// hora que falta é decidida por [expenseDateFor].
+  Widget _dateField() {
+    return InkWell(
+      key: const Key('supply-date'),
+      borderRadius: BorderRadius.circular(4),
+      onTap: () {
+        final now = DateTime.now();
+        showCupertinoDatePicker(
+          context,
+          _date,
+          (picked) => setState(() => _date = picked),
+          // Hoje, até o último instante: com `now` cru, escolher hoje depois
+          // de girar a roleta poderia cair um segundo depois do máximo.
+          maximumDate: DateTime(now.year, now.month, now.day, 23, 59, 59),
+        );
+      },
+      child: InputDecorator(
+        decoration: const InputDecoration(
+          labelText: 'Data',
+          border: OutlineInputBorder(),
+          suffixIcon: Icon(Icons.calendar_today_outlined),
+        ),
+        child: Text(_dateLabel(_date, DateTime.now())),
+      ),
+    );
+  }
+
+  /// `06/10/2026 (hoje)`, `05/10/2026 (ontem)` ou só a data.
+  static String _dateLabel(DateTime date, DateTime now) {
+    final day = DateTime(date.year, date.month, date.day);
+    final today = DateTime(now.year, now.month, now.day);
+    final text =
+        '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/${date.year}';
+
+    if (day == today) return '$text (hoje)';
+    if (day == DateTime(now.year, now.month, now.day - 1)) return '$text (ontem)';
+    return text;
   }
 
   Widget _valueField() {

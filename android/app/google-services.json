@@ -66,6 +66,14 @@
           }
         },
         {
+          "client_id": "87511151381-61lh9tm3ia711m71p4c02ipitvar0aae.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mna.iter",
+            "certificate_hash": "48772182a5f9bb8f4b55a7fb9e0ca0bd7b47ba08"
+          }
+        },
+        {
           "client_id": "87511151381-6novt6oqgdk5caofkahkpp7o3as093oi.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

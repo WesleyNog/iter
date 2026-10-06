@@ -85,6 +85,34 @@ void main() {
       expect(back.station!.lng, closeTo(-38.5267, 1e-9));
     });
 
+    test('preserva o bairro do posto', () {
+      const station = FuelStation(
+        id: 'way-326845465',
+        name: 'Posto Aliança',
+        brand: 'BR',
+        suburb: 'Joaquim Távora',
+        address: 'Avenida Antônio Sales, 1340',
+        lat: -3.7428,
+        lng: -38.5119,
+      );
+
+      final back = Supply.fromMap(_supply(station: station).toMap());
+
+      expect(back.station!.suburb, 'Joaquim Távora');
+      expect(back.station!.address, 'Avenida Antônio Sales, 1340');
+    });
+
+    test('posto gravado antes do bairro existir carrega com bairro nulo', () {
+      // Os abastecimentos de agosto foram gravados sem a chave.
+      final map = _supply(station: _station).toMap();
+      (map['station'] as Map<String, dynamic>)
+        ..remove('suburb')
+        ..remove('address');
+
+      expect(Supply.fromMap(map).station!.suburb, isNull);
+      expect(Supply.fromMap(map).station!.address, isNull);
+    });
+
     test('sem posto, o campo fica nulo e não lança', () {
       final back = Supply.fromMap(_supply().toMap());
       expect(back.station, isNull);

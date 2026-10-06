@@ -122,9 +122,27 @@ FuelStation? _stationFrom(Map<dynamic, dynamic> element) {
     id: '$type-$id',
     name: map['name'] as String? ?? '',
     brand: map['brand'] as String?,
+    suburb: _readText(map['addr:suburb']),
+    address: _addressOf(map),
     lat: lat,
     lng: lng,
   );
+}
+
+/// "Rua, número", ou só a rua. Número sem rua não é endereço.
+String? _addressOf(Map<dynamic, dynamic> tags) {
+  final street = _readText(tags['addr:street']);
+  if (street == null) return null;
+
+  final number = _readText(tags['addr:housenumber']);
+  return number == null ? street : '$street, $number';
+}
+
+/// Texto da tag, ou `null` quando ela falta ou só tem espaço.
+String? _readText(Object? raw) {
+  if (raw is! String) return null;
+  final text = raw.trim();
+  return text.isEmpty ? null : text;
 }
 
 double? _readCoord(Object? raw) => (raw as num?)?.toDouble();

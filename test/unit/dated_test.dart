@@ -73,4 +73,57 @@ void main() {
       expect(original.map((s) => s.id), ['velho', 'novo']);
     });
   });
+
+  group('expenseDateFor — o dia escolhido no formulário', () {
+    final agora = DateTime(2026, 10, 7, 21, 15, 30);
+
+    test('hoje grava o instante de agora — a melhor hora que existe', () {
+      expect(
+        expenseDateFor(DateTime(2026, 10, 7), now: agora),
+        agora.toIso8601String(),
+      );
+    });
+
+    test('hoje com hora qualquer no seletor ainda é agora', () {
+      // A roleta devolve o dia com a hora em que foi aberta, não meia-noite.
+      expect(
+        expenseDateFor(DateTime(2026, 10, 7, 3, 2), now: agora),
+        agora.toIso8601String(),
+      );
+    });
+
+    test('outro dia grava meio-dia daquele dia', () {
+      expect(
+        expenseDateFor(DateTime(2026, 10, 6, 21, 15), now: agora),
+        '2026-10-06T12:00:00.000',
+      );
+    });
+
+    test('virada de ano e fim de mês caem no dia escolhido', () {
+      final ano = DateTime(2027, 1, 1, 9);
+
+      expect(
+        expenseDateFor(DateTime(2026, 12, 31), now: ano),
+        '2026-12-31T12:00:00.000',
+      );
+      expect(
+        expenseDateFor(DateTime(2026, 9, 30, 23, 59), now: agora),
+        '2026-09-30T12:00:00.000',
+      );
+    });
+
+    test('o dia escolhido entra no período daquele dia, e não no de hoje', () {
+      final ontem = _supply('s', expenseDateFor(DateTime(2026, 10, 6), now: agora));
+
+      expect(
+        inPeriodByDate(
+          [ontem],
+          start: DateTime(2026, 10, 6),
+          end: DateTime(2026, 10, 6),
+        ),
+        hasLength(1),
+      );
+    });
+  });
 }
+

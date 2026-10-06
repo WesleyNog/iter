@@ -8,12 +8,14 @@ Supply _supply({
   String date = '2026-08-05T21:00:00.000',
   double value = 250,
   double? liters = 40,
+  SupplyFuel fuel = SupplyFuel.gasolina,
   FuelStation? station,
 }) {
   return Supply(
     id: id,
     value: value,
     liters: liters,
+    fuel: fuel,
     station: station,
     date: date,
     createdAt: date,
@@ -125,6 +127,139 @@ void main() {
       expect(
         StationController.canReport(_supply(station: _fromSource, value: 0)),
         isFalse,
+      );
+    });
+
+    test('sem data legível não relata — preço sem quando não é relato', () {
+      // `pricedAt` e `precos.at` saem da data do abastecimento; sem ela, a
+      // idade na tela seria inventada.
+      expect(
+        StationController.canReport(_supply(station: _fromSource, date: '')),
+        isFalse,
+      );
+    });
+  });
+
+  group('o relato carrega a data do abastecimento, não a do registro', () {
+    // Abasteceu na segunda às 8h, registrou na quarta à noite.
+    final segunda = _supply(
+      date: '2026-10-05T12:00:00.000',
+      station: _fromSource,
+      fuel: SupplyFuel.etanol,
+    );
+
+    test('pricedAt do combustível é a data do abastecimento', () {
+      final fields = StationController.stationFields(
+        segunda,
+        'u1',
+        now: DateTime(2026, 10, 7, 21),
+      );
+
+      expect(fields['prices'], {'etanol': 6.25});
+      expect(fields['pricedAt'], {'etanol': '2026-10-05T12:00:00.000'});
+    });
+
+    test('updatedAt continua sendo quando o documento foi escrito', () {
+      final fields = StationController.stationFields(
+        segunda,
+        'u1',
+        now: DateTime(2026, 10, 7, 21),
+      );
+
+      expect(fields['updatedAt'], DateTime(2026, 10, 7, 21).toIso8601String());
+      // A regra de segurança exige que seja o próprio autor.
+      expect(fields['updatedBy'], 'u1');
+    });
+
+    test('o relato imutável também leva a data do abastecimento', () {
+      final report = StationController.priceReport(segunda, 'u1');
+
+      expect(report, {
+        'price': 6.25,
+        'fuel': 'etanol',
+        'uid': 'u1',
+        'at': '2026-10-05T12:00:00.000',
+      });
+    });
+
+    test('sem trocar o preço, o posto é escrito sem prices nem pricedAt', () {
+      final fields = StationController.stationFields(
+        segunda,
+        'u1',
+        now: DateTime(2026, 10, 7, 21),
+        withPrice: false,
+      );
+
+      expect(fields.containsKey('prices'), isFalse);
+      expect(fields.containsKey('pricedAt'), isFalse);
+      expect(fields['id'], 'way-243218168');
+    });
+  });
+
+  group('shouldReplacePrice — preço velho não apaga preço novo', () {
+    final terca = DateTime(2026, 10, 6, 15);
+
+    test('sem preço guardado, troca', () {
+      expect(
+        StationController.shouldReplacePrice(stored: null, reported: terca),
+        isTrue,
+      );
+    });
+
+    test('relato mais novo troca', () {
+      expect(
+        StationController.shouldReplacePrice(
+          stored: DateTime(2026, 10, 5, 12),
+          reported: terca,
+        ),
+        isTrue,
+      );
+    });
+
+    test('relato mais velho não troca', () {
+      // O de segunda, registrado na quarta, não apaga o de terça.
+      expect(
+        StationController.shouldReplacePrice(
+          stored: terca,
+          reported: DateTime(2026, 10, 5, 12),
+        ),
+        isFalse,
+      );
+    });
+
+    test('mesmo instante não troca — não há o que ganhar reescrevendo', () {
+      expect(
+        StationController.shouldReplacePrice(stored: terca, reported: terca),
+        isFalse,
+      );
+    });
+  });
+
+  group('reportsPastDay — qual caminho o relato toma', () {
+    final quarta = DateTime(2026, 10, 7, 21);
+
+    test('abastecimento de hoje vai pelo batch, que funciona sem sinal', () {
+      final hoje = _supply(date: '2026-10-07T08:00:00.000');
+
+      expect(StationController.reportsPastDay(hoje, now: quarta), isFalse);
+    });
+
+    test('abastecimento de outro dia vai pela transação', () {
+      final segunda = _supply(date: '2026-10-05T12:00:00.000');
+
+      expect(StationController.reportsPastDay(segunda, now: quarta), isTrue);
+    });
+
+    test('ontem às 23h59 já é outro dia', () {
+      final ontem = _supply(date: '2026-10-06T23:59:00.000');
+
+      expect(StationController.reportsPastDay(ontem, now: quarta), isTrue);
+    });
+
+    test('data ilegível vai pela transação — é o caminho que compara', () {
+      expect(
+        StationController.reportsPastDay(_supply(date: ''), now: quarta),
+        isTrue,
       );
     });
   });

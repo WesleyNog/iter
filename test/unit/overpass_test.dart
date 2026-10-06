@@ -127,6 +127,86 @@ void main() {
     });
   });
 
+  group('bairro — a linha de cima do card', () {
+    // Elemento real, capturado em 06/10/2026 no raio de 3 km do Centro. Metade
+    // dos postos da região metropolitana traz `addr:suburb`; a outra metade
+    // não, e o card só some com a linha.
+    const comBairro = '''
+    {"elements":[{
+      "type": "way",
+      "id": 326845465,
+      "center": {"lat": -3.7428108, "lon": -38.5119239},
+      "tags": {
+        "addr:city": "Fortaleza",
+        "addr:housenumber": "1340",
+        "addr:street": "Avenida Antônio Sales",
+        "addr:suburb": "Joaquim Távora",
+        "amenity": "fuel",
+        "brand": "BR",
+        "name": "Posto Aliança"
+      }
+    }]}
+    ''';
+
+    test('vem de addr:suburb, que já chega na mesma resposta', () {
+      final station = parseStations(
+        comBairro,
+        lat: _lat,
+        lng: _lng,
+      )!.single.station;
+
+      expect(station.suburb, 'Joaquim Távora');
+    });
+
+    test('sem addr:suburb é null, não texto vazio', () {
+      // O card decide pela ausência: "" desenharia uma linha em branco.
+      final stations = parseStations(_real, lat: _lat, lng: _lng)!;
+
+      expect(stations.map((s) => s.station.suburb), everyElement(isNull));
+    });
+
+    test('endereço junta rua e número', () {
+      // É o título do card quando o OSM não tem nome: "o Shell da Antônio
+      // Sales" é como o posto é lembrado.
+      final station = parseStations(
+        comBairro,
+        lat: _lat,
+        lng: _lng,
+      )!.single.station;
+
+      expect(station.address, 'Avenida Antônio Sales, 1340');
+    });
+
+    test('rua sem número fica só a rua; número sem rua não é endereço', () {
+      const body = '''
+      {"elements":[
+        {"type":"node","id":1,"lat":-3.73,"lon":-38.52,
+         "tags":{"addr:street":"Avenida Duque de Caxias"}},
+        {"type":"node","id":2,"lat":-3.73,"lon":-38.52,
+         "tags":{"addr:housenumber":"150"}}
+      ]}
+      ''';
+
+      final stations = parseStations(body, lat: _lat, lng: _lng)!;
+      final byId = {for (final s in stations) s.station.id: s.station};
+
+      expect(byId['node-1']!.address, 'Avenida Duque de Caxias');
+      expect(byId['node-2']!.address, isNull);
+    });
+
+    test('bairro em branco também é null', () {
+      const body = '''
+      {"elements":[{"type":"node","id":7,"lat":-3.7319,"lon":-38.5267,
+        "tags":{"addr:suburb":"   "}}]}
+      ''';
+
+      expect(
+        parseStations(body, lat: _lat, lng: _lng)!.single.station.suburb,
+        isNull,
+      );
+    });
+  });
+
   group('respostas problemáticas', () {
     test('lista vazia é resposta válida, não erro', () {
       expect(parseStations('{"elements":[]}', lat: _lat, lng: _lng), isEmpty);

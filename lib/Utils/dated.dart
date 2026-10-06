@@ -63,3 +63,27 @@ List<T> sortByDateDesc<T extends Dated>(List<T> items) {
 
   return sorted;
 }
+
+/// A data que o formulário grava para o dia escolhido.
+///
+/// Só existe o **dia** no seletor — quem registra no dia seguinte lembra do
+/// dia, raramente da hora:
+///
+/// - **hoje** grava [now]: é o caso de sempre, e a hora real é a melhor que
+///   existe;
+/// - **outro dia** grava **meio-dia** daquele dia. A hora não é conhecida, e
+///   meio-dia é o marcador que não escorrega para o dia vizinho.
+///
+/// A hora inventada só pesa com dois abastecimentos do mesmo veículo no mesmo
+/// dia. Se o meio-dia cair na ordem errada, o hodômetro sai fora de ordem e
+/// `measuredEconomy` devolve `kmNaoAvanca` — sem número, nunca um km/l errado.
+/// Ver `docs/specs/postos-da-regiao.md`.
+String expenseDateFor(DateTime picked, {required DateTime now}) {
+  final sameDay =
+      picked.year == now.year &&
+      picked.month == now.month &&
+      picked.day == now.day;
+  if (sameDay) return now.toIso8601String();
+
+  return DateTime(picked.year, picked.month, picked.day, 12).toIso8601String();
+}

@@ -50,6 +50,8 @@ class FuelStation {
     required this.id,
     required this.name,
     this.brand,
+    this.suburb,
+    this.address,
     required this.lat,
     required this.lng,
   });
@@ -62,6 +64,16 @@ class FuelStation {
 
   final String name;
   final String? brand;
+
+  /// O bairro, de `addr:suburb`. Metade dos postos do OSM não tem — e então é
+  /// `null`, nunca texto vazio: o card decide pela ausência se desenha a linha.
+  final String? suburb;
+
+  /// "Rua, número", de `addr:street` e `addr:housenumber`. É o título do card
+  /// quando o OSM não tem nome — "o Shell da Antônio Sales" é como o posto é
+  /// lembrado. `null` sem rua: número sozinho não localiza nada.
+  final String? address;
+
   final double lat;
   final double lng;
 
@@ -108,6 +120,8 @@ class FuelStation {
     'id': id,
     'name': name,
     'brand': brand,
+    'suburb': suburb,
+    'address': address,
     'lat': lat,
     'lng': lng,
   };
@@ -116,6 +130,8 @@ class FuelStation {
     id: map['id'] as String? ?? '',
     name: map['name'] as String? ?? '',
     brand: map['brand'] as String?,
+    suburb: map['suburb'] as String?,
+    address: map['address'] as String?,
     lat: readDouble(map['lat']) ?? 0,
     lng: readDouble(map['lng']) ?? 0,
   );

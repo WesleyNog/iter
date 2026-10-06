@@ -1,9 +1,12 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iter/Utils/expenseRules.dart';
 import 'package:iter/model/supply.dart';
 import 'package:iter/model/vehicle.dart';
 import 'package:iter/screens/addSupply.dart';
+import 'package:iter/screens/stationsScreen.dart';
 import 'package:iter/services/location.dart';
 import 'package:iter/services/overpass.dart';
 
@@ -42,6 +45,8 @@ Future<void> _pump(
   Vehicle? active,
   List<NearbyStation>? stations,
   LocationFailure? failure,
+  Future<void> Function(String uid, Supply supply)? saver,
+  Future<StationChoice?> Function(BuildContext, StationChoice?)? stationPicker,
 }) async {
   tester.view.physicalSize = const Size(1200, 3000);
   tester.view.devicePixelRatio = 1.0;
@@ -61,11 +66,44 @@ Future<void> _pump(
           lng: stations == null ? null : -38.52,
           failure: failure,
         ),
+        saver: saver,
+        stationPicker: stationPicker,
       ),
+      // O caminho de salvamento passa por `EasyLoading.show`, e o overlay dele
+      // é instalado por este builder — como em `main.dart`.
+      builder: EasyLoading.init(),
     ),
   );
   await tester.pumpAndSettle();
 }
+
+/// Captura o que o formulário manda gravar, sem tocar no Firestore.
+class _Gravacao {
+  Supply? supply;
+  int chamadas = 0;
+
+  Future<void> call(String uid, Supply saved) async {
+    chamadas++;
+    supply = saved;
+  }
+}
+
+/// Preenche o valor e salva, esperando o aviso de sucesso sair da tela.
+Future<void> _save(WidgetTester tester) async {
+  await tester.enterText(find.byKey(const Key('supply-value')), '25000');
+  await tester.tap(find.byKey(const Key('supply-save')));
+  await tester.pumpAndSettle();
+  // O toast de sucesso some sozinho; sem isto o timer dele fica pendente.
+  await tester.pump(const Duration(seconds: 10));
+}
+
+DateTime _today() {
+  final now = DateTime.now();
+  return DateTime(now.year, now.month, now.day);
+}
+
+String _ddMMyyyy(DateTime d) =>
+    '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
 String _price(WidgetTester tester) =>
     tester.widget<Text>(find.byKey(const Key('supply-price'))).data!;
@@ -131,6 +169,79 @@ void main() {
     });
   });
 
+  group('data — quem registra no dia seguinte', () {
+    testWidgets('começa em hoje', (tester) async {
+      await _pump(tester);
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('supply-date')),
+          matching: find.textContaining(_ddMMyyyy(_today())),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('o seletor não deixa escolher o futuro', (tester) async {
+      await _pump(tester);
+
+      await tester.tap(find.byKey(const Key('supply-date')));
+      await tester.pumpAndSettle();
+
+      final picker = tester.widget<CupertinoDatePicker>(
+        find.byType(CupertinoDatePicker),
+      );
+      final max = picker.maximumDate!;
+      expect(DateTime(max.year, max.month, max.day), _today());
+    });
+
+    testWidgets('salvo hoje, grava o instante do registro', (tester) async {
+      final gravacao = _Gravacao();
+      await _pump(tester, saver: gravacao.call);
+
+      final antes = DateTime.now();
+      await _save(tester);
+
+      final date = DateTime.parse(gravacao.supply!.date);
+      expect(date.isBefore(antes.subtract(const Duration(minutes: 1))), isFalse);
+      expect(gravacao.supply!.createdAt, isNotEmpty);
+    });
+
+    testWidgets('escolhido ontem, grava ontem ao meio-dia', (tester) async {
+      final gravacao = _Gravacao();
+      await _pump(tester, saver: gravacao.call);
+
+      final ontem = _today().subtract(const Duration(days: 1));
+      await tester.tap(find.byKey(const Key('supply-date')));
+      await tester.pumpAndSettle();
+      tester
+          .widget<CupertinoDatePicker>(find.byType(CupertinoDatePicker))
+          .onDateTimeChanged(ontem);
+      // Fecha a roleta tocando fora dela.
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('supply-date')),
+          matching: find.textContaining(_ddMMyyyy(ontem)),
+        ),
+        findsOneWidget,
+      );
+
+      await _save(tester);
+
+      final saved = gravacao.supply!;
+      expect(
+        saved.date,
+        DateTime(ontem.year, ontem.month, ontem.day, 12).toIso8601String(),
+      );
+      // `createdAt` é quando foi registrado — a diferença entre os dois é o
+      // que diz "registrado depois".
+      expect(DateTime.parse(saved.createdAt).isAfter(DateTime.parse(saved.date)), isTrue);
+    });
+  });
+
   group('validação', () {
     testWidgets('valor vazio bloqueia o salvamento', (tester) async {
       await _pump(tester);
@@ -177,39 +288,175 @@ void main() {
   });
 
   group('posto', () {
-    testWidgets('com localização, lista os postos', (tester) async {
-      await _pump(
-        tester,
-        stations: [(station: _station, meters: 325)],
-      );
+    testWidgets('é um campo, e nada vem escolhido', (tester) async {
+      // Em casa, o mais próximo é justamente o errado, e seria salvo calado.
+      await _pump(tester, stations: [(station: _station, meters: 325)]);
 
-      expect(find.text('Posto Apiguana'), findsOneWidget);
-      expect(find.byKey(const Key('station-error')), findsNothing);
+      expect(find.text('Escolher posto'), findsOneWidget);
+      expect(find.text('Posto Apiguana'), findsNothing);
     });
 
     testWidgets('sem permissão, o formulário continua inteiro', (tester) async {
-      // O gasto é dele: GPS negado não pode impedir de anotar.
+      // O gasto é de quem abasteceu: GPS negado não pode impedir de anotar.
       await _pump(tester, failure: LocationFailure.denied);
 
-      expect(find.byKey(const Key('station-error')), findsOneWidget);
+      expect(find.byKey(const Key('station-field')), findsOneWidget);
       expect(find.byKey(const Key('supply-value')), findsOneWidget);
       expect(find.byKey(const Key('supply-save')), findsOneWidget);
-      expect(find.byKey(const Key('station-other')), findsOneWidget);
     });
 
-    testWidgets('permissão bloqueada oferece os ajustes', (tester) async {
-      await _pump(tester, failure: LocationFailure.deniedForever);
+    testWidgets('tocar abre "Postos da região" com a busca já feita', (
+      tester,
+    ) async {
+      var buscas = 0;
+      tester.view.physicalSize = const Size(1200, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AddSupply(
+            uid: 'u1',
+            vehiclesLoader: () async => (all: const <Vehicle>[], active: null),
+            stationsLoader: () async {
+              buscas++;
+              return (
+                stations: [(station: _station, meters: 325.0)],
+                lat: -3.73,
+                lng: -38.52,
+                failure: null,
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('station-settings')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('station-field')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(StationsScreen), findsOneWidget);
+      expect(find.text('Posto Apiguana'), findsOneWidget);
+      // A busca começou quando o formulário abriu; a tela não refez.
+      expect(buscas, 1);
     });
 
-    testWidgets('escolher "Outro" revela o campo de texto', (tester) async {
-      await _pump(tester, stations: [(station: _station, meters: 325)]);
+    testWidgets('o escolhido aparece no campo, sem distância', (tester) async {
+      await _pump(
+        tester,
+        stationPicker: (_, _) async =>
+            const StationChoice.picked(_station, nearMe: true),
+      );
 
-      await tester.tap(find.byKey(const Key('station-other')));
-      await tester.pump();
+      await tester.tap(find.byKey(const Key('station-field')));
+      await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('station-typed')), findsOneWidget);
+      expect(find.text('Posto Apiguana'), findsOneWidget);
+      expect(find.byKey(const Key('station-distance')), findsNothing);
+    });
+
+    testWidgets('voltar sem escolher mantém o que estava', (tester) async {
+      var vez = 0;
+      await _pump(
+        tester,
+        stationPicker: (_, _) async => ++vez == 1
+            ? const StationChoice.picked(_station, nearMe: true)
+            : null,
+      );
+
+      await tester.tap(find.byKey(const Key('station-field')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('station-field')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Posto Apiguana'), findsOneWidget);
+    });
+
+    testWidgets('perto de mim grava o posto e onde o aparelho estava', (
+      tester,
+    ) async {
+      final gravacao = _Gravacao();
+      await _pump(
+        tester,
+        stations: [(station: _station, meters: 325)],
+        saver: gravacao.call,
+        stationPicker: (_, _) async =>
+            const StationChoice.picked(_station, nearMe: true),
+      );
+
+      await tester.tap(find.byKey(const Key('station-field')));
+      await tester.pumpAndSettle();
+      await _save(tester);
+
+      final saved = gravacao.supply!;
+      expect(saved.station!.id, 'way-1');
+      expect(saved.lat, -3.73);
+      expect(saved.lng, -38.52);
+    });
+
+    testWidgets('de outra localização grava o id do OSM e lat/lng nulos', (
+      tester,
+    ) async {
+      // Em casa, o GPS é o endereço de quem registra — não o lugar do
+      // abastecimento.
+      const maraponga = FuelStation(
+        id: 'way-9',
+        name: 'Posto Maraponga',
+        brand: 'BR',
+        suburb: 'Maraponga',
+        lat: -3.79,
+        lng: -38.56,
+      );
+      final gravacao = _Gravacao();
+      await _pump(
+        tester,
+        stations: [(station: _station, meters: 325)],
+        saver: gravacao.call,
+        stationPicker: (_, _) async =>
+            const StationChoice.picked(maraponga, nearMe: false),
+      );
+
+      await tester.tap(find.byKey(const Key('station-field')));
+      await tester.pumpAndSettle();
+      await _save(tester);
+
+      final saved = gravacao.supply!;
+      // Com o id da fonte, o relato de preço chega em `gastop`.
+      expect(saved.station!.id, 'way-9');
+      expect(saved.station!.suburb, 'Maraponga');
+      expect(saved.lat, isNull);
+      expect(saved.lng, isNull);
+    });
+
+    testWidgets('nome digitado grava sem id — fica fora de gastop', (
+      tester,
+    ) async {
+      final gravacao = _Gravacao();
+      await _pump(
+        tester,
+        saver: gravacao.call,
+        stationPicker: (_, _) async =>
+            const StationChoice.typed('Posto do Zé', nearMe: true),
+      );
+
+      await tester.tap(find.byKey(const Key('station-field')));
+      await tester.pumpAndSettle();
+      expect(find.text('Posto do Zé'), findsOneWidget);
+
+      await _save(tester);
+
+      final station = gravacao.supply!.station!;
+      expect(station.id, isEmpty);
+      expect(station.name, 'Posto do Zé');
+    });
+
+    testWidgets('sem escolher posto, salva sem posto', (tester) async {
+      final gravacao = _Gravacao();
+      await _pump(tester, saver: gravacao.call);
+
+      await _save(tester);
+
+      expect(gravacao.chamadas, 1);
+      expect(gravacao.supply!.station, isNull);
     });
   });
 
