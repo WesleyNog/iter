@@ -72,3 +72,17 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // OCR do leitor de pacotes, com o modelo latino **embutido** no APK
+    // (~11 MB por arquitetura). O canal que o usa está em `MainActivity.kt`.
+    //
+    // Não é o `google_mlkit_text_recognition` do pub: aquele pacote também
+    // instala o ML Kit no iOS, que não tem fatia para o simulador em Mac com
+    // chip Apple — e no iOS o OCR é o Vision, que vem no sistema.
+    //
+    // Embutido e não o de Google Play Services (`play-services-mlkit-...`),
+    // que economizaria o tamanho mas baixa o modelo no primeiro uso: o
+    // primeiro uso é no CD, que é justamente onde o sinal não é garantido.
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+}

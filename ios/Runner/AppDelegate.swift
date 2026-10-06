@@ -38,5 +38,12 @@ import firebase_messaging
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+
+    // O canal de OCR do leitor de pacotes (`TextReader.swift`). Aqui, junto dos
+    // plugins, porque com UIScene é aqui que o engine existe — registrar em
+    // `didFinishLaunchingWithOptions` encontraria o engine ainda por criar.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "IterTextReader") {
+      TextReader.register(with: registrar.messenger())
+    }
   }
 }
