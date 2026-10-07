@@ -705,6 +705,89 @@ slices *equal* in the first frame — a split that was never true; the line risi
 from zero would draw revenue that never happened (and `AnimatedWidgetBaseState`
 does not fire on first mount anyway). See `docs/specs/graficos.md`.
 
+## Leitor de pacotes: the QR counts, the OCR reads, nothing about the recipient stays
+
+Swiping an **Agendada Mercado Livre** route — and only that,
+`RouteSlidable.canReadPackages`, tested over all 15 status × company pairs —
+opens `PackageReader`: the camera reads each label, a bar counts R/C/A, and
+saving moves the route to Em rota with packages, stops, `adress` and
+`pacotesPorBairro`. See `docs/specs/leitor-de-pacotes.md`.
+
+**The QR is only the identity.** Its whole content is
+`{"id":"<shipment>","t":"lm"}` — no address, no type. `shipmentIdFromQr` is
+what dedupes, since the camera sees one label for dozens of frames. Bairro,
+letter and stop come from the printed text, parsed by `readLabel`
+(`Utils/packageLabel.dart`), a pure function over `OcrLine` (text + box) whose
+tests use the real label photos as fixtures.
+
+**OCR is a native channel, not a pub package.** `iter/ocr`
+(`services/textReader.dart`) is answered by Apple Vision in
+`ios/Runner/TextReader.swift` and by ML Kit (Gradle, bundled Latin model) in
+`MainActivity.kt`. `google_mlkit_text_recognition` was installed first and broke
+`flutter build ios --simulator`: ML Kit's iOS frameworks ship only `x86_64` and
+device `arm64`, no Apple-Silicon simulator slice, and the workaround (every
+simulator build as Intel under Rosetta) would tax the whole app. Do not bring it
+back. Swift files in `Runner` are registered by hand in the four places of
+`project.pbxproj`, like `SceneDelegate.swift`. The contract is pixels with the
+origin top-left — the space of `mobile_scanner`'s `Barcode.corners`, because on
+both platforms the plugin computes the corners on the very upright image it
+returns with `returnImage: true` (read in its source, confirmed on the device).
+
+**The letter needs a second look.** At arm's length the QR is ~100 px in a
+1080×1920 frame and the R/C/A stripe ~12 px, white on black — Vision does not
+even return it. `_lookAtStripe` then calls `readRegion` on `letterWindow`
+(below the QR) with a sequence of preparations, stopping at the first unique
+letter: the tight stripe (`stripeReach`, 0.4 of the QR height — 0.3 cuts the
+letter) binarized with Otsu, which is the only one that read an A; the wider
+window inverted, which read R and C on the device; then both in Vision's
+`.fast` mode, which reads a lone "C" that `.accurate` drops even drawn clean.
+`letterIn` returns `null` on two different letters — a letter is never guessed,
+because an A counted as R is the closed agency nobody removes. The first read
+after opening the screen pays ~2.5 s of model warm-up; afterwards a read takes
+150–450 ms, second look included.
+
+**Bairro: only list names, a tolerant anchor.** The block starts at the line
+that begins like "Endereço:" (≤ 2 letters off — the cedilla is the first thing
+worn thermal print loses), joins the left-aligned lines below down to CEP /
+"Cidade de destino" / Complemento (matched as whole phrases: a bare "Cidade"
+would end the address of whoever lives in Cidade 2000), and takes the text
+after the last comma. Vision often splits that line or reads the comma as a
+period, so when that text does not match, each block line is tried whole. A
+fuzzy match must be the **only** candidate within tolerance, not merely the
+nearest: five pairs of the list are 1–2 letters apart (Praia do Futuro I/II,
+Conjunto Ceará I/II, Bela Vista/Boa Vista, Damas/Dunas, Itaperi/Vila Peri). A
+stop is CEP + house number — same building, any apartment, as the Mercado
+Livre app counts; missing either makes the package its own stop, so the error
+goes to *more* stops, which the review shows.
+
+**The recipient's data never leaves the device.** The label carries a third
+party's name, street, CEP and complement. Only bairro, letter and counts are
+saved; CEP, number and shipment id live in the session's memory. The frame goes
+to a temp file (`iter_etiqueta_*`) deleted in `finally` and purged when the
+screen opens and closes. No OCR text in any log — `debugPrint` prints in release
+too. The debug-only `labelDiagnostics` reports positions, counts and yes/no; it
+is what found both device problems (letter too small, comma lost) without
+logging anybody's address.
+
+**`pacotesPorBairro` is easy to erase silently.** Only the reader writes it and
+the form never shows it, so the two paths that rewrite the whole route must
+carry it: `NewRouteModal.withProvision` (the save that *concludes* the route,
+when it becomes chart data) and `AddIter`'s `set`, which reconciles it with the
+screen's bairros and Pacotes. Dropping it from `withProvision` fails four tests.
+`failureRatePerBairro` uses it through `_attributeByBairro` — the same
+exact-plus-leftover rule as the failures, because the index divides one by the
+other.
+
+**Saving is an `update` of five fields**, built by
+`RouteController.packageFields` for both save and undo, so the undo cannot miss
+a field the save wrote. Unlike Pagar it does **not** await the server: at the
+CD, offline, an `update` only completes when the network returns.
+
+**Running it on the iPhone.** Debug only attaches over a **data cable** — the
+wireless mDNS discovery failed twice — with Developer Mode on. A `flutter run`
+in the background takes `kill -USR1 <pid>` for hot reload and `-USR2` for hot
+restart; changes to the native channel need a new run.
+
 ## Widget tests cannot tell you whether text fits
 
 Two traps, both hit for real in this project:
@@ -859,6 +942,15 @@ Two files are intentionally empty placeholders: `lib/route.dart` and
 `lib/services/saveIter.dart`.
 
 - `test/widget_test.dart` pumps `MyApp`, which now needs an initialized Firebase, so it throws before it even reaches its (already wrong) counter assertions. Every other test passes.
+- The package reader parses one label layout — address left of the QR, "Endereço:"
+  anchor, stripe below the QR. A second layout, seen on C labels (QR on the left,
+  no "Endereço:" line, CEP to the right of the QR), reads the QR and sometimes
+  the letter but not the address; it needs a photo of that label before the
+  parser can learn it. `fortaleza_bairros` misses at least 17 official bairros
+  (Castelão, José Bonifácio, Monte Castelo…), mixes duplicates (José Walter /
+  Prefeito José Walter) and has metropolitan cities only as names (Caucaia,
+  Maracanaú) — the reader can only return names that list holds. The Android
+  side of the OCR channel has never run on a device.
 - The Amigos tab has all three sub-screens working (friends/invites/search,
   ranking, feed with posts, likes, comments, blocking and reporting). What is
   left there is **App Check plus a billing budget and alert** — the one item

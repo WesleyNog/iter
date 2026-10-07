@@ -1,8 +1,8 @@
 # Spec: Leitor de pacotes
 
-Status: **em implementação** · Escrita, aprovada e implementada até a tarefa 9
-em 2026-10-06 · Falta o aparelho: a tarefa 8 rodando no iPhone e no Android, e
-a carga real no CD (tarefa 10)
+Status: **implementada; validada no iPhone** · Escrita, aprovada e implementada
+em 2026-10-06 · Falta: o Android num aparelho, a carga real no CD (tarefa 10), o
+segundo leiaute de etiqueta e a lista de bairros (spec própria)
 
 ## Objetivo
 
@@ -721,7 +721,7 @@ Sequencial de verdade: 4 → 5, e 8 → 9 → 10.
   - Verify: `flutter test test/widget/packageReview_test.dart`
   - Files: `lib/widget/packageReview.dart`, `test/widget/packageReview_test.dart`
 
-- [ ] **8. Tela da câmera** — *escrita e compilando nas duas plataformas; falta rodar no aparelho*
+- [x] **8. Tela da câmera** — *validada no iPhone; o Android não rodou em aparelho*
   - Acceptance: `mobile_scanner` com `returnImage` e só QR; OCR um por vez,
     com tentativas, arquivo temporário apagado em `finally`; cartão da última
     leitura, botões R/C/A, vibração (mais forte no A), lanterna, confirmação
@@ -755,7 +755,7 @@ Sequencial de verdade: 4 → 5, e 8 → 9 → 10.
   - Verify: os critérios 4, 5 e 9.
   - Files: `docs/specs/leitor-de-pacotes.md`, e o que os ajustes pedirem
 
-- [ ] **11. Documentação**
+- [x] **11. Documentação**
   - Acceptance: seção no `CLAUDE.md` com o que não é óbvio (o QR não traz
     endereço; dados de terceiros nunca ficam; `pacotesPorBairro` e os dois
     caminhos que o apagariam; o mesmo `_attributeByBairro` para os dois lados);
