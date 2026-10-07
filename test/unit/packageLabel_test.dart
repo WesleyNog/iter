@@ -314,4 +314,95 @@ void main() {
   test('cada tipo tem a sua letra', () {
     expect(PackageType.values.map(packageTypeLetter).toSet(), {'R', 'C', 'A'});
   });
+
+  group('quando o OCR do aparelho perde a vírgula', () {
+    test('vírgula lida como ponto: o bairro da linha de baixo vale', () {
+      final read = _read(
+        _replacing(
+          _foto1(),
+          'Endereço: Rua Pereira de Miranda 575,',
+          'Endereço: Rua Pereira de Miranda 575.',
+        ),
+      );
+
+      expect(read.bairro, 'Papicu');
+      // O número sai da linha do rótulo.
+      expect(read.stopKey, '60175045 575');
+    });
+
+    test('depois da vírgula não casa, mas a linha de baixo casa', () {
+      // O Vision partiu a linha: a vírgula ficou junto de um pedaço do QR.
+      final read = _read(
+        _replacing(
+          _foto1(),
+          'Endereço: Rua Pereira de Miranda 575,',
+          'Endereço: Rua Pereira de Miranda 575, Q8Zx',
+        ),
+      );
+
+      expect(read.bairro, 'Papicu');
+      expect(read.rawBairro, 'Papicu');
+    });
+
+    test('CEP ilegível dentro do bloco não vira o bairro bruto', () {
+      final read = _read(
+        _replacing(
+          _replacing(
+            _foto1(),
+            'Endereço: Rua Pereira de Miranda 575,',
+            'Endereço: Rua Pereira de Miranda 575.',
+          ),
+          'Papicu',
+          'Papicuu Zx',
+        ),
+      );
+
+      // Nada casa; o bruto é a linha logo abaixo do rótulo, não o "CEP" que
+      // não encerrou o bloco.
+      expect(read.bairro, isNull);
+      expect(read.rawBairro, 'Papicuu Zx');
+    });
+  });
+
+  group('a segunda olhada na tarja', () {
+    test('a janela fica logo abaixo do QR e pega a tarja das duas fotos', () {
+      final l1 = _on(_foto1Size);
+      final l2 = _on(_foto2Size);
+
+      expect(
+        letterWindow(
+          _foto1Qr,
+        )!.contains(l1('R', .85, .77, .03, .02).box.center),
+        isTrue,
+      );
+      expect(
+        letterWindow(
+          _foto2Qr,
+        )!.contains(l2('R', .62, .82, .03, .02).box.center),
+        isTrue,
+      );
+      expect(letterWindow(const []), isNull);
+    });
+
+    test('no recorte, uma letra só é o tipo', () {
+      const box = Rect.fromLTWH(0, 0, 40, 50);
+      expect(letterIn(const [OcrLine('R', box)]), PackageType.residencial);
+      expect(letterIn(const [OcrLine('|A.', box)]), PackageType.agencia);
+    });
+
+    test('no recorte, duas letras diferentes ou nenhuma é nulo', () {
+      const box = Rect.fromLTWH(0, 0, 40, 50);
+      expect(letterIn(const [OcrLine('R', box), OcrLine('A', box)]), isNull);
+      expect(letterIn(const [OcrLine('RA', box)]), isNull);
+      expect(letterIn(const []), isNull);
+    });
+
+    test('withType preenche a letra e não apaga o resto', () {
+      final read = _read(_without(_foto1(), 'R')).withType(PackageType.agencia);
+
+      expect(read.type, PackageType.agencia);
+      expect(read.bairro, 'Papicu');
+      expect(read.stopKey, '60175045 575');
+    });
+  });
 }

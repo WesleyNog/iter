@@ -90,6 +90,16 @@ class LabelRead {
   /// CEP + número da casa: mesmo prédio, qualquer apartamento, é uma parada —
   /// como o app do Mercado Livre conta. Só existe na memória da sessão.
   final String? stopKey;
+
+  /// A mesma leitura com a letra que a segunda olhada achou — a da tarja
+  /// recortada e ampliada ([letterIn]). `null` mantém a que já havia.
+  LabelRead withType(PackageType? type) => LabelRead(
+    shipmentId: shipmentId,
+    type: type ?? this.type,
+    bairro: bairro,
+    rawBairro: rawBairro,
+    stopKey: stopKey,
+  );
 }
 
 final _shipmentId = RegExp(r'^\d{6,20}$');
@@ -120,15 +130,62 @@ LabelRead readLabel({
   required List<OcrLine> lines,
 }) {
   final address = _addressOf(lines);
-  final rawBairro = address == null ? null : _bairroText(address.text);
+  final bairro = address == null ? null : _bairroOf(address);
 
   return LabelRead(
     shipmentId: shipmentId,
     type: _typeOf(qrCorners, lines),
-    bairro: rawBairro == null ? null : matchBairro(rawBairro),
-    rawBairro: rawBairro,
+    bairro: bairro?.name,
+    rawBairro: bairro?.raw,
     stopKey: address == null ? null : _stopKeyOf(address, lines),
   );
+}
+
+/// Por que uma leitura deu o que deu — **sem texto nenhum**: só posições,
+/// contagens e sim/não.
+///
+/// Existe para o primeiro teste no aparelho, quando o parser recebe linhas
+/// reais e não diz nada. O texto lido é o endereço de outra pessoa e não vai
+/// para log nem em debug; a posição de uma caixa não identifica ninguém, e é
+/// ela que distingue as duas causas possíveis: o eixo ou a escala trocados
+/// entre os cantos do QR e as caixas do OCR, ou o motor quebrando a linha do
+/// endereço de outro jeito.
+String labelDiagnostics({
+  required List<Offset> qrCorners,
+  required List<OcrLine> lines,
+}) {
+  String box(Rect? r) => r == null
+      ? '-'
+      : '(${r.left.round()},${r.top.round()} '
+            '${r.width.round()}x${r.height.round()})';
+
+  final anchor = lines.where((line) => _isAnchor(line.text)).firstOrNull;
+  final address = _addressOf(lines);
+  final cep = lines.where((line) => _cepOf(line.text) != null).firstOrNull;
+  final letters = [
+    for (final line in lines)
+      for (final piece in [line, ...line.elements])
+        if (_letterOf(piece.text) != null) piece,
+  ];
+
+  // A linha mais parecida com o rótulo, em letras trocadas — o número que diz
+  // se a tolerância de 2 está curta, sem mostrar o que a linha dizia.
+  final nearest = lines.isEmpty
+      ? null
+      : lines
+            .map((line) => _headDistance(line.text, 'endereco'))
+            .reduce((a, b) => a < b ? a : b);
+
+  return [
+    'qr ${box(qrCorners.length < 3 ? null : _bounds(qrCorners))}',
+    'âncora ${anchor == null ? 'não (mais parecida a ${nearest ?? '-'})' : box(anchor.box)}',
+    if (anchor != null)
+      'rótulo sozinho ${_withoutLabel(anchor.text).isEmpty ? 'sim' : 'não'}',
+    'bloco ${address?.lineCount ?? 0} linhas',
+    'vírgula ${address != null && address.text.contains(',') ? 'sim' : 'não'}',
+    'cep ${cep == null ? 'não' : box(cep.box)}',
+    'letras soltas ${letters.isEmpty ? 'nenhuma' : letters.map((p) => box(p.box)).join(' ')}',
+  ].join('; ');
 }
 
 // ---------------------------------------------------------------------------
@@ -152,15 +209,8 @@ const _letters = {
 /// Sem a âncora geométrica, qualquer letra solta na etiqueta viraria tipo. Duas
 /// letras diferentes na janela é ambiguidade, e ambiguidade é `null`.
 PackageType? _typeOf(List<Offset> corners, List<OcrLine> lines) {
-  if (corners.length < 3) return null;
-
-  final qr = _bounds(corners);
-  final window = Rect.fromLTRB(
-    qr.left - qr.width * 0.1,
-    qr.bottom - qr.height * 0.05,
-    qr.right + qr.width * 0.1,
-    qr.bottom + qr.height * _letterReach,
-  );
+  final window = letterWindow(corners);
+  if (window == null) return null;
 
   final found = <PackageType>{};
   for (final line in lines) {
@@ -170,6 +220,36 @@ PackageType? _typeOf(List<Offset> corners, List<OcrLine> lines) {
     }
   }
 
+  return found.length == 1 ? found.single : null;
+}
+
+/// Onde fica a tarja da letra: logo abaixo do QR, da largura dele. `null` sem
+/// os cantos.
+///
+/// É também o recorte da segunda olhada. No aparelho, com a etiqueta a um
+/// palmo, o QR ocupa ~100 px de um quadro de 1080×1920 e a tarja fica com
+/// ~12 px de altura, branca sobre preto — pequena demais para o OCR achar na
+/// imagem inteira (medido em 2026-10-06). Recortada, ampliada e invertida, ela
+/// vira uma letra preta de ~50 px.
+Rect? letterWindow(List<Offset> qrCorners) {
+  if (qrCorners.length < 3) return null;
+
+  final qr = _bounds(qrCorners);
+  return Rect.fromLTRB(
+    qr.left - qr.width * 0.1,
+    qr.bottom - qr.height * 0.05,
+    qr.right + qr.width * 0.1,
+    qr.bottom + qr.height * _letterReach,
+  );
+}
+
+/// A letra lida no recorte da tarja ([letterWindow]). Ali só deveria haver
+/// ela: duas diferentes é ambiguidade, e ambiguidade é `null`.
+PackageType? letterIn(List<OcrLine> lines) {
+  final found = <PackageType>{
+    for (final line in lines)
+      for (final piece in [line, ...line.elements]) ?_letterOf(piece.text),
+  };
   return found.length == 1 ? found.single : null;
 }
 
@@ -195,14 +275,19 @@ Rect _bounds(List<Offset> points) {
 // Endereço
 
 class _Address {
-  const _Address(this.text, this.anchor);
+  const _Address(this.lines, this.anchor);
 
-  /// O endereço do destinatário, sem o rótulo "Endereço:", com as linhas
-  /// quebradas já juntadas.
-  final String text;
+  /// As linhas do bloco, a primeira já sem o rótulo "Endereço:".
+  final List<String> lines;
+
+  /// O endereço com as linhas quebradas já juntadas.
+  String get text => lines.join(' ');
 
   /// A linha do rótulo — o CEP do destinatário é o primeiro **abaixo** dela.
   final OcrLine anchor;
+
+  /// Quantas linhas entraram no bloco, o rótulo incluído.
+  int get lineCount => lines.length;
 }
 
 /// O bloco do endereço: a linha que começa com "Endereço:" e as que seguem
@@ -235,7 +320,34 @@ _Address? _addressOf(List<OcrLine> lines) {
     bottom = line.box.bottom;
   }
 
-  return _Address(parts.join(' '), anchor);
+  return _Address(parts, anchor);
+}
+
+/// O bairro do bloco: o nome da lista e o texto de onde ele saiu.
+///
+/// Primeiro o que vem depois da última vírgula. Se aquilo não casar com a
+/// lista — ou se não houver vírgula —, cada linha do bloco abaixo do rótulo é
+/// tentada inteira. A vírgula é o caractere que o OCR mais perde (no aparelho
+/// ela veio como ponto), e o bairro que quebrou de linha está sozinho na linha
+/// de baixo. O risco de inventar não cresce: só nome da lista passa.
+///
+/// Sem casamento, `raw` é o texto mais provável de ser o bairro — o depois da
+/// vírgula, ou a linha logo abaixo do rótulo —, nunca a última linha do bloco,
+/// que pode ser um CEP ilegível que não encerrou o endereço.
+({String? name, String? raw}) _bairroOf(_Address address) {
+  final afterComma = _bairroText(address.text);
+  if (afterComma != null) {
+    final match = matchBairro(afterComma);
+    if (match != null) return (name: match, raw: afterComma);
+  }
+
+  for (final line in address.lines.skip(1)) {
+    final match = matchBairro(line);
+    if (match != null) return (name: match, raw: line);
+  }
+
+  final below = address.lines.length > 1 ? address.lines[1] : null;
+  return (name: null, raw: afterComma ?? below);
 }
 
 /// O que vem depois da **última** vírgula: "Rua Pereira de Miranda 575,
@@ -254,11 +366,17 @@ String? _bairroText(String address) {
 /// CEP + número da casa. Faltando um dos dois, `null` — e o pacote vira parada
 /// própria: o erro vai para o lado de **mais** paradas, que a revisão mostra,
 /// em vez de juntar dois endereços diferentes num só.
+///
+/// Sem a vírgula, o número é o último da linha do rótulo — que é onde ele fica
+/// quando o bairro quebrou para a linha de baixo, o caso em que a vírgula
+/// some.
 String? _stopKeyOf(_Address address, List<OcrLine> lines) {
   final comma = address.text.lastIndexOf(',');
-  if (comma < 0) return null;
+  final street = comma < 0
+      ? address.lines.first
+      : address.text.substring(0, comma);
 
-  final digits = RegExp(r'\d+').allMatches(address.text.substring(0, comma));
+  final digits = RegExp(r'\d+').allMatches(street);
   if (digits.isEmpty) return null;
   final number = digits.last.group(0)!;
 
@@ -320,12 +438,18 @@ bool _isTerminator(String text) =>
 bool _startsLike(String text, String phrase, int maxDistance) {
   final key = normalizeKey(text);
   if (key.length < phrase.length - maxDistance) return false;
+  return _headDistance(text, phrase) <= maxDistance;
+}
 
+/// Quantas letras separam o começo de [text] (normalizado, do tamanho de
+/// [phrase]) de [phrase].
+int _headDistance(String text, String phrase) {
+  final key = normalizeKey(text);
   final head = key.substring(
     0,
     key.length < phrase.length ? key.length : phrase.length,
   );
-  return _distance(head, phrase) <= maxDistance;
+  return _distance(head, phrase);
 }
 
 String _withoutLabel(String anchorText) {

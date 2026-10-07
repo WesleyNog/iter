@@ -80,6 +80,34 @@ void main() {
       expect(lines.single.box, const Rect.fromLTRB(1, 2, 3, 4));
     });
 
+    test('readRegion manda o recorte, a inversão e a ampliação', () async {
+      MethodCall? received;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(TextReader.channel, (call) async {
+            received = call;
+            return [
+              {'text': 'R', 'left': 10, 'top': 4, 'right': 60, 'bottom': 70},
+            ];
+          });
+
+      final lines = await TextReader.readRegion(
+        '/tmp/quadro.jpg',
+        const Rect.fromLTRB(500, 1170, 700, 1230),
+      );
+
+      expect(received!.method, 'readRegion');
+      expect(received!.arguments, {
+        'path': '/tmp/quadro.jpg',
+        'left': 500.0,
+        'top': 1170.0,
+        'right': 700.0,
+        'bottom': 1230.0,
+        'invert': true,
+        'scale': 4,
+      });
+      expect(lines.single.text, 'R');
+    });
+
     test('falha do motor chega como PlatformException', () async {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(

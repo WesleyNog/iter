@@ -36,6 +36,31 @@ class TextReader {
     final raw = await channel.invokeListMethod<Object?>('read', {'path': path});
     return ocrLinesFrom(raw ?? const []);
   }
+
+  /// As linhas de um **recorte** do JPEG, ampliado [scale] vezes e, com
+  /// [invert], com as cores invertidas.
+  ///
+  /// Existe para a tarja da letra: R/C/A em branco sobre preto, com ~12 px de
+  /// altura quando a etiqueta está a um palmo — pequena demais para o motor
+  /// achar na imagem inteira, medido no aparelho. As posições da resposta
+  /// são do recorte ampliado, não do quadro: quem chama só lê o texto.
+  static Future<List<OcrLine>> readRegion(
+    String path,
+    Rect region, {
+    bool invert = true,
+    int scale = 4,
+  }) async {
+    final raw = await channel.invokeListMethod<Object?>('readRegion', {
+      'path': path,
+      'left': region.left,
+      'top': region.top,
+      'right': region.right,
+      'bottom': region.bottom,
+      'invert': invert,
+      'scale': scale,
+    });
+    return ocrLinesFrom(raw ?? const []);
+  }
 }
 
 /// A resposta do canal no tipo do parser.

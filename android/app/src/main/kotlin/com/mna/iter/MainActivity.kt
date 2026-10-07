@@ -2,6 +2,12 @@ package com.mna.iter
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
 import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
@@ -26,16 +32,25 @@ class MainActivity : FlutterActivity() {
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CANAL_OCR)
             .setMethodCallHandler { call, result ->
-                if (call.method != "read") {
-                    result.notImplemented()
-                    return@setMethodCallHandler
-                }
                 val caminho = call.argument<String>("path")
                 if (caminho == null) {
                     result.error("bad-args", "path ausente", null)
                     return@setMethodCallHandler
                 }
-                lerTexto(caminho, result)
+                when (call.method) {
+                    "read" -> lerTexto(caminho, result)
+                    "readRegion" -> lerRecorte(
+                        caminho,
+                        call.argument<Number>("left")?.toDouble(),
+                        call.argument<Number>("top")?.toDouble(),
+                        call.argument<Number>("right")?.toDouble(),
+                        call.argument<Number>("bottom")?.toDouble(),
+                        call.argument<Boolean>("invert") ?: false,
+                        maxOf(1, call.argument<Number>("scale")?.toInt() ?: 1),
+                        result,
+                    )
+                    else -> result.notImplemented()
+                }
             }
     }
 
@@ -65,6 +80,79 @@ class MainActivity : FlutterActivity() {
             return
         }
 
+        reconhecer(imagem, result)
+    }
+
+    /**
+     * O recorte da tarja da letra: branco sobre preto, ~12 px de altura no
+     * quadro inteiro. Recortado, ampliado e invertido, vira uma letra preta do
+     * tamanho em que o OCR lê letra solta. As posições da resposta são do
+     * recorte ampliado — quem chama só lê o texto.
+     */
+    private fun lerRecorte(
+        caminho: String,
+        esquerda: Double?,
+        topo: Double?,
+        direita: Double?,
+        base: Double?,
+        inverter: Boolean,
+        escala: Int,
+        result: MethodChannel.Result,
+    ) {
+        if (esquerda == null || topo == null || direita == null || base == null) {
+            result.error("bad-args", "recorte ausente", null)
+            return
+        }
+        val inteira = BitmapFactory.decodeFile(caminho)
+        if (inteira == null) {
+            result.error("read-failed", null, null)
+            return
+        }
+
+        val recorte = Rect(
+            esquerda.toInt().coerceIn(0, inteira.width),
+            topo.toInt().coerceIn(0, inteira.height),
+            direita.toInt().coerceIn(0, inteira.width),
+            base.toInt().coerceIn(0, inteira.height),
+        )
+        if (recorte.width() < 4 || recorte.height() < 4) {
+            inteira.recycle()
+            result.success(emptyList<Map<String, Any>>())
+            return
+        }
+
+        val cortada = Bitmap.createBitmap(
+            inteira, recorte.left, recorte.top, recorte.width(), recorte.height(),
+        )
+        val ampliada = Bitmap.createScaledBitmap(
+            cortada, recorte.width() * escala, recorte.height() * escala, true,
+        )
+        val pronta = if (inverter) inverterCores(ampliada) else ampliada
+
+        if (cortada !== inteira) inteira.recycle()
+        if (ampliada !== cortada) cortada.recycle()
+        if (pronta !== ampliada) ampliada.recycle()
+
+        reconhecer(InputImage.fromBitmap(pronta, 0), result)
+    }
+
+    private fun inverterCores(origem: Bitmap): Bitmap {
+        val destino = Bitmap.createBitmap(origem.width, origem.height, Bitmap.Config.ARGB_8888)
+        val negativo = ColorMatrix(
+            floatArrayOf(
+                -1f, 0f, 0f, 0f, 255f,
+                0f, -1f, 0f, 0f, 255f,
+                0f, 0f, -1f, 0f, 255f,
+                0f, 0f, 0f, 1f, 0f,
+            ),
+        )
+        Canvas(destino).drawBitmap(
+            origem, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(negativo) },
+        )
+        return destino
+    }
+
+    private fun reconhecer(imagem: InputImage, result: MethodChannel.Result) {
         val motor = reconhecedor
             ?: TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
                 .also { reconhecedor = it }

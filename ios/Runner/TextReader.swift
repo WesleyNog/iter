@@ -1,3 +1,4 @@
+import CoreImage
 import Flutter
 import UIKit
 import Vision
@@ -22,7 +23,7 @@ enum TextReader {
     let channel = FlutterMethodChannel(name: channelName, binaryMessenger: messenger)
 
     channel.setMethodCallHandler { call, result in
-      guard call.method == "read" else {
+      guard call.method == "read" || call.method == "readRegion" else {
         result(FlutterMethodNotImplemented)
         return
       }
@@ -33,10 +34,25 @@ enum TextReader {
         return
       }
 
+      var region: CGRect?
+      if call.method == "readRegion" {
+        guard let left = (args["left"] as? NSNumber)?.doubleValue,
+              let top = (args["top"] as? NSNumber)?.doubleValue,
+              let right = (args["right"] as? NSNumber)?.doubleValue,
+              let bottom = (args["bottom"] as? NSNumber)?.doubleValue
+        else {
+          result(FlutterError(code: "bad-args", message: "recorte ausente", details: nil))
+          return
+        }
+        region = CGRect(x: left, y: top, width: right - left, height: bottom - top)
+      }
+      let invert = args["invert"] as? Bool ?? false
+      let scale = max(1, (args["scale"] as? NSNumber)?.intValue ?? 1)
+
       // O reconhecimento `.accurate` leva centenas de milissegundos: fora da
       // thread principal, e a resposta volta para ela.
       DispatchQueue.global(qos: .userInitiated).async {
-        let lines = read(path: path)
+        let lines = read(path: path, region: region, invert: invert, scale: scale)
         DispatchQueue.main.async {
           if let lines {
             result(lines)
@@ -48,11 +64,39 @@ enum TextReader {
     }
   }
 
-  private static func read(path: String) -> [[String: Any]]? {
+  private static func read(
+    path: String, region: CGRect?, invert: Bool, scale: Int
+  ) -> [[String: Any]]? {
     // `cgImage` ignora a orientação do `UIImage` — e é o certo aqui: o JPEG do
     // `mobile_scanner` já vem em pé e sem EXIF, e é nesse espaço que estão os
     // cantos do QR.
-    guard let image = UIImage(contentsOfFile: path)?.cgImage else { return nil }
+    guard let full = UIImage(contentsOfFile: path)?.cgImage else { return nil }
+
+    guard let region else { return recognize(full) }
+
+    // O recorte da tarja da letra: branco sobre preto, ~12 px de altura no
+    // quadro inteiro. Invertido e ampliado, vira uma letra preta de ~50 px,
+    // que é o tamanho em que o Vision lê letra solta.
+    let bounds = CGRect(x: 0, y: 0, width: full.width, height: full.height)
+    let crop = region.integral.intersection(bounds)
+    guard !crop.isNull, crop.width >= 4, crop.height >= 4,
+          let cropped = full.cropping(to: crop)
+    else { return [] }
+
+    var image = CIImage(cgImage: cropped)
+    if invert { image = image.applyingFilter("CIColorInvert") }
+    if scale > 1 {
+      image = image.applyingFilter(
+        "CILanczosScaleTransform",
+        parameters: [kCIInputScaleKey: scale, kCIInputAspectRatioKey: 1])
+    }
+    guard let prepared = CIContext().createCGImage(image, from: image.extent)
+    else { return nil }
+
+    return recognize(prepared)
+  }
+
+  private static func recognize(_ image: CGImage) -> [[String: Any]]? {
     let width = CGFloat(image.width)
     let height = CGFloat(image.height)
 

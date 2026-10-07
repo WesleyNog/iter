@@ -196,6 +196,7 @@ class _PackageReaderState extends State<PackageReader>
     Uint8List jpeg,
   ) async {
     var read = LabelRead(shipmentId: id);
+    final watch = Stopwatch()..start();
     final file = File(
       '${Directory.systemTemp.path}/$_tempPrefix'
       '${DateTime.now().microsecondsSinceEpoch}.jpg',
@@ -205,7 +206,27 @@ class _PackageReaderState extends State<PackageReader>
       await file.writeAsBytes(jpeg, flush: true);
       final lines = await TextReader.read(file.path);
       read = readLabel(shipmentId: id, qrCorners: corners, lines: lines);
+      var fromStripe = false;
+      if (read.type == null) {
+        read = read.withType(await _lookAtStripe(file.path, corners));
+        fromStripe = read.type != null;
+      }
       if (_debug) _debugFrame = _DebugFrame(frameSize, corners, lines);
+      // Em debug, o que a leitura conseguiu — sim ou não, e o tempo. Nenhum
+      // texto e nenhum número de envio: é o que mede, no aparelho, o
+      // critério de 1 s e as taxas de letra e bairro, sem pôr o endereço de
+      // ninguém no log.
+      if (kDebugMode) {
+        debugPrint(
+          'Leitura: ${_summary(read, lines, watch)}'
+          '${fromStripe ? ' (letra da tarja)' : ''}',
+        );
+        debugPrint(
+          'Diagnóstico: quadro ${frameSize.width.round()}x'
+          '${frameSize.height.round()}; '
+          '${labelDiagnostics(qrCorners: corners, lines: lines)}',
+        );
+      }
     } catch (e) {
       // OCR falhou neste quadro: o pacote conta pelo QR, e a próxima olhada
       // tenta de novo. Em debug, só o **código** do erro — a mensagem de um
@@ -223,6 +244,25 @@ class _PackageReaderState extends State<PackageReader>
     }
 
     if (mounted) _record(read);
+  }
+
+  /// A segunda olhada: só a tarja abaixo do QR, recortada e ampliada.
+  ///
+  /// Na imagem inteira a letra tem ~12 px e o OCR nem a devolve — medido no
+  /// aparelho. Invertida primeiro, porque a tarja é branco sobre preto; sem
+  /// inverter só se a primeira não achar nada. São no máximo duas leituras de
+  /// uma imagem pequena, e só quando a letra faltou.
+  Future<PackageType?> _lookAtStripe(String path, List<Offset> corners) async {
+    final window = letterWindow(corners);
+    if (window == null) return null;
+
+    for (final invert in const [true, false]) {
+      final letter = letterIn(
+        await TextReader.readRegion(path, window, invert: invert),
+      );
+      if (letter != null) return letter;
+    }
+    return null;
   }
 
   void _record(LabelRead read) {
@@ -613,6 +653,17 @@ class _PackageReaderState extends State<PackageReader>
     borderRadius: BorderRadius.circular(16),
     child: Padding(padding: const EdgeInsets.all(14), child: child),
   );
+}
+
+String _summary(LabelRead read, List<OcrLine> lines, Stopwatch watch) {
+  final bairro = read.bairro != null
+      ? 'sim'
+      : read.rawBairro != null
+      ? 'fora da lista'
+      : 'não';
+  return '${watch.elapsedMilliseconds} ms, ${lines.length} linhas, '
+      'letra ${read.type == null ? 'não' : packageTypeLetter(read.type!)}, '
+      'bairro $bairro, parada ${read.stopKey == null ? 'não' : 'sim'}';
 }
 
 /// Apaga quadros que sobraram — de uma sessão que o sistema matou no meio do
