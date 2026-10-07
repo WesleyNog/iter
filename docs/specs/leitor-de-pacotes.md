@@ -480,6 +480,39 @@ Fechado em 2026-10-06, respondendo às seis perguntas do rascunho:
 
 ## Desvios decididos durante a implementação
 
+**Tarefa 8 — o que o aparelho ensinou (iPhone 13, iOS 26.6, 2026-10-06).** O
+canal funciona e o OCR leva 130–700 ms por quadro, dentro do critério 5. As
+coordenadas batem: o topo do QR fica na altura do rótulo "Endereço:", como na
+etiqueta. Três coisas que as fotos não mostravam, cada uma medida por um
+diagnóstico só de posições e sim/não (`labelDiagnostics`, em debug — o texto
+lido não vai para log nem lá):
+
+- **A letra é pequena demais.** Com a etiqueta a um palmo, o QR tem ~100 px
+  num quadro de 1080×1920 e a tarja ~12 px, branca sobre preto — o Vision nem
+  a devolve como texto. Quando o celular chegava perto (QR de ~230 px) ela era
+  lida, e caía na janela abaixo do QR. Daí a **segunda olhada**: o canal
+  ganhou `readRegion`, que recorta a janela (`letterWindow`), inverte as cores
+  e amplia 4× antes do OCR; só roda quando a letra faltou, e leu R e C com QR
+  de 96 px.
+- **A vírgula some.** O Vision parte a linha do endereço ou lê a vírgula como
+  ponto, e o bairro da linha de baixo se perdia. Agora, se o depois da vírgula
+  não casar, cada linha do bloco é tentada contra a lista (só nome da lista
+  passa), e sem vírgula o número da casa sai da linha do rótulo.
+- **Existe um segundo leiaute.** Em etiquetas C, nenhuma linha se parece com
+  "Endereço:" (a mais próxima a 5–6 letras de 8) e o CEP fica **à direita** do
+  QR. O parser ainda não lê esse modelo — falta uma foto dele.
+
+Também do aparelho: `flutter run` só conectou com o iPhone **no cabo** (sem
+fio, a descoberta mDNS falhou duas vezes), e só com o Modo de Desenvolvedor
+ligado.
+
+**Tarefa 8 — o overlay, pelo que o entregador pediu ao usar.** ✓ verde no meio
+da tela quando conta e ✗ quando lê o que já estava contado (ou foi tirado da
+carga) — `ScanMark`, que aparece e some em 0,9 s; o lado de fora da janela
+fosco e escuro (`ScanFrame`), dentro nítido; R, C e A do mesmo tamanho numa
+linha só, o destaque só de cor; um contador de bairros achados ao lado do A,
+sem os "Sem bairro"; e o Finalizar em verde — não azul, que no app é Agendado.
+
 **Tarefa 9 — o ícone do gesto.** A spec pedia "o ícone e a cor de Em rota". O
 ícone de Em rota é um carro, que diz "iniciar" e não "ler as etiquetas": ficou
 a **cor** de Em rota (o resultado) com `Icons.qr_code_scanner` (o gesto).

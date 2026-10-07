@@ -11,6 +11,7 @@ import 'package:iter/services/textReader.dart';
 import 'package:iter/widget/packageCounterBar.dart';
 import 'package:iter/widget/packageList.dart';
 import 'package:iter/widget/packageReview.dart';
+import 'package:iter/widget/scanFrame.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 /// Quantas olhadas um pacote ganha para a leitura completar o que faltou (a
@@ -89,6 +90,10 @@ class _PackageReaderState extends State<PackageReader>
 
   /// O último QR recusado, para a mensagem não piscar a cada quadro.
   String? _rejected;
+
+  /// O ✓ ou ✗ do meio da tela, e o número que o faz aparecer de novo.
+  ScanMarkKind? _mark;
+  int _markSerial = 0;
 
   // Só em debug: o que o OCR e o QR viram, desenhado sobre a câmera.
   bool _debug = false;
@@ -283,6 +288,12 @@ class _PackageReaderState extends State<PackageReader>
     setState(() {
       _rejected = null;
       _flash = _Flash(id, _FlashKind.read);
+      // O ✓ só no pacote **novo**: a letra que chega numa segunda olhada é o
+      // mesmo pacote, e um segundo ✓ diria que contou duas vezes.
+      if (outcome == ReadOutcome.added) {
+        _mark = ScanMarkKind.counted;
+        _markSerial++;
+      }
     });
   }
 
@@ -311,6 +322,14 @@ class _PackageReaderState extends State<PackageReader>
   void _show(_Flash flash) {
     if (_flash?.shipmentId == flash.shipmentId && _rejected == null) return;
     setState(() {
+      // O ✗ só quando o pacote **muda**: o mesmo continua enquadrado por
+      // vários quadros, e piscar ✗ sobre o ✓ que acabou de aparecer diria o
+      // contrário do que aconteceu.
+      if (_flash?.shipmentId != flash.shipmentId &&
+          flash.kind != _FlashKind.read) {
+        _mark = ScanMarkKind.notCounted;
+        _markSerial++;
+      }
       _flash = flash;
       _rejected = null;
     });
@@ -488,20 +507,13 @@ class _PackageReaderState extends State<PackageReader>
                   child: CustomPaint(painter: _DebugPainter(_debugFrame!)),
                 ),
               ),
-            // A mira tem o formato da metade de baixo da etiqueta: o OCR
+            // A janela tem o formato da metade de baixo da etiqueta: o OCR
             // precisa do endereço **e** do QR no mesmo quadro.
-            Center(
-              child: IgnorePointer(
-                child: Container(
-                  width: 300,
-                  height: 260,
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.white70, width: 3),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
+            const Positioned.fill(child: ScanFrame(window: Size(300, 260))),
+            if (_mark != null)
+              Center(
+                child: ScanMark(kind: _mark!, serial: _markSerial),
               ),
-            ),
             Positioned(top: 12, left: 12, right: 12, child: _flashCard()),
             Positioned(
               left: 12,

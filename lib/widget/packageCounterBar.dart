@@ -10,6 +10,10 @@ import 'package:iter/widget/packageList.dart';
 /// o entregador confere antes de lançar o total no app do Mercado Livre. O
 /// **C** é comércio, que tem horário — pede atenção, mas não sai da carga. O R
 /// é o resto da carga e não disputa o olhar.
+///
+/// O destaque é **só de cor**, nunca de tamanho: no aparelho, o A maior que os
+/// outros fazia a linha parecer desalinhada, e os quatro contadores dividem a
+/// largura por igual.
 enum ChipEmphasis { normal, alerta, forte }
 
 ChipEmphasis emphasisOf(PackageType type) {
@@ -34,7 +38,8 @@ Color _emphasisColor(ChipEmphasis emphasis) {
   }
 }
 
-/// A contagem por cima da câmera: total, paradas, cada tipo e o Finalizar.
+/// A contagem por cima da câmera: total, paradas, cada tipo, os bairros e o
+/// Finalizar.
 ///
 /// Tocar no total abre a lista inteira; tocar num tipo abre a lista só
 /// daquele tipo — é assim que se acha a agência fechada numa carga de cem.
@@ -97,46 +102,81 @@ class PackageCounterBar extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+            // Uma linha só, cada contador com a mesma fatia da largura.
+            Row(
               children: [
                 // R, C, A: a ordem da etiqueta, com o mais importante no fim,
                 // onde o polegar já está a caminho do Finalizar.
                 for (final type in PackageType.values)
-                  PackageTypeChip(
-                    key: ValueKey('chip-${packageTypeLetter(type)}'),
-                    letter: packageTypeLetter(type),
-                    count: session.count(type),
-                    emphasis: emphasisOf(type),
-                    onTap: () => onOpenList(_filterOf[type]!),
+                  _slot(
+                    PackageTypeChip(
+                      key: ValueKey('chip-${packageTypeLetter(type)}'),
+                      letter: packageTypeLetter(type),
+                      count: session.count(type),
+                      emphasis: emphasisOf(type),
+                      onTap: () => onOpenList(_filterOf[type]!),
+                    ),
                   ),
                 // Só aparece quando existe: um "? 0" fixo ensinaria a ignorar
                 // o chip no dia em que ele importasse.
                 if (untyped > 0)
-                  PackageTypeChip(
-                    key: const ValueKey('chip-?'),
-                    letter: '?',
-                    count: untyped,
-                    emphasis: ChipEmphasis.normal,
-                    onTap: () => onOpenList(PackageListFilter.semLetra),
+                  _slot(
+                    PackageTypeChip(
+                      key: const ValueKey('chip-?'),
+                      letter: '?',
+                      count: untyped,
+                      emphasis: ChipEmphasis.normal,
+                      onTap: () => onOpenList(PackageListFilter.semLetra),
+                    ),
                   ),
+                // Os bairros achados, sem contar os "Sem bairro": é quantos
+                // vão para a rota.
+                _slot(
+                  PackageTypeChip(
+                    key: const ValueKey('chip-bairros'),
+                    icon: Icons.location_on_outlined,
+                    letter: 'Bairros',
+                    count: session.bairros.length,
+                    emphasis: ChipEmphasis.normal,
+                    onTap: () => onOpenList(PackageListFilter.todos),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 12),
-            FilledButton(
-              key: const ValueKey('finalizar'),
-              onPressed: session.isEmpty ? null : onFinish,
-              child: const Text('Finalizar'),
+            // Verde é "deu certo", a mesma cor do ✓ de cada leitura. Não o
+            // azul: no app, azul é Agendado — o status que a leitura deixa
+            // para trás.
+            SizedBox(
+              height: 48,
+              child: FilledButton(
+                key: const ValueKey('finalizar'),
+                onPressed: session.isEmpty ? null : onFinish,
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.green.shade600,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text(
+                  'Finalizar',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ),
             ),
           ],
         ),
       ),
     );
   }
+
+  Widget _slot(Widget chip) => Expanded(
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: chip,
+    ),
+  );
 }
 
-/// Um tipo e a sua contagem.
+/// Um contador da barra: um tipo — ou os bairros, com [icon] — e quantos.
 class PackageTypeChip extends StatelessWidget {
   const PackageTypeChip({
     super.key,
@@ -144,8 +184,11 @@ class PackageTypeChip extends StatelessWidget {
     required this.count,
     required this.emphasis,
     required this.onTap,
+    this.icon,
   });
 
+  /// Com ícone, [letter] vira só o nome para o leitor de tela.
+  final IconData? icon;
   final String letter;
   final int count;
   final ChipEmphasis emphasis;
@@ -155,6 +198,15 @@ class PackageTypeChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = _emphasisColor(emphasis);
     final strong = emphasis == ChipEmphasis.forte;
+    final textColor = strong ? Colors.white : color;
+    final style = TextStyle(
+      color: textColor,
+      fontSize: 18,
+      fontWeight: emphasis == ChipEmphasis.normal
+          ? FontWeight.w500
+          : FontWeight.bold,
+    );
+    final icon = this.icon;
 
     return Material(
       // O forte é cheio; o alerta, só contorno e um véu da cor; o normal não
@@ -167,25 +219,32 @@ class PackageTypeChip extends StatelessWidget {
       shape: StadiumBorder(
         side: BorderSide(
           color: emphasis == ChipEmphasis.normal ? Colors.white38 : color,
-          width: strong ? 2 : 1.5,
+          width: 1.5,
         ),
       ),
       child: InkWell(
         onTap: onTap,
         customBorder: const StadiumBorder(),
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: strong ? 16 : 12,
-            vertical: strong ? 8 : 6,
-          ),
-          child: Text(
-            '$letter $count',
-            style: TextStyle(
-              color: strong ? Colors.white : color,
-              fontSize: strong ? 20 : 16,
-              fontWeight: emphasis == ChipEmphasis.normal
-                  ? FontWeight.w500
-                  : FontWeight.bold,
+        // Altura fixa e conteúdo centrado: o tamanho não depende de ter letra
+        // ou ícone, nem do destaque.
+        child: SizedBox(
+          height: 44,
+          child: Center(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: icon == null
+                  ? Text('$letter $count', style: style)
+                  : Semantics(
+                      label: '$letter: $count',
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(icon, color: textColor, size: 20),
+                          const SizedBox(width: 4),
+                          Text('$count', style: style),
+                        ],
+                      ),
+                    ),
             ),
           ),
         ),

@@ -5,10 +5,15 @@ import 'package:iter/Utils/packageSession.dart';
 import 'package:iter/widget/packageCounterBar.dart';
 import 'package:iter/widget/packageList.dart';
 
-LabelRead _read(String id, PackageType? type, {String? stop}) => LabelRead(
+LabelRead _read(
+  String id,
+  PackageType? type, {
+  String? stop,
+  String? bairro = 'Papicu',
+}) => LabelRead(
   shipmentId: id,
   type: type,
-  bairro: 'Papicu',
+  bairro: bairro,
   stopKey: stop ?? 'cep-$id',
 );
 
@@ -64,6 +69,39 @@ void main() {
     expect(_chip(tester, 'A').emphasis, ChipEmphasis.forte);
     expect(_chip(tester, 'C').emphasis, ChipEmphasis.alerta);
     expect(_chip(tester, 'R').emphasis, ChipEmphasis.normal);
+  });
+
+  testWidgets('R, C, A e bairros têm o mesmo tamanho, na mesma linha', (
+    tester,
+  ) async {
+    // A causa, e não "parece alinhado": no aparelho o A era mais alto que os
+    // outros. Com o destaque só de cor e cada um num `Expanded`, os quatro
+    // retângulos são iguais — qualquer que seja a fonte.
+    await _pump(tester, PackageSession()..add(_read('1', PackageType.agencia)));
+
+    final rects = [
+      for (final key in ['chip-R', 'chip-C', 'chip-A', 'chip-bairros'])
+        tester.getRect(find.byKey(ValueKey(key))),
+    ];
+    for (final rect in rects.skip(1)) {
+      expect(rect.top, rects.first.top);
+      expect(rect.height, rects.first.height);
+      expect(rect.width, closeTo(rects.first.width, 0.5));
+    }
+  });
+
+  testWidgets('bairros conta só os achados', (tester) async {
+    await _pump(
+      tester,
+      PackageSession()
+        ..add(_read('1', PackageType.residencial, bairro: 'Papicu'))
+        ..add(_read('2', PackageType.residencial, bairro: 'Papicu'))
+        ..add(_read('3', PackageType.comercial, bairro: 'Meireles'))
+        ..add(_read('4', PackageType.agencia, bairro: null)),
+    );
+
+    // Dois bairros; o "Sem bairro" não é um.
+    expect(_chip(tester, 'bairros').count, 2);
   });
 
   testWidgets('o "?" só aparece quando há pacote sem letra', (tester) async {
