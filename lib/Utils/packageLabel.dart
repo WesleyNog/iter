@@ -231,17 +231,27 @@ PackageType? _typeOf(List<Offset> corners, List<OcrLine> lines) {
 /// ~12 px de altura, branca sobre preto — pequena demais para o OCR achar na
 /// imagem inteira (medido em 2026-10-06). Recortada, ampliada e invertida, ela
 /// vira uma letra preta de ~50 px.
-Rect? letterWindow(List<Offset> qrCorners) {
+///
+/// [reach] é até onde ela desce, em alturas do QR. A janela larga (0,6) é a
+/// que filtra a letra na leitura inteira; a **faixa** (0,4, [stripeReach]) é o
+/// recorte que se binariza — com mais saco preto embaixo, o limiar escolhido
+/// pela binarização vai para o fundo e a letra some. Medido na foto de um A:
+/// 0,3 corta a letra, 0,4 lê com confiança 1,0, 0,5 com 0,5.
+Rect? letterWindow(List<Offset> qrCorners, {double reach = _letterReach}) {
   if (qrCorners.length < 3) return null;
 
   final qr = _bounds(qrCorners);
+  final side = reach < _letterReach ? 0.05 : 0.1;
   return Rect.fromLTRB(
-    qr.left - qr.width * 0.1,
+    qr.left - qr.width * side,
     qr.bottom - qr.height * 0.05,
-    qr.right + qr.width * 0.1,
-    qr.bottom + qr.height * _letterReach,
+    qr.right + qr.width * side,
+    qr.bottom + qr.height * reach,
   );
 }
+
+/// A faixa justa da tarja — ver [letterWindow].
+const stripeReach = 0.4;
 
 /// A letra lida no recorte da tarja ([letterWindow]). Ali só deveria haver
 /// ela: duas diferentes é ambiguidade, e ambiguidade é `null`.

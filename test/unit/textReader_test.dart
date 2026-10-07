@@ -1,4 +1,3 @@
-
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iter/services/textReader.dart';
@@ -104,6 +103,8 @@ void main() {
         'bottom': 1230.0,
         'invert': true,
         'scale': 4,
+        'binarize': false,
+        'fast': false,
       });
       expect(lines.single.text, 'R');
     });

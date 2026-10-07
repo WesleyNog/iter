@@ -47,6 +47,8 @@ class MainActivity : FlutterActivity() {
                         call.argument<Number>("bottom")?.toDouble(),
                         call.argument<Boolean>("invert") ?: false,
                         maxOf(1, call.argument<Number>("scale")?.toInt() ?: 1),
+                        // `fast` não existe no ML Kit; o argumento é ignorado.
+                        call.argument<Boolean>("binarize") ?: false,
                         result,
                     )
                     else -> result.notImplemented()
@@ -97,6 +99,7 @@ class MainActivity : FlutterActivity() {
         base: Double?,
         inverter: Boolean,
         escala: Int,
+        binarizar: Boolean,
         result: MethodChannel.Result,
     ) {
         if (esquerda == null || topo == null || direita == null || base == null) {
@@ -127,13 +130,65 @@ class MainActivity : FlutterActivity() {
         val ampliada = Bitmap.createScaledBitmap(
             cortada, recorte.width() * escala, recorte.height() * escala, true,
         )
-        val pronta = if (inverter) inverterCores(ampliada) else ampliada
+        val invertida = if (inverter) inverterCores(ampliada) else ampliada
+        val pronta = if (binarizar) binarizarOtsu(invertida) else invertida
 
         if (cortada !== inteira) inteira.recycle()
         if (ampliada !== cortada) cortada.recycle()
-        if (pronta !== ampliada) ampliada.recycle()
+        if (invertida !== ampliada) ampliada.recycle()
+        if (pronta !== invertida) invertida.recycle()
 
         reconhecer(InputImage.fromBitmap(pronta, 0), result)
+    }
+
+    /**
+     * Preto e branco puros pelo limiar de Otsu: o corte que mais separa os dois
+     * grupos de cinza do histograma — aqui, a tarja e a letra. O mesmo
+     * `CIColorThresholdOtsu` do iOS, escrito à mão porque o Android não tem.
+     */
+    private fun binarizarOtsu(origem: Bitmap): Bitmap {
+        val largura = origem.width
+        val altura = origem.height
+        val pixels = IntArray(largura * altura)
+        origem.getPixels(pixels, 0, largura, 0, 0, largura, altura)
+
+        val cinzas = IntArray(pixels.size)
+        val histograma = IntArray(256)
+        for (i in pixels.indices) {
+            val p = pixels[i]
+            val cinza = (((p shr 16) and 0xff) * 299 +
+                ((p shr 8) and 0xff) * 587 +
+                (p and 0xff) * 114) / 1000
+            cinzas[i] = cinza
+            histograma[cinza]++
+        }
+
+        val total = pixels.size.toDouble()
+        var somaTotal = 0.0
+        for (t in 0..255) somaTotal += t * histograma[t]
+        var somaFundo = 0.0
+        var pesoFundo = 0.0
+        var melhor = 0.0
+        var limiar = 127
+        for (t in 0..255) {
+            pesoFundo += histograma[t]
+            if (pesoFundo == 0.0) continue
+            val pesoFrente = total - pesoFundo
+            if (pesoFrente == 0.0) break
+            somaFundo += t * histograma[t]
+            val mediaFundo = somaFundo / pesoFundo
+            val mediaFrente = (somaTotal - somaFundo) / pesoFrente
+            val entre = pesoFundo * pesoFrente * (mediaFundo - mediaFrente) * (mediaFundo - mediaFrente)
+            if (entre > melhor) {
+                melhor = entre
+                limiar = t
+            }
+        }
+
+        for (i in pixels.indices) {
+            pixels[i] = if (cinzas[i] > limiar) 0xffffffff.toInt() else 0xff000000.toInt()
+        }
+        return Bitmap.createBitmap(pixels, largura, altura, Bitmap.Config.ARGB_8888)
     }
 
     private fun inverterCores(origem: Bitmap): Bitmap {

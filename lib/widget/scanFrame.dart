@@ -9,20 +9,43 @@ import 'package:flutter/material.dart';
 /// — o endereço às vezes passa da borda, e recortar a leitura pela janela
 /// perderia o bairro. O que a máscara faz é dizer onde pôr a etiqueta, que é o
 /// que os leitores de código que o entregador já usa fazem.
+///
+/// **No formato da etiqueta, e tão grande quanto couber.** A primeira versão
+/// era 300×260, mais larga que alta — e como a etiqueta é alta, o entregador a
+/// enquadrava inteira ali dentro, pequena: o QR chegava com 80–140 px e a
+/// letra da tarja com ~12. Uma janela alta faz a etiqueta preencher a tela, e
+/// tudo chega maior ao OCR.
 class ScanFrame extends StatelessWidget {
-  const ScanFrame({super.key, required this.window});
+  const ScanFrame({super.key, required this.insets, this.aspect = labelAspect});
 
-  /// O tamanho da janela, sempre centrada.
-  final Size window;
+  /// O que fica coberto em cima (o cartão da última leitura), embaixo (a barra
+  /// de contagem) e dos lados: a janela vive no espaço que sobra.
+  final EdgeInsets insets;
+
+  /// Largura sobre altura.
+  final double aspect;
+
+  /// A etiqueta do Mercado Livre: ~455×760 na foto de uma etiqueta A.
+  static const labelAspect = 0.62;
 
   static const radius = Radius.circular(18);
 
-  /// Onde a janela fica numa área de [area].
-  static Rect windowIn(Size area, Size window) => Rect.fromCenter(
-    center: area.center(Offset.zero),
-    width: window.width,
-    height: window.height,
-  );
+  /// A maior janela de proporção [aspect] que cabe em [area] menos [insets],
+  /// centrada nesse espaço — e não na tela, onde a barra a cobriria embaixo.
+  static Rect windowFor(
+    Size area,
+    EdgeInsets insets, {
+    double aspect = labelAspect,
+  }) {
+    final free = insets.deflateRect(Offset.zero & area);
+    var height = free.height;
+    var width = height * aspect;
+    if (width > free.width) {
+      width = free.width;
+      height = width / aspect;
+    }
+    return Rect.fromCenter(center: free.center, width: width, height: height);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +53,7 @@ class ScanFrame extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final hole = RRect.fromRectAndRadius(
-            windowIn(constraints.biggest, window),
+            windowFor(constraints.biggest, insets, aspect: aspect),
             radius,
           );
 

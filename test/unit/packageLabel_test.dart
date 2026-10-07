@@ -100,6 +100,41 @@ List<OcrLine> _foto2() {
   ];
 }
 
+/// Etiqueta A (agência), 654×1112, print de uma foto comprimida: a primeira
+/// de agência e o primeiro endereço em **três** linhas — o bairro quebra no
+/// meio ("Engenheiro Luciano" / "Cavalcante"). O QR foi localizado pelo
+/// OpenCV mas não decodificado, e a letra A da tarja **não** sai na leitura
+/// inteira: é a segunda olhada que a acha.
+const _fotoASize = Size(654, 1112);
+const _fotoAQr = [
+  Offset(395, 774),
+  Offset(540, 770),
+  Offset(525, 901),
+  Offset(384, 916),
+];
+List<OcrLine> _fotoA() {
+  final l = _on(_fotoASize);
+  return [
+    l('Z6A173190 02/10/2026 08:42:26', .17, .17, .36, .02),
+    l('ORION COMERCIO EXTERIOR L #124171341', .20, .29, .39, .03),
+    l('Avenida Orlandn Beroamo 800 Cumo Ch-Co', .21, .29, .41, .05),
+    l('Guarulhos BR-SP 07232151', .25, .29, .25, .02),
+    l('Pack ID: 2000015278002521', .28, .29, .32, .01),
+    l('481363 67852', .46, .39, .21, .02),
+    l('45 SCE3_A 01:30', .53, .18, .66, .07),
+    l('QUI 08/10/2026', .64, .33, .20, .02),
+    l('Retira na DON PEDRON BARBEARIA', .66, .17, .40, .02),
+    l('FRANCÉLIO MAIA', .69, .17, .21, .02),
+    l('(FRANCELIOMAIA)', .70, .16, .23, .03),
+    l('Endereço: RUA DOUTOR THOMPSON', .72, .17, .35, .02),
+    l('BULCÃO 707, Engenheiro Luciano', .73, .16, .32, .02),
+    l('Cavalcante', .75, .17, .11, .01),
+    l('CEP: 60810460', .76, .16, .19, .02),
+    l('Cidede de destino : Fortnleza. Ceará', .78, .16, .34, .01),
+    l('Complemento : DON PEDRON BARBEARIA', .79, .16, .39, .01),
+  ];
+}
+
 List<OcrLine> _without(List<OcrLine> lines, String text) =>
     lines.where((line) => line.text != text).toList();
 
@@ -218,6 +253,19 @@ void main() {
       ];
 
       expect(_read(lines, qr: _foto2Qr).type, PackageType.residencial);
+    });
+  });
+
+  group('foto A — agência, endereço em três linhas', () {
+    test('o bairro que quebra no meio sai inteiro', () {
+      final read = _read(_fotoA(), qr: _fotoAQr);
+
+      expect(read.bairro, 'Engenheiro Luciano Cavalcante');
+      expect(read.stopKey, '60810460 707');
+    });
+
+    test('sem a tarja na leitura inteira, a letra é nula — nunca palpite', () {
+      expect(_read(_fotoA(), qr: _fotoAQr).type, isNull);
     });
   });
 
@@ -382,6 +430,19 @@ void main() {
         isTrue,
       );
       expect(letterWindow(const []), isNull);
+    });
+
+    test('a faixa justa é mais baixa e ainda pega a letra das duas fotos', () {
+      // Na foto 2 o centro do R fica a 0,31 altura do QR abaixo dele: a
+      // faixa não pode descer menos que isso.
+      final l1 = _on(_foto1Size);
+      final l2 = _on(_foto2Size);
+      final stripe1 = letterWindow(_foto1Qr, reach: stripeReach)!;
+      final stripe2 = letterWindow(_foto2Qr, reach: stripeReach)!;
+
+      expect(stripe1.height, lessThan(letterWindow(_foto1Qr)!.height));
+      expect(stripe1.contains(l1('R', .85, .77, .03, .02).box.center), isTrue);
+      expect(stripe2.contains(l2('R', .62, .82, .03, .02).box.center), isTrue);
     });
 
     test('no recorte, uma letra só é o tipo', () {

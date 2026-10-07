@@ -254,17 +254,30 @@ class _PackageReaderState extends State<PackageReader>
   /// A segunda olhada: só a tarja abaixo do QR, recortada e ampliada.
   ///
   /// Na imagem inteira a letra tem ~12 px e o OCR nem a devolve — medido no
-  /// aparelho. Invertida primeiro, porque a tarja é branco sobre preto; sem
-  /// inverter só se a primeira não achar nada. São no máximo duas leituras de
-  /// uma imagem pequena, e só quando a letra faltou.
+  /// aparelho. Nenhuma preparação sozinha lê as três letras: a janela larga
+  /// invertida leu R e C no aparelho; a faixa justa binarizada foi a única que
+  /// leu o A da foto borrada; e o modo rápido do Vision é o que lê um "C"
+  /// sozinho. Então tenta em ordem e para na primeira letra — no pior caso,
+  /// quatro leituras de uma imagem pequena, e só quando a letra faltou.
   Future<PackageType?> _lookAtStripe(String path, List<Offset> corners) async {
     final window = letterWindow(corners);
-    if (window == null) return null;
+    final stripe = letterWindow(corners, reach: stripeReach);
+    if (window == null || stripe == null) return null;
 
-    for (final invert in const [true, false]) {
-      final letter = letterIn(
-        await TextReader.readRegion(path, window, invert: invert),
-      );
+    final attempts = <Future<List<OcrLine>> Function()>[
+      () => TextReader.readRegion(path, stripe, invert: false, binarize: true),
+      () => TextReader.readRegion(path, window),
+      () => TextReader.readRegion(
+        path,
+        stripe,
+        invert: false,
+        binarize: true,
+        fast: true,
+      ),
+      () => TextReader.readRegion(path, window, invert: false, fast: true),
+    ];
+    for (final attempt in attempts) {
+      final letter = letterIn(await attempt());
       if (letter != null) return letter;
     }
     return null;
@@ -507,12 +520,26 @@ class _PackageReaderState extends State<PackageReader>
                   child: CustomPaint(painter: _DebugPainter(_debugFrame!)),
                 ),
               ),
-            // A janela tem o formato da metade de baixo da etiqueta: o OCR
-            // precisa do endereço **e** do QR no mesmo quadro.
-            const Positioned.fill(child: ScanFrame(window: Size(300, 260))),
+            // A janela tem o formato da etiqueta e o maior tamanho que cabe
+            // entre o cartão de cima e a barra de baixo — ver [ScanFrame].
+            Positioned.fill(child: ScanFrame(insets: _frameInsets(context))),
             if (_mark != null)
-              Center(
-                child: ScanMark(kind: _mark!, serial: _markSerial),
+              Positioned.fill(
+                child: LayoutBuilder(
+                  builder: (context, constraints) => Stack(
+                    children: [
+                      Positioned.fromRect(
+                        rect: ScanFrame.windowFor(
+                          constraints.biggest,
+                          _frameInsets(context),
+                        ),
+                        child: Center(
+                          child: ScanMark(kind: _mark!, serial: _markSerial),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             Positioned(top: 12, left: 12, right: 12, child: _flashCard()),
             Positioned(
@@ -548,6 +575,17 @@ class _PackageReaderState extends State<PackageReader>
       ),
     );
   }
+
+  /// O que o cartão de cima e a barra de baixo cobrem. Medido nos dois no
+  /// iPhone: o cartão de uma linha tem ~76 pt, a barra ~190 pt. Quando o
+  /// cartão ganha os botões R/C/A ele avança um pouco sobre a janela — é o
+  /// momento em que o entregador está olhando para o cartão, não para ela.
+  EdgeInsets _frameInsets(BuildContext context) => EdgeInsets.fromLTRB(
+    24,
+    100,
+    24,
+    210 + MediaQuery.of(context).padding.bottom,
+  );
 
   Widget _flashCard() {
     final flash = _flash;

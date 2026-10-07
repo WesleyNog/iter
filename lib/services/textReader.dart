@@ -38,7 +38,11 @@ class TextReader {
   }
 
   /// As linhas de um **recorte** do JPEG, ampliado [scale] vezes e, com
-  /// [invert], com as cores invertidas.
+  /// [invert], com as cores invertidas; com [binarize], em preto e branco
+  /// puros (limiar de Otsu, depois de ampliar); com [fast], no modo rápido do
+  /// motor, que no Vision lê letra solta melhor que o preciso — o preciso não
+  /// lê um "C" sozinho nem desenhado limpo. O Android ignora [fast]: o ML Kit
+  /// não tem os dois modos.
   ///
   /// Existe para a tarja da letra: R/C/A em branco sobre preto, com ~12 px de
   /// altura quando a etiqueta está a um palmo — pequena demais para o motor
@@ -49,6 +53,8 @@ class TextReader {
     Rect region, {
     bool invert = true,
     int scale = 4,
+    bool binarize = false,
+    bool fast = false,
   }) async {
     final raw = await channel.invokeListMethod<Object?>('readRegion', {
       'path': path,
@@ -58,6 +64,8 @@ class TextReader {
       'bottom': region.bottom,
       'invert': invert,
       'scale': scale,
+      'binarize': binarize,
+      'fast': fast,
     });
     return ocrLinesFrom(raw ?? const []);
   }

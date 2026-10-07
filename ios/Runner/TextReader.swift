@@ -48,11 +48,15 @@ enum TextReader {
       }
       let invert = args["invert"] as? Bool ?? false
       let scale = max(1, (args["scale"] as? NSNumber)?.intValue ?? 1)
+      let binarize = args["binarize"] as? Bool ?? false
+      let fast = args["fast"] as? Bool ?? false
 
       // O reconhecimento `.accurate` leva centenas de milissegundos: fora da
       // thread principal, e a resposta volta para ela.
       DispatchQueue.global(qos: .userInitiated).async {
-        let lines = read(path: path, region: region, invert: invert, scale: scale)
+        let lines = read(
+          path: path, region: region, invert: invert, scale: scale,
+          binarize: binarize, fast: fast)
         DispatchQueue.main.async {
           if let lines {
             result(lines)
@@ -65,14 +69,15 @@ enum TextReader {
   }
 
   private static func read(
-    path: String, region: CGRect?, invert: Bool, scale: Int
+    path: String, region: CGRect?, invert: Bool, scale: Int,
+    binarize: Bool, fast: Bool
   ) -> [[String: Any]]? {
     // `cgImage` ignora a orientação do `UIImage` — e é o certo aqui: o JPEG do
     // `mobile_scanner` já vem em pé e sem EXIF, e é nesse espaço que estão os
     // cantos do QR.
     guard let full = UIImage(contentsOfFile: path)?.cgImage else { return nil }
 
-    guard let region else { return recognize(full) }
+    guard let region else { return recognize(full, fast: false) }
 
     // O recorte da tarja da letra: branco sobre preto, ~12 px de altura no
     // quadro inteiro. Invertido e ampliado, vira uma letra preta de ~50 px,
@@ -90,18 +95,28 @@ enum TextReader {
         "CILanczosScaleTransform",
         parameters: [kCIInputScaleKey: scale, kCIInputAspectRatioKey: 1])
     }
+    // Depois de ampliar: o limiar de Otsu escolhe o corte entre tarja e letra
+    // pelo histograma do recorte, e uma letra borrada vira preto e branco
+    // puros. Foi a única preparação que leu o A de uma foto comprimida.
+    if binarize {
+      image = image
+        .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 0])
+        .applyingFilter("CIColorThresholdOtsu")
+    }
     guard let prepared = CIContext().createCGImage(image, from: image.extent)
     else { return nil }
 
-    return recognize(prepared)
+    return recognize(prepared, fast: fast)
   }
 
-  private static func recognize(_ image: CGImage) -> [[String: Any]]? {
+  private static func recognize(_ image: CGImage, fast: Bool) -> [[String: Any]]? {
     let width = CGFloat(image.width)
     let height = CGFloat(image.height)
 
     let request = VNRecognizeTextRequest()
-    request.recognitionLevel = .accurate
+    // O rápido lê letra solta melhor: o preciso não devolve um "C" sozinho
+    // nem desenhado limpo. Só a segunda olhada da tarja pede o rápido.
+    request.recognitionLevel = fast ? .fast : .accurate
     request.recognitionLanguages = ["pt-BR"]
     // A correção de idioma "conserta" nome de rua e bairro para palavras do
     // dicionário — e a letra solta da tarja para coisa nenhuma.

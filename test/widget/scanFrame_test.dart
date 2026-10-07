@@ -4,13 +4,29 @@ import 'package:iter/widget/scanFrame.dart';
 
 void main() {
   group('ScanFrame', () {
-    test('a janela fica centrada', () {
-      final window = ScanFrame.windowIn(
-        const Size(400, 800),
-        const Size(300, 260),
+    test('a janela é alta, no formato da etiqueta, no espaço livre', () {
+      // Tela de 390×740: 100 em cima (cartão), 240 embaixo (barra), 24 dos
+      // lados. Sobram 342×400, e a janela de 0,62 é limitada pela altura.
+      final window = ScanFrame.windowFor(
+        const Size(390, 740),
+        const EdgeInsets.fromLTRB(24, 100, 24, 240),
       );
 
-      expect(window, const Rect.fromLTWH(50, 270, 300, 260));
+      expect(window.height, closeTo(400, 0.01));
+      expect(window.width, closeTo(248, 0.01));
+      expect(window.height, greaterThan(window.width));
+      // Centrada no espaço livre, não na tela.
+      expect(window.center, const Offset(195, 300));
+    });
+
+    test('numa tela larga, a largura é que limita', () {
+      final window = ScanFrame.windowFor(
+        const Size(400, 2000),
+        const EdgeInsets.fromLTRB(24, 100, 24, 240),
+      );
+
+      expect(window.width, closeTo(352, 0.01));
+      expect(window.width / window.height, closeTo(0.62, 0.001));
     });
 
     test('o fosco cobre o lado de fora e não a janela', () {
@@ -27,7 +43,7 @@ void main() {
 
     testWidgets('não intercepta toque', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: ScanFrame(window: Size(300, 260))),
+        const MaterialApp(home: ScanFrame(insets: EdgeInsets.all(24))),
       );
 
       expect(
