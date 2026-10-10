@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:iter/Utils/routeStyle.dart';
 import 'package:iter/model/newRouteModal.dart';
+import 'package:iter/widget/iconSlideAction.dart';
 
 /// O card de uma rota com os gestos de deslizar: editar e excluir de um lado,
 /// marcar como paga — ou ler os pacotes — do outro.
@@ -75,7 +76,7 @@ class RouteSlidable extends StatelessWidget {
       // os dois, e nada nos outros casos. Ver [_startPane].
       startActionPane: canMarkPaid
           ? _startPane(
-              _action(
+              iconSlideAction(
                 keyName: 'acao-pagar',
                 onPressed: onMarkPaid,
                 // O mesmo ícone e a mesma cor do selo "Pago" no card: o gesto
@@ -87,7 +88,7 @@ class RouteSlidable extends StatelessWidget {
             )
           : canReadPackages
           ? _startPane(
-              _action(
+              iconSlideAction(
                 keyName: 'acao-ler-pacotes',
                 onPressed: onReadPackages,
                 // A cor é a do resultado (Em rota); o ícone é o do gesto. O
@@ -104,14 +105,14 @@ class RouteSlidable extends StatelessWidget {
         // pede bem menos, e o excesso deixava o card sumir da tela.
         extentRatio: 0.32,
         children: [
-          _action(
+          iconSlideAction(
             keyName: 'acao-editar',
             onPressed: onEdit,
             icon: Icons.edit_outlined,
             color: Colors.blue.shade600,
             tooltip: 'Editar',
           ),
-          _action(
+          iconSlideAction(
             keyName: 'acao-excluir',
             onPressed: onDelete,
             icon: Icons.delete_outline,
@@ -134,33 +135,4 @@ class RouteSlidable extends StatelessWidget {
     extentRatio: 0.2,
     children: [action],
   );
-
-  /// Uma ação sem fundo, sem borda e sem rótulo — só o ícone, colorido.
-  ///
-  /// `CustomSlidableAction` e não `SlidableAction`: o segundo sempre desenha um
-  /// retângulo cheio e não tem como não desenhar. O fundo transparente deixa o
-  /// da lista aparecer, então o ícone flutua ao lado do card em vez de virar um
-  /// bloco colorido do tamanho dele.
-  ///
-  /// O `Tooltip` devolve por acessibilidade o nome que o rótulo dava: sem ele,
-  /// o leitor de tela anuncia um botão sem nome.
-  Widget _action({
-    required String keyName,
-    required VoidCallback onPressed,
-    required IconData icon,
-    required Color color,
-    required String tooltip,
-  }) {
-    return CustomSlidableAction(
-      key: ValueKey(keyName),
-      onPressed: (_) => onPressed(),
-      backgroundColor: Colors.transparent,
-      foregroundColor: color,
-      padding: EdgeInsets.zero,
-      child: Tooltip(
-        message: tooltip,
-        child: Icon(icon, size: 28, color: color),
-      ),
-    );
-  }
 }

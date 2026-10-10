@@ -230,6 +230,16 @@ for R$ 80 is not the price of a new tyre, which is what the Reparo/Substituiçã
 toggle exists to distinguish. Updating `Vehicle` changes the cost per km of
 every future route, so it is always the owner's call.
 
+Both are corrected by sliding a line of the period's expense detail
+(`ExpensesScreen`): Editar reopens `AddSupply`/`AddMaintenance` with the same
+`id`, Excluir asks first. **Editing a fuel-up never reports a price again** —
+`gastop/{id}/precos` is create-only by the rules, so the original report stays
+and a second one would count the same fuel-up twice in the median; the edit goes
+through `updater`, never through the create path's `saver`. The edit also keeps
+the stored `lat/lng` (today's GPS is the driver's house, not the pump), the
+stored date when the day is unchanged, and the entry's own vehicle, never the
+active one. See `docs/specs/editar-gastos.md`.
+
 ## Measured km/l
 
 `Utils/fuelEconomy.dart` turns the odometer recorded at each fuel-up into the

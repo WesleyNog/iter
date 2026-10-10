@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iter/Utils/expenseRules.dart';
 import 'package:iter/model/maintenance.dart';
@@ -29,6 +30,8 @@ Future<void> _pump(
   List<Vehicle>? vehicles,
   Vehicle? active,
   double width = 411,
+  Maintenance? maintenance,
+  Future<void> Function(String uid, Maintenance maintenance)? saver,
 }) async {
   tester.view.physicalSize = Size(width, 1400);
   tester.view.devicePixelRatio = 1.0;
@@ -42,7 +45,12 @@ Future<void> _pump(
           all: vehicles ?? const <Vehicle>[],
           active: active,
         ),
+        maintenance: maintenance,
+        saver: saver,
       ),
+      // O caminho de salvamento passa por `EasyLoading.show`, e o overlay dele
+      // é instalado por este builder — como em `main.dart`.
+      builder: EasyLoading.init(),
     ),
   );
   await tester.pumpAndSettle();
@@ -267,6 +275,61 @@ void main() {
 
       expect(identical(withPartPrice(original, MaintenanceItem.pneu, 0), original), isTrue);
       expect(identical(withPartPrice(original, MaintenanceItem.pneu, -1), original), isTrue);
+    });
+  });
+
+  group('editar', () {
+    const gravada = Maintenance(
+      id: 'man-1',
+      vehicleId: 'v1',
+      item: MaintenanceItem.pneu,
+      action: MaintenanceAction.reparo,
+      value: 80,
+      workshop: 'Borracharia do Zé',
+      odometer: 128800,
+      date: '2026-08-06T09:15:00.000',
+      createdAt: '2026-08-06T09:15:00.000',
+    );
+
+    String field(WidgetTester tester, String key) => tester
+        .widget<TextFormField>(find.byKey(Key(key)))
+        .controller!
+        .text;
+
+    testWidgets('reabre com os campos como estavam', (tester) async {
+      await _pump(tester, maintenance: gravada);
+
+      expect(find.text('Editar manutenção'), findsOneWidget);
+      expect(find.text('SALVAR ALTERAÇÕES'), findsOneWidget);
+      expect(field(tester, 'maintenance-value'), contains('80,00'));
+      expect(field(tester, 'maintenance-workshop'), 'Borracharia do Zé');
+      expect(field(tester, 'maintenance-odometer'), '128.800');
+    });
+
+    testWidgets('salva com o mesmo id e a mesma data', (tester) async {
+      // O formulário não tem campo de data: salvar com a de agora moveria a
+      // troca de agosto para hoje.
+      Maintenance? saved;
+      await _pump(
+        tester,
+        maintenance: gravada,
+        saver: (_, item) async => saved = item,
+      );
+
+      await tester.enterText(
+        find.byKey(const Key('maintenance-value')),
+        '9500',
+      );
+      await tester.ensureVisible(find.byKey(const Key('maintenance-save')));
+      await tester.tap(find.byKey(const Key('maintenance-save')));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 10));
+
+      expect(saved!.id, 'man-1');
+      expect(saved!.value, 95);
+      expect(saved!.date, '2026-08-06T09:15:00.000');
+      expect(saved!.createdAt, '2026-08-06T09:15:00.000');
+      expect(saved!.workshop, 'Borracharia do Zé');
     });
   });
 }

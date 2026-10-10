@@ -235,9 +235,13 @@ class _SummaryScreenState extends State<SummaryScreen> {
                   : () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => ExpensesScreen(
+                          uid: widget.user.uid,
                           // As mesmas listas que o card somou: o detalhe não
                           // tem como discordar do total.
-                          rows: expenseRows(supplies, maintenances),
+                          supplies: supplies,
+                          maintenances: maintenances,
+                          start: _start,
+                          end: _end,
                           periodLabel: periodLabel(_start, _end),
                         ),
                       ),

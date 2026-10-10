@@ -47,6 +47,8 @@ Future<void> _pump(
   LocationFailure? failure,
   Future<void> Function(String uid, Supply supply)? saver,
   Future<StationChoice?> Function(BuildContext, StationChoice?)? stationPicker,
+  Supply? supply,
+  Future<void> Function(String uid, Supply supply)? updater,
 }) async {
   tester.view.physicalSize = const Size(1200, 3000);
   tester.view.devicePixelRatio = 1.0;
@@ -68,6 +70,8 @@ Future<void> _pump(
         ),
         saver: saver,
         stationPicker: stationPicker,
+        supply: supply,
+        updater: updater,
       ),
       // O caminho de salvamento passa por `EasyLoading.show`, e o overlay dele
       // é instalado por este builder — como em `main.dart`.
@@ -525,6 +529,140 @@ void main() {
         shouldOfferPriceUpdate(flex, supply(fuel: SupplyFuel.etanol)),
         isTrue,
       );
+    });
+  });
+
+  group('editar', () {
+    // Um abastecimento de hoje às 14:32, com posto da lista e o GPS de então.
+    Supply gravado() {
+      final today = _today();
+      return Supply(
+        id: 'sup-1',
+        vehicleId: 'v1',
+        value: 250,
+        liters: 39.75,
+        fuel: SupplyFuel.etanol,
+        odometer: 128800,
+        station: _station,
+        lat: -3.70,
+        lng: -38.50,
+        date: DateTime(
+          today.year,
+          today.month,
+          today.day,
+          14,
+          32,
+        ).toIso8601String(),
+        createdAt: '2026-10-01T08:00:00.000',
+      );
+    }
+
+    String field(WidgetTester tester, String key) => tester
+        .widget<TextFormField>(find.byKey(Key(key)))
+        .controller!
+        .text;
+
+    Future<void> saveEdit(WidgetTester tester) async {
+      await tester.tap(find.byKey(const Key('supply-save')));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 10));
+    }
+
+    testWidgets('reabre com os campos como estavam', (tester) async {
+      await _pump(tester, supply: gravado());
+
+      expect(find.text('Editar abastecimento'), findsOneWidget);
+      expect(find.text('SALVAR ALTERAÇÕES'), findsOneWidget);
+      expect(field(tester, 'supply-value'), contains('250,00'));
+      expect(field(tester, 'supply-liters'), '39,75');
+      expect(field(tester, 'supply-odometer'), '128.800');
+      expect(find.textContaining('Apiguana'), findsOneWidget);
+    });
+
+    testWidgets('salva com o mesmo id e NÃO relata preço ao posto', (
+      tester,
+    ) async {
+      // O caminho do cadastro (`saver`) é o que relata em `gastop`. Na
+      // edição ele não pode ser chamado: o relato original é imutável, e um
+      // segundo contaria o mesmo abastecimento duas vezes na mediana.
+      final cadastro = _Gravacao();
+      final edicao = _Gravacao();
+      await _pump(
+        tester,
+        supply: gravado(),
+        saver: cadastro.call,
+        updater: edicao.call,
+      );
+
+      await tester.enterText(find.byKey(const Key('supply-value')), '30000');
+      await saveEdit(tester);
+
+      expect(cadastro.chamadas, 0);
+      expect(edicao.chamadas, 1);
+      final saved = edicao.supply!;
+      expect(saved.id, 'sup-1');
+      expect(saved.value, 300);
+      expect(saved.createdAt, '2026-10-01T08:00:00.000');
+      // Mesmo dia: a data gravada fica, hora incluída.
+      expect(saved.date, gravado().date);
+      expect(saved.fuel, SupplyFuel.etanol);
+    });
+
+    testWidgets('posto mantido mantém a posição gravada', (tester) async {
+      // O GPS de agora é a casa de quem corrige, não a bomba.
+      final edicao = _Gravacao();
+      await _pump(
+        tester,
+        supply: gravado(),
+        stations: const [],
+        updater: edicao.call,
+      );
+      await saveEdit(tester);
+
+      expect(edicao.supply!.station!.id, 'way-1');
+      expect(edicao.supply!.lat, -3.70);
+      expect(edicao.supply!.lng, -38.50);
+    });
+
+    testWidgets('posto trocado perde a posição gravada', (tester) async {
+      const outro = FuelStation(
+        id: 'way-2',
+        name: 'Posto Ipiranga Aldeota',
+        lat: -3.74,
+        lng: -38.49,
+      );
+      final edicao = _Gravacao();
+      await _pump(
+        tester,
+        supply: gravado(),
+        updater: edicao.call,
+        stationPicker: (_, _) async =>
+            const StationChoice.picked(outro, nearMe: true),
+      );
+
+      await tester.ensureVisible(find.textContaining('Apiguana'));
+      await tester.tap(find.textContaining('Apiguana'));
+      await tester.pumpAndSettle();
+      await saveEdit(tester);
+
+      expect(edicao.supply!.station!.id, 'way-2');
+      // O posto carrega as próprias coordenadas; a do aparelho não vale.
+      expect(edicao.supply!.lat, isNull);
+      expect(edicao.supply!.lng, isNull);
+    });
+
+    testWidgets('o veículo é o do abastecimento, não o ativo', (tester) async {
+      final edicao = _Gravacao();
+      await _pump(
+        tester,
+        supply: gravado(),
+        vehicles: [_vehicle(id: 'v1'), _vehicle(id: 'v2', nickname: 'Uno')],
+        active: _vehicle(id: 'v2', nickname: 'Uno'),
+        updater: edicao.call,
+      );
+      await saveEdit(tester);
+
+      expect(edicao.supply!.vehicleId, 'v1');
     });
   });
 }

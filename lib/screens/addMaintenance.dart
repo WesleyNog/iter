@@ -18,10 +18,30 @@ import 'package:uuid/uuid.dart';
 /// O carregador de veículos é injetável para o teste montar a tela sem
 /// Firestore — mesma costura de `AddSupply`.
 class AddMaintenance extends StatefulWidget {
-  const AddMaintenance({super.key, required this.uid, this.vehiclesLoader});
+  const AddMaintenance({
+    super.key,
+    required this.uid,
+    this.vehiclesLoader,
+    this.maintenance,
+    this.saver,
+  });
 
   final String uid;
   final Future<VehiclesSnapshot> Function()? vehiclesLoader;
+
+  /// A manutenção a corrigir. `null` é cadastro novo.
+  ///
+  /// Editar reabre os campos e salva com o **mesmo** `id`, substituindo o
+  /// documento — o modelo do `AddIter`. A data gravada fica: o formulário não
+  /// tem campo de data, e salvar de novo com a de agora moveria a troca de
+  /// pneu de agosto para hoje. Ver `docs/specs/editar-gastos.md`.
+  final Maintenance? maintenance;
+
+  /// Grava. Em produção, `MaintenanceController.save`; no teste, captura o que
+  /// seria gravado.
+  final Future<void> Function(String uid, Maintenance maintenance)? saver;
+
+  bool get isEditing => maintenance != null;
 
   @override
   State<AddMaintenance> createState() => _AddMaintenanceState();
@@ -46,7 +66,22 @@ class _AddMaintenanceState extends State<AddMaintenance> {
   @override
   void initState() {
     super.initState();
+    final original = widget.maintenance;
+    if (original != null) _fillFrom(original);
     _loadVehicles();
+  }
+
+  /// Os campos como estavam, no formato em que se digitam.
+  void _fillFrom(Maintenance maintenance) {
+    _value.text = CurrencyFormatterHelper.formatDoubleToMoney(
+      maintenance.value,
+    );
+    _workshop.text = maintenance.workshop ?? '';
+    _description.text = maintenance.description ?? '';
+    final odometer = maintenance.odometer;
+    if (odometer != null) _odometer.text = formatNumber(odometer);
+    _item = maintenance.item;
+    _action = maintenance.action;
   }
 
   @override
@@ -67,7 +102,13 @@ class _AddMaintenanceState extends State<AddMaintenance> {
 
       setState(() {
         _vehicles = snapshot.all;
-        _vehicle = snapshot.active;
+        final original = widget.maintenance;
+        // Na edição, o veículo **da manutenção**, nunca o ativo.
+        _vehicle = original == null
+            ? snapshot.active
+            : snapshot.all
+                  .where((vehicle) => vehicle.id == original.vehicleId)
+                  .firstOrNull;
       });
     } catch (e) {
       debugPrint('Não foi possível ler os veículos: $e');
@@ -87,11 +128,12 @@ class _AddMaintenanceState extends State<AddMaintenance> {
 
   Maintenance _draft() {
     final now = DateTime.now().toIso8601String();
+    final original = widget.maintenance;
     String? trimmed(TextEditingController c) =>
         c.text.trim().isEmpty ? null : c.text.trim();
 
     return Maintenance(
-      id: const Uuid().v4(),
+      id: original?.id ?? const Uuid().v4(),
       vehicleId: _vehicle?.id,
       item: _item,
       action: _action,
@@ -99,8 +141,8 @@ class _AddMaintenanceState extends State<AddMaintenance> {
       workshop: trimmed(_workshop),
       description: trimmed(_description),
       odometer: parseKm(_odometer.text),
-      date: now,
-      createdAt: now,
+      date: original?.date ?? now,
+      createdAt: original?.createdAt ?? now,
     );
   }
 
@@ -113,7 +155,10 @@ class _AddMaintenanceState extends State<AddMaintenance> {
     EasyLoading.show(status: 'Salvando manutenção...').ignore();
 
     try {
-      await MaintenanceController.save(widget.uid, maintenance);
+      await (widget.saver ?? MaintenanceController.save)(
+        widget.uid,
+        maintenance,
+      );
 
       if (!mounted) return;
       EasyLoading.dismiss().ignore();
@@ -124,9 +169,12 @@ class _AddMaintenanceState extends State<AddMaintenance> {
       showNotification(
         context: context,
         type: 'success',
-        msg: 'Manutenção registrada!',
+        msg: widget.isEditing
+            ? 'Manutenção atualizada!'
+            : 'Manutenção registrada!',
       );
-      Navigator.of(context).pop(true);
+      // Devolve o que foi gravado: o extrato troca a linha sem reler o banco.
+      Navigator.of(context).pop(maintenance);
     } catch (e) {
       debugPrint('Erro ao salvar a manutenção: $e');
       EasyLoading.dismiss().ignore();
@@ -206,7 +254,9 @@ class _AddMaintenanceState extends State<AddMaintenance> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Manutenção')),
+      appBar: AppBar(
+        title: Text(widget.isEditing ? 'Editar manutenção' : 'Manutenção'),
+      ),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -243,7 +293,9 @@ class _AddMaintenanceState extends State<AddMaintenance> {
               child: FilledButton(
                 key: const Key('maintenance-save'),
                 onPressed: _saving ? null : _save,
-                child: const Text('REGISTRAR MANUTENÇÃO'),
+                child: Text(
+                  widget.isEditing ? 'SALVAR ALTERAÇÕES' : 'REGISTRAR MANUTENÇÃO',
+                ),
               ),
             ),
           ],

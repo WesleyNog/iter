@@ -32,6 +32,8 @@ class AddSupply extends StatefulWidget {
     this.stationPicker,
     this.suppliesLoader,
     this.saver,
+    this.supply,
+    this.updater,
   });
 
   final String uid;
@@ -53,6 +55,29 @@ class AddSupply extends StatefulWidget {
   /// Grava o abastecimento. Em produção, `SupplyController.save` seguido do
   /// relato em `gastop`; no teste, captura o que seria gravado.
   final Future<void> Function(String uid, Supply supply)? saver;
+
+  /// O abastecimento a corrigir. `null` é cadastro novo.
+  ///
+  /// Editar reabre os campos e salva com o **mesmo** `id`, substituindo o
+  /// documento — o modelo do `AddIter`. Duas coisas do cadastro **não** se
+  /// repetem:
+  ///
+  /// - o relato de preço ao posto. Relato em `gastop` é imutável nas regras
+  ///   (só `create`), então o original fica; um segundo só contaria o mesmo
+  ///   abastecimento duas vezes na mediana do posto;
+  /// - o GPS de agora como lugar do abastecimento. Quem corrige está em casa,
+  ///   não na bomba — a mesma razão de "Outra localização" gravar `lat/lng`
+  ///   nulos. Posto mantido mantém a posição gravada; posto trocado fica sem
+  ///   ela, e o posto carrega as próprias coordenadas.
+  ///
+  /// Ver `docs/specs/editar-gastos.md`.
+  final Supply? supply;
+
+  /// Grava a edição. Em produção, `SupplyController.save` **e mais nada** —
+  /// editar nunca relata preço; no teste, captura o que seria gravado.
+  final Future<void> Function(String uid, Supply supply)? updater;
+
+  bool get isEditing => supply != null;
 
   @override
   State<AddSupply> createState() => _AddSupplyState();
@@ -83,13 +108,46 @@ class _AddSupplyState extends State<AddSupply> {
 
   StationChoice? _choice;
 
+  /// Na edição: o posto foi trocado, e a posição gravada deixou de valer.
+  bool _stationChanged = false;
+
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
+    final original = widget.supply;
+    if (original != null) _fillFrom(original);
     _loadVehicles();
     _locate();
+  }
+
+  /// Os campos como estavam, no formato em que se digitam.
+  void _fillFrom(Supply supply) {
+    _value.text = CurrencyFormatterHelper.formatDoubleToMoney(supply.value);
+    final liters = supply.liters;
+    if (liters != null) _liters.text = _litersText(liters);
+    final odometer = supply.odometer;
+    if (odometer != null) _odometer.text = formatNumber(odometer);
+    _fuel = supply.fuel;
+    _date = DateTime.tryParse(supply.date)?.toLocal() ?? _date;
+
+    final station = supply.station;
+    if (station != null) {
+      // Sem `lat/lng` é que veio de "Outra localização" — ver [_draft].
+      final nearMe = supply.lat != null;
+      _choice = station.id.isEmpty
+          ? StationChoice.typed(station.name, nearMe: nearMe)
+          : StationChoice.picked(station, nearMe: nearMe);
+    }
+  }
+
+  /// `39,75` e não `39,750`: o campo reabre como alguém digitaria.
+  static String _litersText(double liters) {
+    final fixed = formatNumber(liters, decimals: 3);
+    return fixed.contains(',')
+        ? fixed.replaceAll(RegExp(r',?0+$'), '')
+        : fixed;
   }
 
   @override
@@ -109,6 +167,16 @@ class _AddSupplyState extends State<AddSupply> {
 
       setState(() {
         _vehicles = snapshot.all;
+        final original = widget.supply;
+        if (original != null) {
+          // O veículo **do abastecimento**, nunca o ativo: corrigir o valor de
+          // ontem não pode mudar de carro quem rodou com ele. E o combustível
+          // gravado fica — foi o que entrou no tanque.
+          _vehicle = snapshot.all
+              .where((vehicle) => vehicle.id == original.vehicleId)
+              .firstOrNull;
+          return;
+        }
         _vehicle = snapshot.active;
         // Veículo de combustível único decide sozinho; flex devolve `null` e
         // o seletor aparece.
@@ -204,12 +272,20 @@ class _AddSupplyState extends State<AddSupply> {
     // Em "Outra localização" o GPS é a casa de quem registra, não o lugar do
     // abastecimento — e o posto escolhido já carrega as próprias coordenadas.
     final nearMe = _choice?.nearMe ?? true;
-    final lat = nearMe ? _gpsLat : null;
-    final lng = nearMe ? _gpsLng : null;
+    final original = widget.supply;
+    final keepPlace = original != null && !_stationChanged;
+    // Na edição, o GPS de agora nunca é o lugar do abastecimento — ver
+    // [AddSupply.supply].
+    final lat = keepPlace
+        ? original.lat
+        : (nearMe && original == null ? _gpsLat : null);
+    final lng = keepPlace
+        ? original.lng
+        : (nearMe && original == null ? _gpsLng : null);
     final typed = _choice?.typedName;
 
     return Supply(
-      id: const Uuid().v4(),
+      id: original?.id ?? const Uuid().v4(),
       vehicleId: _vehicle?.id,
       value: _valueOf ?? 0,
       liters: _litersOf,
@@ -217,18 +293,36 @@ class _AddSupplyState extends State<AddSupply> {
       odometer: parseKm(_odometer.text),
       // Posto digitado à mão fica sem id, e é isso que impede
       // `StationController` de sujar a coleção global com ele.
-      station:
-          _choice?.station ??
-          (typed == null
-              ? null
-              : FuelStation(id: '', name: typed, lat: lat ?? 0, lng: lng ?? 0)),
+      station: keepPlace
+          ? original.station
+          : _choice?.station ??
+                (typed == null
+                    ? null
+                    : FuelStation(
+                        id: '',
+                        name: typed,
+                        lat: lat ?? 0,
+                        lng: lng ?? 0,
+                      )),
       lat: lat,
       lng: lng,
       // O dia escolhido, não o do registro: o gasto de ontem é de ontem no
       // card de gastos, e o relato de preço leva a idade verdadeira.
-      date: expenseDateFor(_date, now: clock),
-      createdAt: now,
+      // Mesmo dia na edição mantém a data gravada, hora incluída: refazê-la
+      // trocaria "registrado às 14:32" por meio-dia sem ninguém pedir.
+      date: original != null && _sameDay(_date, original.date)
+          ? original.date
+          : expenseDateFor(_date, now: clock),
+      createdAt: original?.createdAt ?? now,
     );
+  }
+
+  static bool _sameDay(DateTime picked, String stored) {
+    final day = DateTime.tryParse(stored)?.toLocal();
+    return day != null &&
+        day.year == picked.year &&
+        day.month == picked.month &&
+        day.day == picked.day;
   }
 
   Future<void> _save() async {
@@ -240,7 +334,11 @@ class _AddSupplyState extends State<AddSupply> {
     EasyLoading.show(status: 'Salvando abastecimento...').ignore();
 
     try {
-      await (widget.saver ?? _persist)(widget.uid, supply);
+      // Editar grava e **só**: o relato de preço ao posto é do cadastro.
+      final persist = widget.isEditing
+          ? (widget.updater ?? SupplyController.save)
+          : (widget.saver ?? _persist);
+      await persist(widget.uid, supply);
 
       if (!mounted) return;
       EasyLoading.dismiss().ignore();
@@ -251,9 +349,12 @@ class _AddSupplyState extends State<AddSupply> {
       showNotification(
         context: context,
         type: 'success',
-        msg: 'Abastecimento registrado!',
+        msg: widget.isEditing
+            ? 'Abastecimento atualizado!'
+            : 'Abastecimento registrado!',
       );
-      Navigator.of(context).pop(true);
+      // Devolve o que foi gravado: o extrato troca a linha sem reler o banco.
+      Navigator.of(context).pop(supply);
     } catch (e) {
       debugPrint('Erro ao salvar o abastecimento: $e');
       EasyLoading.dismiss().ignore();
@@ -431,7 +532,9 @@ class _AddSupplyState extends State<AddSupply> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Abastecimento')),
+      appBar: AppBar(
+        title: Text(widget.isEditing ? 'Editar abastecimento' : 'Abastecimento'),
+      ),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -457,7 +560,11 @@ class _AddSupplyState extends State<AddSupply> {
               child: FilledButton(
                 key: const Key('supply-save'),
                 onPressed: _saving ? null : _save,
-                child: const Text('REGISTRAR ABASTECIMENTO'),
+                child: Text(
+                  widget.isEditing
+                      ? 'SALVAR ALTERAÇÕES'
+                      : 'REGISTRAR ABASTECIMENTO',
+                ),
               ),
             ),
           ],
@@ -472,7 +579,10 @@ class _AddSupplyState extends State<AddSupply> {
 
     // Voltar sem escolher mantém o que estava.
     if (choice == null || !mounted) return;
-    setState(() => _choice = choice);
+    setState(() {
+      _choice = choice;
+      _stationChanged = true;
+    });
   }
 
   Future<StationChoice?> _openStations(
