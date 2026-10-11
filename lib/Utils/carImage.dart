@@ -15,7 +15,7 @@ import 'package:iter/model/vehicle.dart';
 const _cdn = 'https://cdn.imagin.studio/getimage';
 
 /// Cliente de demonstração da imagin. Traz marca d'água — some no ícone de
-/// 32 px da AppBar, aparece no cabeçalho do formulário. Publicar na loja exige
+/// 36 px da AppBar, aparece no cabeçalho do formulário. Publicar na loja exige
 /// uma licença paga e um `customer` próprio.
 const _customer = 'img';
 
@@ -46,6 +46,33 @@ String? carImageUrl({
       '&modelFamily=$family'
       '&angle=01'
       '&width=$width';
+}
+
+/// O mesmo render, **enquadrado no carro**, para onde ele aparece pequeno.
+///
+/// O render padrão põe o carro no meio de uma tela com margem larga em volta;
+/// no botão de 36 px da `AppBar`, com `contain`, o carro ficava com menos da
+/// metade do quadrado. `zoomType=fullscreen` é a própria CDN ampliando o
+/// veículo até preencher a tela — um parâmetro da API, não uma edição da
+/// imagem, então continua dentro da licença. A largura cai para o tamanho do
+/// ícone: 600 px para desenhar 36 era banda à toa.
+///
+/// Recebe a URL **gravada**: os veículos confirmados antes disto guardam a URL
+/// sem o parâmetro, e é na exibição que ele entra. URL que não é da imagin
+/// volta como veio.
+String framedCarImageUrl(String url, {int width = 240}) {
+  final uri = Uri.tryParse(url);
+  if (uri == null || !uri.host.endsWith('imagin.studio')) return url;
+
+  return uri
+      .replace(
+        queryParameters: {
+          ...uri.queryParameters,
+          'zoomType': 'fullscreen',
+          'width': '$width',
+        },
+      )
+      .toString();
 }
 
 /// `"GM - Chevrolet"` → `chevrolet`, `"Citroën"` → `citroen`.

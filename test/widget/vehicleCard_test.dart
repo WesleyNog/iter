@@ -48,11 +48,7 @@ Future<void> _pump(
   return tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
-        body: VehicleCard(
-          vehicle: vehicle,
-          isActive: isActive,
-          onTap: onTap,
-        ),
+        body: VehicleCard(vehicle: vehicle, isActive: isActive, onTap: onTap),
       ),
     ),
   );
@@ -101,7 +97,9 @@ void main() {
     );
   });
 
-  testWidgets('taxa incalculável mostra — e não um custo menor', (tester) async {
+  testWidgets('taxa incalculável mostra — e não um custo menor', (
+    tester,
+  ) async {
     await _pump(tester, _vehicle(consumption: null));
 
     expect(_text(tester, 'vehicle-card-rate'), '—');
@@ -173,6 +171,84 @@ void main() {
 
       expect(find.byIcon(Icons.directions_car_outlined), findsOneWidget);
     });
+
+    testWidgets('o render cobre no card e aparece inteiro na AppBar', (
+      tester,
+    ) async {
+      final comRender = _vehicle(imageUrl: 'https://cdn.example/fiorino.png');
+
+      Future<BoxFit?> fitCom(BoxFit? renderFit) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: renderFit == null
+                  ? VehicleThumb(vehicle: comRender)
+                  : VehicleThumb(vehicle: comRender, renderFit: renderFit),
+            ),
+          ),
+        );
+        return tester.widget<Image>(find.byType(Image)).fit;
+      }
+
+      // O card continua como era: o render preenche o quadrado.
+      expect(await fitCom(null), BoxFit.cover);
+      // Na AppBar, `cover` cortava frente e traseira do carro e sobrava o meio
+      // da porta num quadrado de 36.
+      expect(await fitCom(BoxFit.contain), BoxFit.contain);
+    });
+
+    testWidgets('na AppBar, o render vem enquadrado no carro', (tester) async {
+      final comRender = _vehicle(
+        imageUrl:
+            'https://cdn.imagin.studio/getimage?customer=img&make=fiat'
+            '&modelFamily=fiorino&angle=01&width=600',
+      );
+
+      Future<String> urlCom({required bool framed}) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: VehicleThumb(vehicle: comRender, framedRender: framed),
+            ),
+          ),
+        );
+        final image = tester.widget<Image>(find.byType(Image)).image;
+        return (image as NetworkImage).url;
+      }
+
+      // No card, a URL gravada, sem mexer: o enquadramento que ele confirmou.
+      expect(await urlCom(framed: false), comRender.imageUrl);
+      // No quadrado de 36 da AppBar, a margem do render deixava o carro com
+      // menos da metade do botão.
+      expect(await urlCom(framed: true), contains('zoomType=fullscreen'));
+    });
+
+    testWidgets('fundo e cantos vêm de quem chama', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: VehicleThumb(
+              vehicle: null,
+              size: 36,
+              radius: 10,
+              background: Colors.transparent,
+            ),
+          ),
+        ),
+      );
+
+      // Na AppBar o fundo é o vidro do botão; um quadrado cinza dentro dele
+      // seria uma moldura a mais.
+      final caixa = tester.widget<Container>(
+        find.descendant(
+          of: find.byType(VehicleThumb),
+          matching: find.byType(Container),
+        ),
+      );
+      expect(caixa.color, Colors.transparent);
+      final recorte = tester.widget<ClipRRect>(find.byType(ClipRRect));
+      expect(recorte.borderRadius, BorderRadius.circular(10));
+    });
   });
 
   group('consumptionLine — cadastrado e medido lado a lado', () {
@@ -195,16 +271,17 @@ void main() {
       // O ponto é justamente ver a diferença: o cadastrado alimenta a provisão
       // de toda rota, o medido é o que o carro faz.
       expect(
-        consumptionLine(_vehicle(consumption: 10), {SupplyFuel.gasolina: ok(10.96)}),
+        consumptionLine(_vehicle(consumption: 10), {
+          SupplyFuel.gasolina: ok(10.96),
+        }),
         '10,00 km/l no cadastro · 10,96 medido',
       );
     });
 
     test('com um combustível só, não repete o nome dele', () {
-      final linha = consumptionLine(
-        _vehicle(consumption: 10),
-        {SupplyFuel.gasolina: ok(10.96)},
-      )!;
+      final linha = consumptionLine(_vehicle(consumption: 10), {
+        SupplyFuel.gasolina: ok(10.96),
+      })!;
 
       expect(linha, isNot(contains('gasolina')));
     });
@@ -287,7 +364,9 @@ void main() {
     );
 
     expect(
-      tester.widget<Text>(find.byKey(const Key('vehicle-card-consumption'))).data,
+      tester
+          .widget<Text>(find.byKey(const Key('vehicle-card-consumption')))
+          .data,
       '10,00 km/l no cadastro · 10,96 medido',
     );
   });

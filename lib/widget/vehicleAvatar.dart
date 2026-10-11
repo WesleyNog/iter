@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:iter/controller/vehicleController.dart';
 import 'package:iter/model/vehicle.dart';
+import 'package:iter/widget/glassNavBar.dart';
+import 'package:iter/widget/glassSurface.dart';
 import 'package:iter/widget/vehicleThumb.dart';
 
 /// O botão de veículos da `AppBar`: um carro genérico enquanto não há nenhum
@@ -53,15 +55,30 @@ class _VehicleAvatarState extends State<VehicleAvatar> {
           widget.activeVehicleId,
         );
 
-        return IconButton(
+        return GlassTileButton(
           key: const Key('appbar-vehicle'),
           tooltip: active == null
               ? 'Cadastrar veículo'
               : 'Veículos · ${active.displayName}',
-          onPressed: widget.onTap,
-          icon: active == null
-              ? const Icon(Icons.directions_car_outlined)
-              : VehicleThumb(vehicle: active, size: 30, circle: true),
+          onTap: widget.onTap,
+          child: active == null
+              ? Icon(
+                  Icons.directions_car_outlined,
+                  size: 22,
+                  color: GlassIndicator.accent.withValues(alpha: 0.8),
+                )
+              // Cantos de 10 dentro do botão de 14 com 4 de folga: as duas
+              // curvas ficam concêntricas, em vez de uma moldura torta.
+              : VehicleThumb(
+                  vehicle: active,
+                  size: 36,
+                  radius: 10,
+                  background: Colors.transparent,
+                  renderFit: BoxFit.contain,
+                  // Sem isto o carro ocupava menos da metade do quadrado: o
+                  // render padrão tem margem larga em volta dele.
+                  framedRender: true,
+                ),
         );
       },
     );

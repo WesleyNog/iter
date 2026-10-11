@@ -87,7 +87,11 @@ void main() {
         isNull,
       );
       expect(
-        carImageUrl(type: VehicleType.carro, brandName: 'GM - Chevrolet', modelName: ''),
+        carImageUrl(
+          type: VehicleType.carro,
+          brandName: 'GM - Chevrolet',
+          modelName: '',
+        ),
         isNull,
       );
     });
@@ -113,6 +117,35 @@ void main() {
       )!;
 
       expect(url(), url());
+    });
+  });
+
+  group('framedCarImageUrl — o carro enquadrado no ícone da AppBar', () {
+    const gravada =
+        'https://cdn.imagin.studio/getimage?customer=img&make=fiat'
+        '&modelFamily=fiorino&angle=01&width=600';
+
+    test('pede o carro preenchendo a tela, na largura do ícone', () {
+      final uri = Uri.parse(framedCarImageUrl(gravada));
+
+      expect(uri.queryParameters['zoomType'], 'fullscreen');
+      expect(uri.queryParameters['width'], '240');
+    });
+
+    test('mantém o resto da URL que o usuário confirmou', () {
+      // Marca, família e ângulo são o carro que ele disse que era o dele.
+      final uri = Uri.parse(framedCarImageUrl(gravada));
+
+      expect(uri.host, 'cdn.imagin.studio');
+      expect(uri.queryParameters['customer'], 'img');
+      expect(uri.queryParameters['make'], 'fiat');
+      expect(uri.queryParameters['modelFamily'], 'fiorino');
+      expect(uri.queryParameters['angle'], '01');
+    });
+
+    test('URL que não é da imagin volta como veio', () {
+      const outra = 'https://example.com/carro.png?width=600';
+      expect(framedCarImageUrl(outra), outra);
     });
   });
 }

@@ -22,15 +22,13 @@ import 'package:iter/screens/summaryScreen.dart';
 import 'package:iter/screens/vehiclesScreen.dart';
 import 'package:iter/services/authService.dart';
 import 'package:iter/services/pushMessaging.dart';
+import 'package:iter/widget/accountMenu.dart';
 import 'package:iter/widget/createActionSheet.dart';
 import 'package:iter/widget/glassNavBar.dart';
 import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/profileDialog.dart';
 import 'package:iter/widget/vehicleAvatar.dart';
 import 'package:share_plus/share_plus.dart';
-
-/// O que o menu da conta, na `AppBar`, oferece.
-enum _AccountAction { signOut, delete }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.user});
@@ -484,50 +482,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   activeVehicleId: snapshot.data?.activeVehicleId,
                   onTap: _openVehicles,
                 ),
-                // Menu e não o botão de sair direto: a Play exige que excluir
-                // a conta seja fácil de achar, e ao lado do "Sair" é onde as
-                // pessoas procuram. Ver `docs/specs/exclusao-de-conta.md`.
-                PopupMenuButton<_AccountAction>(
-                  key: const ValueKey('menu-conta'),
-                  tooltip: 'Conta',
-                  enabled: !_isSigningOut,
+                AccountMenu(
+                  busy: _isSigningOut,
                   onSelected: (action) => switch (action) {
-                    _AccountAction.signOut => _handleSignOut(),
-                    _AccountAction.delete => _openDeleteAccount(),
+                    AccountAction.signOut => _handleSignOut(),
+                    AccountAction.delete => _openDeleteAccount(),
                   },
-                  icon: _isSigningOut
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.more_vert),
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
-                      value: _AccountAction.signOut,
-                      child: ListTile(
-                        leading: Icon(Icons.logout),
-                        title: Text('Sair'),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: _AccountAction.delete,
-                      child: ListTile(
-                        leading: Icon(
-                          Icons.delete_forever,
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                        title: Text(
-                          'Excluir conta',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
-                          ),
-                        ),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                  ],
                 ),
               ],
             );

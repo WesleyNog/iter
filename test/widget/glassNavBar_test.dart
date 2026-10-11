@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iter/widget/glassNavBar.dart';
+import 'package:iter/widget/glassSurface.dart';
 
 /// Fixa o contrato de que `graficsScreen` e `listIterScreen` dependem para o
 /// respiro do fim do scroll: com `extendBody: true`, o `Scaffold` avisa ao body,
@@ -184,10 +185,7 @@ void main() {
         await pumpBar(
           tester,
           onTap: tapped.add,
-          trailing: GlassCircleButton(
-            icon: Icons.add,
-            onTap: () => plusTaps++,
-          ),
+          trailing: GlassCircleButton(icon: Icons.add, onTap: () => plusTaps++),
         );
 
         await tester.tap(find.byIcon(Icons.add));
@@ -196,6 +194,38 @@ void main() {
         expect(plusTaps, 1);
         expect(tapped, isEmpty);
       });
+    });
+  });
+
+  group('GlassTileButton — o botão do veículo na AppBar', () {
+    testWidgets('quadrado de cantos suaves, um blur, e o toque chega', (
+      tester,
+    ) async {
+      var toques = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: GlassTileButton(
+                onTap: () => toques++,
+                tooltip: 'Veículos',
+                child: const Icon(Icons.directions_car_outlined),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.getSize(find.byType(GlassTileButton)), const Size(44, 44));
+      expect(find.byType(BackdropFilter), findsOneWidget);
+      // Cantos de 14, não um círculo: o pedido era "mais quadrado".
+      final vidro = tester.widget<GlassSurface>(find.byType(GlassSurface));
+      expect(vidro.circle, isFalse);
+      expect(vidro.borderRadius, BorderRadius.circular(14));
+
+      await tester.tap(find.byIcon(Icons.directions_car_outlined));
+      expect(toques, 1);
+      expect(find.byTooltip('Veículos'), findsOneWidget);
     });
   });
 }

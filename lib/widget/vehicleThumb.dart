@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:iter/Utils/carImage.dart';
 import 'package:iter/model/vehicle.dart';
 
 /// Decodifica a foto gravada, devolvendo `null` quando o texto não é base64.
@@ -34,25 +35,41 @@ class VehicleThumb extends StatelessWidget {
     super.key,
     required this.vehicle,
     this.size = 56,
-    this.circle = false,
+    this.radius = 12,
+    this.background,
+    this.renderFit = BoxFit.cover,
+    this.framedRender = false,
   });
 
   final Vehicle? vehicle;
   final double size;
-  final bool circle;
+  final double radius;
+
+  /// `null` usa o cinza do card. A `AppBar` passa transparente: lá o fundo é o
+  /// vidro do botão, e um quadrado cinza dentro dele seria uma moldura a mais.
+  final Color? background;
+
+  /// Como o **render** da CDN ocupa o quadrado. A foto do dono sempre cobre —
+  /// é uma foto, e foto com faixa vazia em volta parece erro.
+  ///
+  /// O render é um carro largo sobre fundo transparente: `cover` corta a
+  /// frente e a traseira, e num quadrado pequeno sobra o meio da porta. A
+  /// `AppBar` pede `contain` para o carro aparecer inteiro.
+  final BoxFit renderFit;
+
+  /// Pede à CDN o render enquadrado no carro (`framedCarImageUrl`). Só onde o
+  /// quadrado é pequeno: no cabeçalho do formulário o carro com margem é o
+  /// enquadramento que o usuário confirmou.
+  final bool framedRender;
 
   @override
   Widget build(BuildContext context) {
-    final radius = circle
-        ? BorderRadius.circular(size)
-        : BorderRadius.circular(12);
-
     return ClipRRect(
-      borderRadius: radius,
+      borderRadius: BorderRadius.circular(radius),
       child: Container(
         width: size,
         height: size,
-        color: Colors.grey.shade200,
+        color: background ?? Colors.grey.shade200,
         child: _content(),
       ),
     );
@@ -75,8 +92,8 @@ class VehicleThumb extends StatelessWidget {
     final url = v.imageUrl;
     if (url != null && url.isNotEmpty) {
       return Image.network(
-        url,
-        fit: BoxFit.cover,
+        framedRender ? framedCarImageUrl(url) : url,
+        fit: renderFit,
         errorBuilder: (_, _, _) => _silhouette(v.type),
       );
     }

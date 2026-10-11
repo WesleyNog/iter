@@ -245,3 +245,66 @@ class GlassCircleButton extends StatelessWidget {
     return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
   }
 }
+
+/// Botão quadrado de vidro, de cantos suaves — o do veículo, na `AppBar`.
+///
+/// O "+" é redondo porque é ação; este é quadrado porque mostra uma **coisa**
+/// (o carro em uso), e uma imagem larga de carro dentro de um círculo ficava
+/// pequena no meio de um disco cinza. Mesmo material das abas e do trilho de
+/// empresas, na opacidade de superfície com conteúdo para ler.
+class GlassTileButton extends StatelessWidget {
+  const GlassTileButton({
+    super.key,
+    required this.child,
+    required this.onTap,
+    this.size = 44,
+    this.radius = 14,
+    this.tooltip,
+  });
+
+  final Widget child;
+  final VoidCallback onTap;
+  final double size;
+  final double radius;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final shape = BorderRadius.circular(radius);
+
+    final button = GlassSurface(
+      opacity: 0.75,
+      borderRadius: shape,
+      // Mais rente que a `pillShadow`: o botão mora na `AppBar`, que recorta o
+      // que passa da altura dela. Com 12 de desfoque e 4 de deslocamento a
+      // sombra descia além dos 6 px que sobram embaixo e era cortada numa
+      // linha reta — visto no iPhone.
+      shadow: const [
+        BoxShadow(
+          color: Color(0x14000000),
+          blurRadius: 6,
+          offset: Offset(0, 1),
+        ),
+      ],
+      // Menos a borda de 1 px do vidro dos dois lados: [size] é o botão
+      // inteiro, que é o que alinha com o resto da `AppBar`.
+      child: SizedBox(
+        width: size - 2,
+        height: size - 2,
+        // `Material` transparente pelo mesmo motivo do `GlassCircleButton`: o
+        // vidro já é o fundo, e o toque precisa de onde pintar por cima dele.
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: shape,
+          child: InkWell(
+            borderRadius: shape,
+            onTap: onTap,
+            child: Center(child: child),
+          ),
+        ),
+      ),
+    );
+
+    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
+  }
+}

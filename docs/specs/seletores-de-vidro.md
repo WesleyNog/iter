@@ -108,6 +108,33 @@ chips empilhados, e o `FilterPill` existe para elas parecerem uma família; um
 trilho de vidro no meio da folha seria o estranho. É a única tela que continua
 usando `PeriodPresetFilter` e o enum `PeriodPreset`.
 
+### AppBar: o veículo e o menu da conta
+
+Pedido depois, na mesma leva. O botão do veículo era um `IconButton` com o
+render num **círculo cinza** de 30 px: o carro largo, cortado pelo `cover`,
+sobrava como uma porta no meio de um disco. Virou um `GlassTileButton` — vidro
+quadrado de 44, cantos de 14, o branco das abas — com o render em `contain`
+dentro de 36 px de cantos 10 (concêntricos com os 14). A foto do dono continua
+cobrindo, e o card da lista de veículos não muda: `VehicleThumb` ganhou
+`radius`, `background` e `renderFit` com os padrões de antes.
+
+**No iPhone o carro ainda ficou pequeno**: o render padrão da imagin põe o
+carro no meio de uma tela com margem larga, e com `contain` ele ocupava menos
+da metade do botão. A correção é pedir à CDN o carro enquadrado —
+`zoomType=fullscreen`, parâmetro documentado da API, não edição da imagem —
+em `framedCarImageUrl`, aplicado **na exibição** sobre a URL gravada, então
+vale também para os veículos confirmados antes. Só a `AppBar` pede; o card e o
+formulário mostram o enquadramento que o usuário confirmou. O mesmo print
+mostrou a sombra do botão cortada numa linha reta: a `AppBar` recorta o que
+passa da altura dela, e a `pillShadow` descia além dos 6 px que sobram embaixo
+do botão — o `GlassTileButton` tem sombra própria, rente.
+
+O menu "⋮" saiu da `HomeScreen` para `AccountMenu` (com teste) e ficou branco
+de verdade: o Material 3 tingia a superfície com o lilás do tema. Abre
+**embaixo** do botão em vez de por cima, os ícones vão em quadrados de cantos
+suaves como o do veículo, e uma divisória separa Sair de Excluir conta — o que
+se desfaz no próximo login do que não se desfaz nunca.
+
 ## As regras do período
 
 Moram em `Utils/periodSelection.dart`, puras, com o "hoje" injetável — a mesma
