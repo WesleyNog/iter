@@ -2,11 +2,9 @@ import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:iter/Utils/monthStats.dart';
 import 'package:iter/Utils/ranking.dart';
-import 'package:iter/Utils/routeStyle.dart';
 import 'package:iter/controller/profileController.dart';
 import 'package:iter/model/publicProfile.dart';
-import 'package:iter/widget/rankTile.dart';
-import 'package:iter/widget/segmentedSelector.dart';
+import 'package:iter/widget/rankingBoard.dart';
 
 /// O ranking entre amigos, mês a mês.
 ///
@@ -138,147 +136,36 @@ class _RankingTabState extends State<RankingTab> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _monthBar(),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-          child: SegmentedSelector<RankCriterion>(
-            keyPrefix: 'criterio',
-            selected: _criterion,
-            onChanged: (c) => setState(() => _criterion = c),
-            segments: [
-              for (final c in RankCriterion.values)
-                SegmentOption(value: c, label: c.label, keySuffix: c.name),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              _criterion.hint,
-              style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
-            ),
-          ),
-        ),
-        Expanded(child: _body()),
-      ],
-    );
-  }
-
-  Widget _monthBar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          IconButton(
-            key: const ValueKey('mes-anterior'),
-            icon: const Icon(Icons.chevron_left),
-            onPressed: _canGoBack
-                ? () => _goTo(DateTime(_month.year, _month.month - 1))
-                : null,
-          ),
-          SizedBox(
-            width: 170,
-            child: Text(
-              '${monthLabel(_month.month).toUpperCase()} ${_month.year}',
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-                letterSpacing: 0.6,
-              ),
-            ),
-          ),
-          IconButton(
-            key: const ValueKey('mes-seguinte'),
-            icon: const Icon(Icons.chevron_right),
-            onPressed: _canGoForward
-                ? () => _goTo(DateTime(_month.year, _month.month + 1))
-                : null,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _body() {
-    if (_loading && _buckets == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_failed) {
-      return _aviso('Não foi possível carregar o ranking.');
-    }
-
     final buckets = _buckets;
-    if (buckets == null) return const SizedBox.shrink();
 
-    if (widget.friends.isEmpty) {
-      return _aviso(
-        'Adicione amigos para comparar. Por enquanto o ranking só tem você.',
-      );
-    }
-
-    final rows = rankBy(_criterion, buckets);
-    final disputa = rows.where((r) => r.ranked).toList();
-    final fora = rows.where((r) => !r.ranked).toList();
-
+    // Rola junto com a lista, cabeça incluída (decisão 3 da spec): a maior
+    // lista de hoje tem cinco pessoas, e fixar a cabeça faria o card ocupar a
+    // altura inteira mesmo com três linhas.
     return ListView(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, widget.bottomGap),
+      padding: EdgeInsets.fromLTRB(16, 14, 16, widget.bottomGap),
       children: [
-        if (disputa.isEmpty)
-          // O texto nomeia a amostra do critério, não "rotas": desde que a
-          // porta passou a olhar a população da média, alguém pode ter vinte
-          // rotas no mês e nenhuma com hora de fim — e "ninguém tem 5 rotas"
-          // seria falso na cara de quem tem vinte.
-          _aviso(
-            'Ninguém tem $minimumRoutes ${_criterion.sampleName} neste mês '
-            'ainda — sem amostra não dá para comparar.',
-          )
-        else
-          for (var i = 0; i < disputa.length; i++) _tile(disputa[i], i + 1),
-        if (fora.isNotEmpty) ...[
-          const SizedBox(height: 18),
-          Text(
-            'AINDA SEM AMOSTRA',
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.6,
-              color: Colors.grey.shade600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          for (final row in fora) _tile(row, null),
-        ],
+        RankingBoard(
+          month: _month,
+          criterion: _criterion,
+          onCriterion: (c) => setState(() => _criterion = c),
+          onPrevious: _canGoBack
+              ? () => _goTo(DateTime(_month.year, _month.month - 1))
+              : null,
+          onNext: _canGoForward
+              ? () => _goTo(DateTime(_month.year, _month.month + 1))
+              : null,
+          rows: buckets == null ? null : rankBy(_criterion, buckets),
+          profiles: widget.profiles,
+          me: widget.uid,
+          hasFriends: widget.friends.isNotEmpty,
+          // **Também com balde na tela.** Era aqui o mês errado: o carregamento
+          // só aparecia sem balde nenhum, e ao trocar de mês os números do
+          // anterior ficavam sob o título do novo até a rede responder.
+          loading: _loading,
+          failed: _failed,
+          onRetry: _load,
+        ),
       ],
-    );
-  }
-
-  RankTile _tile(RankRow row, int? position) {
-    return RankTile(
-      key: ValueKey('rank-${row.uid}'),
-      row: row,
-      criterion: _criterion,
-      profile: widget.profiles[row.uid],
-      position: position,
-      isMe: row.uid == widget.uid,
-    );
-  }
-
-  Widget _aviso(String message) {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Text(
-        message,
-        textAlign: TextAlign.center,
-        style: TextStyle(color: Colors.grey.shade700),
-      ),
     );
   }
 }

@@ -128,9 +128,11 @@ void main() {
     final numero = tester.getSize(find.text('5,7 min/parada'));
     final nome = tester.getSize(find.text(nomeEnorme));
 
-    // O número desenha inteiro (uma linha, largura própria)...
+    // O número desenha inteiro (uma linha, largura própria)... O limite é
+    // "menos de duas linhas" do número, que é 17 px: uma só, na fonte do
+    // teste, já mede 24.
     expect(numero.width, greaterThan(0));
-    expect(numero.height, lessThan(24));
+    expect(numero.height, lessThan(2 * 17));
     // ...e é o nome que cede, com reticências em vez de quebrar linha.
     expect(nome.height, lessThan(24));
     expect(tester.takeException(), isNull);
@@ -153,14 +155,107 @@ void main() {
     await _pump(tester, isMe: true);
 
     expect(find.text('Wesley Nogueira (você)'), findsOneWidget);
-    final fundo = tester.widget<Container>(
-      find
-          .ancestor(of: find.byType(Row), matching: find.byType(Container))
-          .first,
-    );
-    expect(
-      (fundo.decoration as BoxDecoration).color,
-      isNot(Colors.transparent),
-    );
+    // Gradiente, não só cor: o `blue.shade50` de antes sumia numa lista de
+    // vinte.
+    expect(_fundo(tester).gradient, isNotNull);
+
+    await _pump(tester, isMe: false);
+    expect(_fundo(tester).gradient, isNull);
   });
+
+  testWidgets('número grande e unidade pequena, do mesmo formatPace', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    // Continua um texto só para quem procura por ele...
+    expect(find.text('5,7 min/parada'), findsOneWidget);
+
+    // ...em duas partes cortadas do mesmo texto, e não numa segunda
+    // formatação do ritmo.
+    final partes = _partes(tester, '5,7 min/parada');
+    expect(partes.map((p) => p.text), ['5,7', ' min/parada']);
+    expect(partes[0].style!.fontSize!, greaterThan(partes[1].style!.fontSize!));
+  });
+
+  testWidgets('o número do rodapé perde a força do número da disputa', (
+    tester,
+  ) async {
+    await _pump(tester, position: 1);
+    final disputa = _partes(tester, '5,7 min/parada').first.style!;
+
+    await _pump(tester, position: null, row: _row(ranked: false));
+    final rodape = _partes(tester, '5,7 min/parada').first.style!;
+
+    // Em negrito, o 4,6 do rodapé era o número mais forte da tela e parecia
+    // estar ganhando do primeiro lugar.
+    expect(rodape.fontWeight, isNot(disputa.fontWeight));
+    expect(rodape.color, isNot(disputa.color));
+  });
+
+  testWidgets('a própria linha no rodapé continua legível', (tester) async {
+    await _pump(tester, position: null, isMe: true, row: _row(ranked: false));
+
+    // O cinza do rodapé sobre o gradiente azul seria o número sumindo
+    // justamente na linha de quem está olhando.
+    final cor = _partes(tester, '5,7 min/parada').first.style!.color!;
+    expect((cor.r, cor.g, cor.b), (1.0, 1.0, 1.0));
+    expect(cor.a, greaterThan(0.6));
+  });
+
+  for (final escala in [1.0, 1.3, 1.6]) {
+    testWidgets('cabe na altura que ela mesma mede, com fonte $escala×', (
+      tester,
+    ) async {
+      // O `RankingBoard` posiciona cada linha com esta altura. Se a medida
+      // errar para menos, a linha estoura — e é a fonte grande do sistema que
+      // revela isso.
+      //
+      // 600 px de largura de propósito: o assunto aqui é a **altura**. A fonte
+      // do teste tem todo glifo de 1 em de largura, e a 1,6× ela estoura na
+      // horizontal uma linha que no aparelho cabe — o teste mediria a fonte
+      // errada e ficaria vermelho pelo motivo errado.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: MediaQueryData(
+              size: const Size(600, 800),
+              textScaler: TextScaler.linear(escala),
+            ),
+            child: Scaffold(
+              body: Builder(
+                builder: (context) => SizedBox(
+                  width: 600,
+                  height: RankTile.heightFor(context),
+                  child: RankTile(
+                    row: _row(),
+                    criterion: RankCriterion.ritmo,
+                    profile: null,
+                    position: 1,
+                    isMe: true,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+    });
+  }
+}
+
+/// O fundo da linha: o `Container` mais próximo acima do `Row`.
+BoxDecoration _fundo(WidgetTester tester) {
+  final fundo = tester.widget<Container>(
+    find.ancestor(of: find.byType(Row), matching: find.byType(Container)).first,
+  );
+  return fundo.decoration! as BoxDecoration;
+}
+
+/// As partes do `Text.rich` do número.
+List<TextSpan> _partes(WidgetTester tester, String texto) {
+  final widget = tester.widget<Text>(find.text(texto));
+  return (widget.textSpan! as TextSpan).children!.cast<TextSpan>();
 }

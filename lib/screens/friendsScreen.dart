@@ -14,9 +14,11 @@ import 'package:iter/services/pushMessaging.dart';
 import 'package:iter/widget/blockDialog.dart';
 import 'package:iter/widget/feedTab.dart';
 import 'package:iter/widget/friendTile.dart';
+import 'package:iter/widget/glassTabs.dart';
 import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/profileDialog.dart';
 import 'package:iter/widget/rankingTab.dart';
+import 'package:iter/widget/sectionCard.dart';
 import 'package:iter/widget/segmentedSelector.dart';
 
 enum FriendsTab { amigos, ranking, feed }
@@ -170,11 +172,11 @@ class _FriendsScreenState extends State<FriendsScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: SegmentedSelector<FriendsTab>(
+          child: GlassTabs<FriendsTab>(
             keyPrefix: 'aba',
             selected: _tab,
             onChanged: (tab) => setState(() => _tab = tab),
-            segments: const [
+            tabs: const [
               SegmentOption(
                 value: FriendsTab.amigos,
                 label: 'Amigos',
@@ -286,19 +288,19 @@ class _FriendsScreenState extends State<FriendsScreen> {
               children: [
                 if (pending.isNotEmpty) ...[
                   _secao('CONVITES (${pending.length})'),
-                  for (final uid in pending) _convite(uid),
+                  _cartao([for (final uid in pending) _convite(uid)]),
                   const SizedBox(height: 20),
                 ],
                 if (friends.isNotEmpty) ...[
                   _secao('MEUS AMIGOS (${friends.length})'),
-                  for (final uid in friends) _amigo(uid),
+                  _cartao([for (final uid in friends) _amigo(uid)]),
                 ],
                 // Bloquear sem ter como desbloquear é uma armadilha: a lista
                 // fica aqui, embaixo, e só aparece quando existe.
                 if (_blocked.isNotEmpty) ...[
                   const SizedBox(height: 20),
                   _secao('BLOQUEADOS (${_blocked.length})'),
-                  for (final uid in _blocked) _bloqueado(uid),
+                  _cartao([for (final uid in _blocked) _bloqueado(uid)]),
                 ],
               ],
             );
@@ -308,9 +310,25 @@ class _FriendsScreenState extends State<FriendsScreen> {
     );
   }
 
+  /// Uma seção no mesmo card branco do placar do Ranking: a aba inteira fala
+  /// a mesma língua, em vez de uma sub-tela em cards e outra solta no fundo.
+  Widget _cartao(List<Widget> tiles) {
+    return SectionCard(
+      // Alinhada com o nome, não com a borda: a divisória separa pessoas.
+      dividerIndent: 74,
+      children: [
+        for (final tile in tiles)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: tile,
+          ),
+      ],
+    );
+  }
+
   Widget _secao(String title) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
       child: Text(
         title,
         style: TextStyle(
