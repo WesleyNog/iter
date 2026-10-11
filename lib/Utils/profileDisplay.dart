@@ -34,3 +34,15 @@ String displayInitial(String name) {
 /// lança `No host specified in URI` dentro do pipeline de imagem, deixando o
 /// círculo vazio **sem** a letra de fallback.
 bool hasPhoto(String? url) => url != null && url.trim().isNotEmpty;
+
+/// A pergunta do compositor do mural e da tela de publicar:
+/// `Como foi o dia, Wesley?`.
+///
+/// Só o primeiro nome, e só quando há um nome de verdade — o `@apelido` e o
+/// "Entregador" genérico de `displayName` não são jeito de chamar alguém, e
+/// aí a pergunta fica sem vocativo.
+String composerPrompt(PublicProfile? me) {
+  final name = me?.name.trim() ?? '';
+  if (name.isEmpty) return 'Como foi o dia?';
+  return 'Como foi o dia, ${name.split(RegExp(r'\s+')).first}?';
+}
