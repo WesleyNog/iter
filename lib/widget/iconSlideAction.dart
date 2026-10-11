@@ -12,8 +12,9 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 /// O `Tooltip` devolve por acessibilidade o nome que o rótulo dava: sem ele, o
 /// leitor de tela anuncia um botão sem nome.
 ///
-/// Num lugar só porque duas listas deslizam — as rotas e o extrato de gastos —
-/// e o gesto tem de ter a mesma cara nas duas.
+/// Num lugar só porque três listas deslizam — as rotas, o extrato de gastos e
+/// os veículos — e o gesto tem de ter a mesma cara nas três. A de veículos foi
+/// a última a chegar aqui: ainda desenhava o bloco colorido com rótulo.
 Widget iconSlideAction({
   required String keyName,
   required VoidCallback onPressed,

@@ -10,6 +10,7 @@ import 'package:iter/model/users.dart';
 import 'package:iter/model/vehicle.dart';
 import 'package:iter/screens/addVehicle.dart';
 import 'package:iter/widget/glassNavBar.dart' show GlassCircleButton;
+import 'package:iter/widget/iconSlideAction.dart';
 import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/vehicleCard.dart';
 
@@ -220,27 +221,27 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
           padding: const EdgeInsets.only(bottom: 12),
           child: Slidable(
             key: ValueKey(vehicle.id),
+            // O mesmo gesto das rotas e do extrato de gastos, com o mesmo
+            // `iconSlideAction`: só o ícone, sem bloco colorido. Esta lista era
+            // a última com o retângulo cheio e rótulo, e a diferença lia como
+            // outro controle.
             endActionPane: ActionPane(
               motion: const DrawerMotion(),
-              extentRatio: 0.45,
+              extentRatio: 0.32,
               children: [
-                SlidableAction(
-                  onPressed: (_) => _openForm(vehicle),
+                iconSlideAction(
+                  keyName: 'veiculo-editar-${vehicle.id}',
+                  onPressed: () => _openForm(vehicle),
                   icon: Icons.edit_outlined,
-                  label: 'Editar',
-                  backgroundColor: Colors.blue.shade400,
-                  foregroundColor: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  padding: EdgeInsets.zero,
+                  color: Colors.blue.shade600,
+                  tooltip: 'Editar',
                 ),
-                SlidableAction(
-                  onPressed: (_) => _confirmDelete(vehicle),
+                iconSlideAction(
+                  keyName: 'veiculo-excluir-${vehicle.id}',
+                  onPressed: () => _confirmDelete(vehicle),
                   icon: Icons.delete_outline,
-                  label: 'Excluir',
-                  backgroundColor: Colors.red.shade400,
-                  foregroundColor: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  padding: EdgeInsets.zero,
+                  color: Colors.red.shade600,
+                  tooltip: 'Excluir',
                 ),
               ],
             ),
