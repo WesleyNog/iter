@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:iter/widget/slidingIndicator.dart';
 
 /// Uma opção do trilho.
 ///
@@ -24,7 +25,17 @@ class SegmentOption<T> {
   final Widget? child;
 }
 
-/// Controle segmentado: um trilho cinza com uma pílula branca no selecionado.
+/// Sobre o que o trilho está desenhado.
+enum SegmentedTone {
+  /// Trilho cinza sobre fundo claro — o filtro de empresa da lista.
+  light,
+
+  /// Trilho branco translúcido sobre a cabeça azul do Ranking. O rótulo aceso
+  /// fica azul sobre a pílula branca; os apagados, brancos sobre o azul.
+  onBlue,
+}
+
+/// Controle segmentado: um trilho com uma pílula branca no selecionado.
 ///
 /// Saiu de dentro do `CompanyFilter`, que era o único controle desse formato
 /// no app e sabia demais sobre empresa. A generalização é o caminho que o
@@ -35,11 +46,17 @@ class SegmentOption<T> {
 /// rolam. Com quatro ou cinco isso é confortável; acima disso, o rótulo de
 /// texto começa a apertar antes de o trilho ficar feio.
 ///
-/// Dois modos e um desenho só: o construtor padrão acende exatamente um
-/// segmento, [SegmentedSelector.multi] acende quantos o chamador mandar. Quem
-/// decide isso é [_isOn], e só ele — desenhar cada modo do seu jeito é a mesma
-/// cópia de superfície registrada no parágrafo acima, agora dentro de um
-/// arquivo só.
+/// Dois modos: o construtor padrão acende exatamente um segmento,
+/// [SegmentedSelector.multi] acende quantos o chamador mandar. Quem decide o
+/// que está aceso é [_isOn], e só ele.
+///
+/// **A pílula é desenhada de um jeito em cada modo, e é de propósito.** Na
+/// escolha única existe **uma** pílula, o [SlidingIndicator], que desliza até o
+/// segmento novo. Antes cada segmento tinha a própria pílula animando em 150 ms,
+/// e no toque a velha apagava enquanto a nova acendia: por um instante havia
+/// duas meio acesas — o "pisca dois" do critério do Ranking. Na múltipla
+/// escolha acender várias é o objetivo, então cada segmento continua com a sua,
+/// e o toque só anima a do segmento tocado.
 class SegmentedSelector<T> extends StatelessWidget {
   /// Escolha única: [selected] é o valor aceso, e só ele.
   const SegmentedSelector({
@@ -48,6 +65,7 @@ class SegmentedSelector<T> extends StatelessWidget {
     required this.segments,
     required T selected,
     required this.onChanged,
+    this.tone = SegmentedTone.light,
   }) : _single = selected,
        _multiple = null;
 
@@ -71,13 +89,20 @@ class SegmentedSelector<T> extends StatelessWidget {
     required Set<T> selected,
     required this.onChanged,
   }) : _single = null,
-       _multiple = selected;
+       _multiple = selected,
+       tone = SegmentedTone.light;
 
   /// Prefixo das `ValueKey` dos segmentos: `'filtro'` vira `filtro-amazon`.
   final String keyPrefix;
 
   final List<SegmentOption<T>> segments;
   final ValueChanged<T> onChanged;
+
+  /// Só a escolha única aceita outro tom — a múltipla só existe no filtro de
+  /// empresa, sobre fundo claro.
+  final SegmentedTone tone;
+
+  bool get _onBlue => tone == SegmentedTone.onBlue;
 
   /// O valor aceso na escolha única. Só é lido quando [_multiple] é `null`.
   final T? _single;
@@ -100,20 +125,111 @@ class SegmentedSelector<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final selectedIndex = _multiple == null
+        ? segments.indexWhere((option) => option.value == _single)
+        : -1;
+
     return Container(
       height: 42,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
+        color: _onBlue
+            ? Colors.white.withValues(alpha: 0.16)
+            : Colors.grey.shade100,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
-        children: [for (final option in segments) _segment(option)],
+      child: _multiple != null
+          ? Row(
+              children: [for (final option in segments) _multiSegment(option)],
+            )
+          : Stack(
+              children: [
+                // Valor fora da lista: nenhuma pílula, em vez de uma acesa no
+                // segmento errado.
+                if (selectedIndex >= 0)
+                  Positioned.fill(
+                    child: SlidingIndicator(
+                      count: segments.length,
+                      index: selectedIndex,
+                      // O mesmo recuo do `margin` de cada segmento: a pílula
+                      // assenta exatamente onde o toque cai.
+                      inset: 2,
+                      child: _pill(),
+                    ),
+                  ),
+                Row(
+                  children: [
+                    for (final option in segments) _singleSegment(option),
+                  ],
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _pill() {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(9),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: _onBlue ? 0.18 : 0.08),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _segment(SegmentOption<T> option) {
+  /// Um segmento da escolha única: sem fundo próprio — quem acende é a pílula
+  /// que desliza.
+  ///
+  /// O rótulo anima **junto** com ela (`SlidingIndicator.contentCurve`). A outra metade do
+  /// "pisca dois" era o texto: a `Opacity` pulava para 1 no primeiro quadro, e
+  /// o rótulo novo escurecia antes de a pílula dele existir. O
+  /// `TweenAnimationBuilder` desenha um `Opacity` — continua sendo um por
+  /// segmento, que é o que o teste do `CompanyFilter` conta.
+  Widget _singleSegment(SegmentOption<T> option) {
+    final isOn = _isOn(option.value);
+    final offOpacity = _onBlue ? 1.0 : 0.45;
+    final onColor = _onBlue ? const Color(0xFF0D47A1) : Colors.black87;
+    final offColor = _onBlue
+        ? Colors.white.withValues(alpha: 0.88)
+        : Colors.black87;
+
+    Widget tappable = GestureDetector(
+      key: ValueKey('$keyPrefix-${option.keySuffix}'),
+      behavior: HitTestBehavior.opaque,
+      onTap: () => onChanged(option.value),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: Center(
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(end: isOn ? 1 : 0),
+            duration: SlidingIndicator.total,
+            curve: SlidingIndicator.contentCurve(on: isOn),
+            child: option.child,
+            builder: (context, t, child) => Opacity(
+              opacity: offOpacity + (1 - offOpacity) * t,
+              child:
+                  child ??
+                  _label(option.label, color: Color.lerp(offColor, onColor, t)),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    if (option.child != null) {
+      tappable = Tooltip(message: option.label, child: tappable);
+    }
+
+    return Expanded(child: tappable);
+  }
+
+  Widget _multiSegment(SegmentOption<T> option) {
     final isOn = _isOn(option.value);
 
     Widget tappable = GestureDetector(
@@ -158,17 +274,13 @@ class SegmentedSelector<T> extends StatelessWidget {
     return Expanded(child: tappable);
   }
 
-  static Widget _label(String text) {
+  static Widget _label(String text, {Color? color = Colors.black87}) {
     return Text(
       text,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       textAlign: TextAlign.center,
-      style: const TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
-        color: Colors.black87,
-      ),
+      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color),
     );
   }
 }

@@ -169,3 +169,42 @@ class GlassSurface extends StatelessWidget {
     ),
   ];
 }
+
+/// A pílula azul que marca o selecionado sobre o vidro — na barra de baixo e
+/// nas abas do topo de Amigos.
+///
+/// Mora ao lado do material, e não dentro da barra, porque deixou de ser só da
+/// barra: as abas do topo foram pedidas "parecidas com a barra de baixo", e uma
+/// cópia do gradiente lá seria a segunda pílula azul a derivar.
+///
+/// Gradiente curto e sombra rente: a pílula parece **apoiada sobre** o vidro,
+/// em vez de recortada nele.
+class GlassIndicator extends StatelessWidget {
+  const GlassIndicator({super.key, this.radius = 22});
+
+  /// O azul da marca.
+  static const Color accent = Color(0xFF1976D2);
+
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [accent, Color.lerp(accent, Colors.black, 0.14)!],
+        ),
+        borderRadius: BorderRadius.circular(radius),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: 0.35),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+    );
+  }
+}

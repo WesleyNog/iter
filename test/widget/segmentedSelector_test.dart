@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iter/widget/segmentedSelector.dart';
+import 'package:iter/widget/slidingIndicator.dart';
 
 enum _Aba { amigos, ranking, feed }
 
@@ -18,6 +19,7 @@ Future<void> _pump(
   WidgetTester tester, {
   _Aba selected = _Aba.amigos,
   ValueChanged<_Aba>? onChanged,
+  SegmentedTone tone = SegmentedTone.light,
 }) {
   return tester.pumpWidget(
     MaterialApp(
@@ -27,6 +29,7 @@ Future<void> _pump(
           segments: _abas(),
           selected: selected,
           onChanged: onChanged ?? (_) {},
+          tone: tone,
         ),
       ),
     ),
@@ -128,6 +131,54 @@ void main() {
     expect(texto.overflow, TextOverflow.ellipsis);
   });
 
+  group('escolha única — o "pisca dois"', () {
+    testWidgets('uma pílula só, que desliza', (tester) async {
+      await _pump(tester, selected: _Aba.ranking);
+
+      // O defeito era uma pílula por segmento, a velha apagando enquanto a
+      // nova acendia. Com um indicador por trilho, duas acesas é impossível.
+      expect(find.byType(SlidingIndicator), findsOneWidget);
+    });
+
+    testWidgets('o rótulo novo acende junto com a pílula, não antes', (
+      tester,
+    ) async {
+      await _pump(tester, selected: _Aba.ranking);
+      await _pump(tester, selected: _Aba.feed);
+      await tester.pump(const Duration(milliseconds: 60));
+
+      // A outra metade do defeito: a opacidade pulava para 1 no primeiro
+      // quadro, e o texto escurecia antes de a pílula chegar embaixo dele.
+      final feed = tester.widget<Opacity>(
+        find.descendant(
+          of: find.byKey(const ValueKey('aba-feed')),
+          matching: find.byType(Opacity),
+        ),
+      );
+      expect(feed.opacity, greaterThan(0.45));
+      expect(feed.opacity, lessThan(1));
+
+      await tester.pumpAndSettle();
+      expect(_acesos(tester), 1);
+    });
+
+    testWidgets('sobre o azul, o aceso fica azul e os outros brancos', (
+      tester,
+    ) async {
+      await _pump(tester, selected: _Aba.ranking, tone: SegmentedTone.onBlue);
+
+      Color? cor(String rotulo) =>
+          tester.widget<Text>(find.text(rotulo)).style?.color;
+
+      expect(cor('Ranking'), const Color(0xFF0D47A1));
+      // Branco translúcido: o rótulo apagado continua legível sobre o azul,
+      // em vez de cinza escuro sumindo nele.
+      expect(cor('Feed')!.r, 1.0);
+      expect(cor('Feed')!.g, 1.0);
+      expect(cor('Feed')!.b, 1.0);
+    });
+  });
+
   group('múltipla escolha', () {
     testWidgets('dois segmentos ficam acesos ao mesmo tempo', (tester) async {
       await _pumpMulti(tester, selected: {_Aba.amigos, _Aba.feed});
@@ -135,6 +186,14 @@ void main() {
       // O que a escolha única não consegue dizer: acender dois é o motivo do
       // construtor existir.
       expect(_acesos(tester), 2);
+    });
+
+    testWidgets('não usa a pílula que desliza', (tester) async {
+      await _pumpMulti(tester, selected: {_Aba.amigos, _Aba.feed});
+
+      // Acender várias é o objetivo aqui; uma pílula que desliza só saberia
+      // estar em um lugar.
+      expect(find.byType(SlidingIndicator), findsNothing);
     });
 
     testWidgets('conjunto vazio deixa todos apagados', (tester) async {

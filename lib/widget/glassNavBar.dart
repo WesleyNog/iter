@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:iter/widget/glassSurface.dart';
+import 'package:iter/widget/slidingIndicator.dart';
 
 /// Item da barra de navegação glass.
 class GlassNavItem {
@@ -83,15 +84,16 @@ class GlassNavBar extends StatelessWidget {
   });
 
   // ---- Aparência ajustável ----
-  static const Color _accent = Color(0xFF1976D2); // azul da marca
+  static const Color _accent = GlassIndicator.accent;
   static const double _height = 64;
   static const double _radius = 32;
+  static const double _indicatorHeight = 44;
 
-  /// Deslize do marcador e reação do ícone na mesma duração e curva: são a
-  /// mesma transição vista de dois jeitos, e tempos diferentes fariam a barra
-  /// parecer dessincronizada.
-  static const Duration _motion = Duration(milliseconds: 300);
-  static const Curve _curve = Curves.easeOutCubic;
+  /// A reação do ícone no tempo do marcador: são a mesma transição vista de
+  /// dois jeitos, e tempos diferentes fariam a barra parecer dessincronizada.
+  /// A curva vem de `SlidingIndicator.contentCurve`, que acende com a borda da
+  /// frente e apaga com a de trás.
+  static const Duration _motion = SlidingIndicator.total;
 
   @override
   Widget build(BuildContext context) {
@@ -100,33 +102,26 @@ class GlassNavBar extends StatelessWidget {
       borderRadius: BorderRadius.circular(_radius),
       child: SizedBox(
         height: _height,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final n = items.length;
-            final slot = constraints.maxWidth / n;
-            const indicatorH = 44.0;
-            final indicatorW = (slot - 24).clamp(48.0, 88.0);
-            final left = currentIndex * slot + (slot - indicatorW) / 2;
-            const top = (_height - indicatorH) / 2;
-
-            return Stack(
-              children: [
-                // Marcador azul que desliza horizontalmente entre os itens.
-                AnimatedPositioned(
-                  duration: _motion,
-                  curve: _curve,
-                  left: left,
-                  top: top,
-                  width: indicatorW,
-                  height: indicatorH,
-                  child: _indicator(),
-                ),
-                Positioned.fill(
-                  child: Row(children: List.generate(n, _buildItem)),
-                ),
-              ],
-            );
-          },
+        child: Stack(
+          children: [
+            // O marcador azul, o mesmo indicador das abas do topo de Amigos e
+            // do critério do Ranking.
+            Positioned(
+              left: 0,
+              right: 0,
+              top: (_height - _indicatorHeight) / 2,
+              height: _indicatorHeight,
+              child: SlidingIndicator(
+                count: items.length,
+                index: currentIndex,
+                widthFor: (slot) => (slot - 24).clamp(48.0, 88.0),
+                child: const GlassIndicator(),
+              ),
+            ),
+            Positioned.fill(
+              child: Row(children: List.generate(items.length, _buildItem)),
+            ),
+          ],
         ),
       ),
     );
@@ -148,36 +143,16 @@ class GlassNavBar extends StatelessWidget {
     );
   }
 
-  /// Gradiente curto e sombra rente: o marcador passa a parecer **apoiado
-  /// sobre** o vidro, em vez de recortado nele.
-  Widget _indicator() {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [_accent, Color.lerp(_accent, Colors.black, 0.14)!],
-        ),
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color: _accent.withValues(alpha: 0.35),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildItem(int index) {
     final selected = index == currentIndex;
 
     // Cor do ícone faz cross-fade (branco quando sobre o marcador, azul fora)
-    // em sincronia com o deslize.
+    // em sincronia com o deslize. O que sai espera a borda de trás: azul antes
+    // de o marcador sair de baixo dele seria azul sobre azul.
+    final curve = SlidingIndicator.contentCurve(on: selected);
     Widget icon = TweenAnimationBuilder<Color?>(
       duration: _motion,
-      curve: _curve,
+      curve: curve,
       tween: ColorTween(
         end: selected ? Colors.white : _accent.withValues(alpha: 0.7),
       ),
@@ -208,7 +183,7 @@ class GlassNavBar extends StatelessWidget {
           child: AnimatedScale(
             scale: selected ? 1.06 : 1,
             duration: _motion,
-            curve: _curve,
+            curve: curve,
             child: icon,
           ),
         ),
