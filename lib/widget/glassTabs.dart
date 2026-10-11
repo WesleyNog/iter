@@ -49,15 +49,7 @@ class GlassTabs<T> extends StatelessWidget {
       opacity: 0.75,
       borderRadius: BorderRadius.circular(_height / 2),
       padding: const EdgeInsets.all(_padding),
-      // A sombra da `GlassPill`: flutua sem disputar com a barra de baixo,
-      // que tem a sombra mais funda do app.
-      shadow: const [
-        BoxShadow(
-          color: Color(0x1A000000),
-          blurRadius: 12,
-          offset: Offset(0, 4),
-        ),
-      ],
+      shadow: GlassSurface.pillShadow,
       child: SizedBox(
         height: _inner,
         child: Stack(
@@ -100,15 +92,25 @@ class GlassTabs<T> extends StatelessWidget {
             ),
             duration: SlidingIndicator.total,
             curve: SlidingIndicator.contentCurve(on: isOn),
-            builder: (context, color, _) => Text(
-              tab.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14.5,
-                fontWeight: FontWeight.w600,
-                color: color,
+            // `scaleDown`: o rótulo que não cabe encolhe, em vez de virar
+            // "Personaliza…". Esse é o mais comprido das abas de período, e no
+            // iPhone a fonte é mais larga que a do teste e a do Android — com a
+            // fonte do sistema aumentada, ele não cabe na terça parte.
+            builder: (context, color, _) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  tab.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w600,
+                    color: color,
+                  ),
+                ),
               ),
             ),
           ),

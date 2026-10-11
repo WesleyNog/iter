@@ -6,6 +6,12 @@ import 'package:iter/widget/periodFilter.dart';
 /// Seletor de período por atalho: uma linha de chips, e as duas roletas de data
 /// só dentro do Personalizado.
 ///
+/// **Só a folha de filtros da Lista o usa.** Gráficos e Resumo passaram ao
+/// `PeriodNavigator` (abas de vidro e setas), porque cinco chips não cabiam no
+/// topo sem rolar. Aqui ele fica: todas as seções da folha são chips
+/// empilhados, e "Todo o período" só existe nela. Ver
+/// `docs/specs/seletores-de-vidro.md`.
+///
 /// Envolve o [PeriodFilter], que continua sendo quem desenha Início e Fim e
 /// quem impede fim antes de início. A novidade aqui é que, na maior parte do
 /// tempo, o entregador não precisa de nenhuma das duas: ele quer "este mês" ou
@@ -48,10 +54,10 @@ class PeriodPresetFilter extends StatelessWidget {
 
   /// Acrescenta o chip "Todo o período" na frente dos cinco.
   ///
-  /// Fica desligado por padrão porque as telas de Gráficos e de Resumo somam
-  /// dinheiro por recorte: "todo o período" ali é um total de carreira dentro
-  /// de um card mensal. A folha de filtros da lista é o caso oposto — ela abre
-  /// sem filtrar nada, e "todo o período" é o padrão dela.
+  /// Fica desligado por padrão porque nasceu servindo Gráficos e Resumo, que
+  /// somam dinheiro por recorte: "todo o período" ali seria um total de
+  /// carreira dentro de um card mensal. A folha de filtros da lista é o caso
+  /// oposto — ela abre sem filtrar nada, e "todo o período" é o padrão dela.
   final bool allowAll;
 
   @override

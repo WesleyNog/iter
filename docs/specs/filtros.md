@@ -3,6 +3,12 @@
 Status: **implementada e conferida no simulador** (2026-08-22) · Plano e tarefas
 no fim do arquivo
 
+> **Em 2026-10-11 o período de Gráficos e Resumo deixou os chips.** Virou abas
+> de vidro (Mês · Semana · Personalizado) com setas, e o trilho de empresas da
+> Lista ganhou o vidro, mantendo a múltipla escolha e a pílula branca — ver
+> `docs/specs/seletores-de-vidro.md`. A folha de filtros da Lista continua com
+> os chips e os atalhos descritos aqui.
+
 ## Objetivo
 
 Duas mudanças de filtro, em telas diferentes, pelo mesmo motivo: hoje cada

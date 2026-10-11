@@ -66,51 +66,51 @@ DateRange? rangeOf(PeriodPreset preset, [DateTime? reference]) {
 
 /// Primeiro ao último dia do mês de [reference] — o recorte que o entregador
 /// olha no dia a dia, e o padrão das três telas que filtram por período.
-///
-/// Dia 0 do mês seguinte é o último do atual, então fevereiro bissexto fecha no
-/// 29 sem nenhum caso especial.
-DateRange currentMonth([DateTime? reference]) {
-  final now = reference ?? DateTime.now();
-  return (
-    start: DateTime(now.year, now.month, 1),
-    end: DateTime(now.year, now.month + 1, 0),
-  );
-}
+DateRange currentMonth([DateTime? reference]) => monthAt(0, reference);
 
 /// O mês inteiro anterior ao de [reference].
-///
-/// `month - 1` em janeiro vira o mês 0, que o construtor normaliza para
-/// dezembro do ano anterior. É por isso que a virada de ano não precisa de um
-/// `if` aqui — e é por isso que ela precisa de um teste.
-DateRange previousMonth([DateTime? reference]) {
-  final now = reference ?? DateTime.now();
-  return (
-    start: DateTime(now.year, now.month - 1, 1),
-    end: DateTime(now.year, now.month, 0),
-  );
-}
+DateRange previousMonth([DateTime? reference]) => monthAt(-1, reference);
 
 /// Segunda a domingo da semana que contém [reference].
-DateRange currentWeek([DateTime? reference]) {
-  final monday = _mondayOf(reference ?? DateTime.now());
-  return (start: monday, end: _plusDays(monday, 6));
-}
+DateRange currentWeek([DateTime? reference]) => weekAt(0, reference);
 
 /// A semana fechada imediatamente anterior à de [reference].
 ///
 /// Numa segunda-feira isso é a semana que acabou ontem, não a que está
 /// correndo — que é o que "semana anterior" quer dizer para quem fecha conta.
-DateRange previousWeek([DateTime? reference]) {
-  final monday = _plusDays(_mondayOf(reference ?? DateTime.now()), -7);
+DateRange previousWeek([DateTime? reference]) => weekAt(-1, reference);
+
+/// O mês a [offset] meses do de [reference]: 0 é o próprio, -1 o anterior.
+///
+/// A conta de mês **uma vez só**, para os atalhos da folha de filtros e para as
+/// setas de Gráficos e Resumo. `month + offset` fora de 1–12 é normalizado pelo
+/// construtor — mês 0 é dezembro do ano anterior —, então a virada de ano não
+/// precisa de um `if` aqui, e é por isso que ela precisa de um teste. Dia 0 do
+/// mês seguinte é o último do atual, então fevereiro bissexto fecha no 29 sem
+/// caso especial.
+DateRange monthAt(int offset, [DateTime? reference]) {
+  final now = reference ?? DateTime.now();
+  return (
+    start: DateTime(now.year, now.month + offset, 1),
+    end: DateTime(now.year, now.month + offset + 1, 0),
+  );
+}
+
+/// Segunda a domingo da semana a [offset] semanas da de [reference].
+DateRange weekAt(int offset, [DateTime? reference]) {
+  final monday = _plusDays(mondayOf(reference ?? DateTime.now()), 7 * offset);
   return (start: monday, end: _plusDays(monday, 6));
 }
 
 /// A segunda-feira da semana de [day], à meia-noite.
 ///
+/// Pública porque a troca de Mês para Semana conta semanas entre duas datas, e
+/// a régua tem de ser esta.
+///
 /// `DateTime.weekday` já é 1 (segunda) a 7 (domingo), então a semana
 /// segunda-a-domingo sai sem nenhuma conversão — e domingo, que é o dia em que
 /// a conta errada devolve a semana seguinte, cai naturalmente no fim da sua.
-DateTime _mondayOf(DateTime day) =>
+DateTime mondayOf(DateTime day) =>
     DateTime(day.year, day.month, day.day - (day.weekday - 1));
 
 /// Soma dias pelo **construtor**, nunca por `Duration`.

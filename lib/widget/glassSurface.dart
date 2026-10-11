@@ -37,6 +37,14 @@ class GlassSurface extends StatelessWidget {
   static const double defaultBlur = 24;
   static const double defaultOpacity = 0.45;
 
+  /// A sombra das pílulas que ficam **no topo** das telas — as abas de Amigos
+  /// e de período, o trilho de empresas. Mais rasa que [_defaultShadow], que é a da
+  /// barra de baixo: as duas na mesma tela, com a mesma profundidade, disputam
+  /// a atenção.
+  static const List<BoxShadow> pillShadow = [
+    BoxShadow(color: Color(0x1A000000), blurRadius: 12, offset: Offset(0, 4)),
+  ];
+
   final Widget child;
 
   final double blur;

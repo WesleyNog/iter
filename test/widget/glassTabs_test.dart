@@ -86,13 +86,19 @@ void main() {
     expect(cor('Amigos'), GlassIndicator.accent.withValues(alpha: 0.7));
   });
 
-  testWidgets('o rótulo não quebra linha', (tester) async {
+  testWidgets('o rótulo não quebra linha e encolhe antes de cortar', (
+    tester,
+  ) async {
     await _pump(tester);
 
     // A causa, não "cabe?": a fonte do teste é quadrada e mede outra coisa
-    // que a do aparelho.
+    // que a do aparelho. Uma linha só, e um `FittedBox` que reduz em vez de
+    // trocar "Personalizado" por "Personaliza…".
     final texto = tester.widget<Text>(find.text('Ranking'));
     expect(texto.maxLines, 1);
-    expect(texto.overflow, TextOverflow.ellipsis);
+    final ajuste = tester.widget<FittedBox>(
+      find.ancestor(of: find.text('Ranking'), matching: find.byType(FittedBox)),
+    );
+    expect(ajuste.fit, BoxFit.scaleDown);
   });
 }
