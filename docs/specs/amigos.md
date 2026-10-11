@@ -61,6 +61,11 @@ na busca.
 
 ## Layout
 
+> **Desenho de 2026-08-07, já substituído na parte visual.** As abas de vidro
+> no topo, o placar do Ranking num card com cabeça azul e as seções da lista em
+> cards vieram em 2026-10-11 — ver `docs/specs/redesenho-amigos.md`. Os fluxos
+> desenhados aqui (convites, busca, estado vazio) continuam valendo.
+
 ```
 ┌────────────────────────────────────────────┐
 │  Olá, Wesley            🚗   ⏻              │  ← AppBar da Home (não muda)

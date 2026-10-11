@@ -715,6 +715,36 @@ slices *equal* in the first frame — a split that was never true; the line risi
 from zero would draw revenue that never happened (and `AnimatedWidgetBaseState`
 does not fire on first mount anyway). See `docs/specs/graficos.md`.
 
+## One sliding indicator, three rails
+
+`SlidingIndicator` (`widget/slidingIndicator.dart`) is the only thing in the app
+that marks "this one is selected" by moving: the bottom `GlassNavBar`, the
+`GlassTabs` at the top of Amigos and the single-choice `SegmentedSelector` (the
+Ranking criterion) all use it. The criterion rail used to give every segment
+its own pill animating in 150 ms, so a tap faded the old one out *while* fading
+the new one in — two half-lit segments for an instant, the "pisca dois" the
+owner reported, made worse by a label that jumped to full opacity before its
+pill existed. One indicator per rail makes that impossible. The motion is
+"liquid" on all three (leading edge first, trailing edge 120 ms later) with no
+switch to turn it off: a second way of moving is a divergence waiting to
+happen. Labels and icons follow it through `SlidingIndicator.contentCurve` —
+lighting with the leading edge, dimming only once the trailing edge leaves —
+or a white label sits on the white pill for an instant and the flicker comes
+back by another route. `SegmentedSelector.multi` (the company filter) keeps a
+pill per segment, because lighting several is its whole point.
+
+The Ranking is a `RankingBoard`, one card: blue head (month, criterion, hint)
+over the rows. Rows are `AnimatedPositioned` keyed by uid, so changing
+criterion or month *moves the same people* instead of swapping the list, and
+numbers change on the first frame — the chart rule, animate the magnitude and
+never the number. Rows are opaque white and the user's own row is the last
+child of the `Stack`, so rows crossing mid-reorder cover each other cleanly
+instead of mixing their text. Row height comes from `RankTile.heightFor`, a `TextPainter`
+measurement with the device's `textScaler`; a fixed number clips the row under
+the system's large font. While a month loads the board dims what is on screen,
+because those rows are the **previous** month's — they used to sit at full
+opacity under the new month's title. See `docs/specs/redesenho-amigos.md`.
+
 ## Leitor de pacotes: the QR counts, the OCR reads, nothing about the recipient stays
 
 Swiping an **Agendada Mercado Livre** route — and only that,
