@@ -733,6 +733,21 @@ or a white label sits on the white pill for an instant and the flicker comes
 back by another route. `SegmentedSelector.multi` (the company filter) keeps a
 pill per segment, because lighting several is its whole point.
 
+The period selector of Gráficos and Resumo is `PeriodNavigator`: `GlassTabs`
+for Mês · Semana · Personalizado over the Ranking's `‹ OUTUBRO 2026 ›` bar.
+Five preset chips did not fit equal slices ("Semana Anterior"), so they
+scrolled and hid Personalizado off-screen — and "anterior" was never an option,
+just the same range one step back. `PeriodSelection` (`Utils/periodSelection.dart`)
+owns the rules: › stops at the current period, ‹ has no limit, switching
+between Mês and Semana lands on the period holding the **last day on screen,
+clamped to today** (so Este Mês → Semana is this week, and August → Semana is
+August's last week), and Personalizado keeps the dates. Month and week math is
+`monthAt`/`weekAt` in `periodPreset.dart`, one implementation for both selectors.
+The list's filter sheet still uses `PeriodPresetFilter` chips on purpose:
+every section there is a chip, and "Todo o período" only exists there. The
+company rail is glass too (`SegmentedTone.glass`) but keeps a **white** pill
+per company — it is multi-select, and the Amazon logo is blue.
+
 The Ranking is a `RankingBoard`, one card: blue head (month, criterion, hint)
 over the rows. Rows are `AnimatedPositioned` keyed by uid, so changing
 criterion or month *moves the same people* instead of swapping the list, and
