@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:iter/Utils/profileDisplay.dart' show composerPrompt;
 import 'package:iter/model/newRouteModal.dart';
 import 'package:iter/model/post.dart';
 import 'package:iter/model/publicProfile.dart';
 import 'package:iter/widget/postCard.dart';
+import 'package:iter/widget/sectionCard.dart';
 
 /// Só posts **sem imagem**: com foto o card chama o Storage, e o padrão da
 /// casa é não subir Firebase em teste. O que sobra — autor, curtida, tempo,
@@ -253,5 +255,81 @@ void main() {
     expect(nome.maxLines, 1);
     expect(nome.overflow, TextOverflow.ellipsis);
     expect(tester.takeException(), isNull);
+  });
+
+  group('o visual do card', () {
+    testWidgets('é o card branco do Ranking e das seções de Amigos', (
+      tester,
+    ) async {
+      await _pump(tester);
+
+      // O cinza-claro de antes sumia contra o fundo lilás.
+      final card = tester.widget<DecoratedBox>(
+        find
+            .descendant(
+              of: find.byType(PostCard),
+              matching: find.byType(DecoratedBox),
+            )
+            .first,
+      );
+      expect(card.decoration, SectionCard.decoration);
+    });
+
+    testWidgets('o toque no número também curte', (tester) async {
+      final toques = <bool>[];
+      await _pump(tester, likes: 4, onLike: toques.add);
+
+      // Antes o número ficava fora do botão, e tocar nele não fazia nada.
+      await tester.tap(find.text('4'));
+      expect(toques, [true]);
+    });
+
+    testWidgets('curtido, a pílula ganha o vermelho claro', (tester) async {
+      Color? fundo() => tester
+          .widget<Material>(
+            find
+                .ancestor(
+                  of: find.byKey(const ValueKey('curtir-p1')),
+                  matching: find.byType(Material),
+                )
+                .first,
+          )
+          .color;
+
+      await _pump(tester, liked: true, likes: 1);
+      expect(fundo(), Colors.red.shade50);
+
+      await _pump(tester, liked: false, likes: 1);
+      expect(fundo(), Colors.transparent);
+    });
+
+    testWidgets('a empresa vai como selo ao lado do quando', (tester) async {
+      await _pump(tester, post: _post(company: Company.mercadolivre));
+
+      final quando = tester.getCenter(find.text('há 3h'));
+      final selo = tester.getCenter(find.byType(Image));
+      // Na mesma linha, à direita do "há 3h" — e não no canto, longe do autor.
+      expect((selo.dy - quando.dy).abs(), lessThan(4));
+      expect(selo.dx, greaterThan(quando.dx));
+    });
+  });
+
+  group('composerPrompt', () {
+    test('chama pelo primeiro nome', () {
+      expect(composerPrompt(_ana), 'Como foi o dia, Ana?');
+    });
+
+    test('sem nome de verdade, sem vocativo', () {
+      // O @apelido e o "Entregador" de `displayName` não são jeito de chamar
+      // ninguém.
+      const semNome = PublicProfile(
+        uid: 'x',
+        name: '  ',
+        nickName: 'ana.a1',
+        updatedAt: '2026-08-07T10:00:00.000',
+      );
+      expect(composerPrompt(semNome), 'Como foi o dia?');
+      expect(composerPrompt(null), 'Como foi o dia?');
+    });
   });
 }

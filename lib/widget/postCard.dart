@@ -4,7 +4,11 @@ import 'package:iter/Utils/relativeTime.dart';
 import 'package:iter/Utils/routeStyle.dart';
 import 'package:iter/model/post.dart';
 import 'package:iter/Utils/profileDisplay.dart';
+import 'package:iter/model/newRouteModal.dart' show Company;
 import 'package:iter/model/publicProfile.dart';
+import 'package:iter/widget/appMenu.dart';
+import 'package:iter/widget/profileAvatar.dart';
+import 'package:iter/widget/sectionCard.dart';
 
 /// Um post no mural.
 ///
@@ -61,56 +65,58 @@ class PostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return Padding(
       key: ValueKey('post-${post.id}'),
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _header(context),
-          if (post.text.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-              child: Text(post.text, style: const TextStyle(fontSize: 14.5)),
+      padding: const EdgeInsets.only(bottom: 14),
+      // O card branco do placar do Ranking e das seções de Amigos: a aba
+      // inteira fala a mesma língua. O cinza-claro de antes sumia contra o
+      // fundo lilás e o post parecia solto na tela.
+      child: DecoratedBox(
+        decoration: SectionCard.decoration,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _header(context),
+            if (post.text.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Text(
+                  post.text,
+                  style: const TextStyle(fontSize: 15, height: 1.4),
+                ),
+              ),
+            if (post.hasImage)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: _image(),
+                ),
+              ),
+            const Divider(
+              height: 1,
+              thickness: 1,
+              indent: 16,
+              endIndent: 16,
+              color: Color(0xFFEEE9F2),
             ),
-          if (post.hasImage) _image(),
-          _actions(),
-        ],
+            _actions(),
+          ],
+        ),
       ),
     );
   }
 
   Widget _header(BuildContext context) {
     final name = displayName(author);
-    final photo = author?.photoUrl;
+    final company = post.company;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 12, 4, 10),
+      padding: const EdgeInsets.fromLTRB(16, 14, 6, 12),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: Colors.blue.shade50,
-            // Cacheado em disco, como a foto do post: o avatar é justamente a
-            // imagem que se repete, e `NetworkImage` só guarda em memória.
-            backgroundImage: hasPhoto(photo)
-                ? CachedNetworkImageProvider(photo!)
-                : null,
-            child: hasPhoto(photo)
-                ? null
-                : Text(
-                    displayInitial(name),
-                    style: TextStyle(
-                      color: Colors.blue.shade700,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-          ),
-          const SizedBox(width: 10),
+          ProfileAvatar(profile: author, radius: 20),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -120,35 +126,56 @@ class PostCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14.5,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
                   ),
                 ),
-                Text(
-                  relativeWhen(post.createdAt),
-                  style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+                const SizedBox(height: 3),
+                Row(
+                  children: [
+                    Text(
+                      relativeWhen(post.createdAt),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    // A empresa vai junto do "quando", como selo do post — no
+                    // canto direito ela flutuava longe do autor e disputava
+                    // lugar com o menu.
+                    if (company != null) ...[
+                      const SizedBox(width: 8),
+                      _companyChip(company),
+                    ],
+                  ],
                 ),
               ],
             ),
           ),
-          if (post.company != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Image.asset(
-                companyLogo(post.company!),
-                height: 18,
-                // Ícone, não nada: sumir faria "post da Shopee com asset
-                // faltando" ficar idêntico a "post sem empresa". É o mesmo
-                // fallback do routeCard e do companySummaryCard.
-                errorBuilder: (_, _, _) => Icon(
-                  Icons.local_shipping_outlined,
-                  size: 18,
-                  color: Colors.grey.shade500,
-                ),
-              ),
-            ),
           _menu(context),
         ],
+      ),
+    );
+  }
+
+  Widget _companyChip(Company company) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Image.asset(
+        companyLogo(company),
+        height: 13,
+        // Ícone, não nada: sumir faria "post da Shopee com asset faltando"
+        // ficar idêntico a "post sem empresa". É o mesmo fallback do routeCard
+        // e do companySummaryCard.
+        errorBuilder: (_, _, _) => Icon(
+          Icons.local_shipping_outlined,
+          size: 13,
+          color: Colors.grey.shade500,
+        ),
       ),
     );
   }
@@ -160,34 +187,46 @@ class PostCard extends StatelessWidget {
   /// que dizer que ninguém tem o que reclamar — por isso denunciar e bloquear
   /// nascem aqui, e nascem antes do comentário.
   Widget _menu(BuildContext context) {
+    final neutral = appMenuNeutral();
+    final danger = appMenuDanger(context);
+
     final items = <PopupMenuEntry<String>>[
       if (isMine && onDelete != null)
-        const PopupMenuItem(
-          key: ValueKey('apagar-post'),
+        appMenuItem(
+          key: const ValueKey('apagar-post'),
           value: 'apagar',
-          child: Text('Apagar publicação'),
+          icon: Icons.delete_outline_rounded,
+          label: 'Apagar publicação',
+          ink: danger.ink,
+          tile: danger.tile,
         ),
       if (!isMine && onReport != null)
-        const PopupMenuItem(
-          key: ValueKey('denunciar-post'),
+        appMenuItem(
+          key: const ValueKey('denunciar-post'),
           value: 'denunciar',
-          child: Text('Denunciar publicação'),
+          icon: Icons.flag_outlined,
+          label: 'Denunciar publicação',
+          ink: neutral.ink,
+          tile: neutral.tile,
         ),
+      // Bloquear desfaz a amizade e os convites: é do lado que não volta.
       if (!isMine && onBlock != null)
-        const PopupMenuItem(
-          key: ValueKey('bloquear-post'),
+        appMenuItem(
+          key: const ValueKey('bloquear-post'),
           value: 'bloquear',
-          child: Text('Bloquear'),
+          icon: Icons.block_rounded,
+          label: 'Bloquear',
+          ink: danger.ink,
+          tile: danger.tile,
         ),
     ];
 
     if (items.isEmpty) return const SizedBox.shrink();
 
-    return PopupMenuButton<String>(
+    return appMenuButton<String>(
       key: ValueKey('menu-${post.id}'),
       tooltip: 'Opções',
-      iconSize: 18,
-      icon: Icon(Icons.more_horiz, color: Colors.grey.shade600),
+      icon: Icon(Icons.more_horiz, size: 20, color: Colors.grey.shade600),
       itemBuilder: (_) => items,
       onSelected: (action) {
         switch (action) {
@@ -212,7 +251,7 @@ class PostCard extends StatelessWidget {
       return Container(
         height: 180,
         width: double.infinity,
-        color: Colors.grey.shade200,
+        color: Colors.grey.shade100,
         child: imageLoading
             ? const Center(
                 child: SizedBox(
@@ -235,10 +274,11 @@ class PostCard extends StatelessWidget {
       imageUrl: url,
       width: double.infinity,
       fit: BoxFit.cover,
-      placeholder: (_, _) => Container(height: 180, color: Colors.grey.shade200),
+      placeholder: (_, _) =>
+          Container(height: 180, color: Colors.grey.shade100),
       errorWidget: (_, _, _) => Container(
         height: 180,
-        color: Colors.grey.shade200,
+        color: Colors.grey.shade100,
         child: Icon(Icons.broken_image_outlined, color: Colors.grey.shade400),
       ),
     );
@@ -246,40 +286,100 @@ class PostCard extends StatelessWidget {
 
   Widget _actions() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
       child: Row(
         children: [
-          IconButton(
+          _pill(
             key: ValueKey('curtir-${post.id}'),
             tooltip: liked ? 'Descurtir' : 'Curtir',
-            icon: Icon(
-              liked ? Icons.favorite : Icons.favorite_border,
-              color: liked ? Colors.red.shade400 : Colors.grey.shade600,
-              size: 20,
+            onTap: () => onLike(!liked),
+            count: likes,
+            active: liked,
+            // O coração cheio entra crescendo: toque que responde parece
+            // toque que funcionou. Só o ícone se move — o número troca seco.
+            icon: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              transitionBuilder: (child, animation) => ScaleTransition(
+                scale: CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOutBack,
+                ),
+                child: child,
+              ),
+              child: Icon(
+                liked ? Icons.favorite : Icons.favorite_border,
+                key: ValueKey(liked),
+                color: liked ? Colors.red.shade400 : Colors.grey.shade600,
+                size: 20,
+              ),
             ),
-            onPressed: () => onLike(!liked),
           ),
-          if (likes > 0)
-            Text(
-              '$likes',
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
-            ),
-          IconButton(
+          const SizedBox(width: 4),
+          _pill(
             key: ValueKey('comentar-${post.id}'),
             tooltip: 'Comentários',
+            onTap: onComment,
+            count: comments,
+            active: false,
             icon: Icon(
               Icons.mode_comment_outlined,
               color: Colors.grey.shade600,
               size: 19,
             ),
-            onPressed: onComment,
           ),
-          if (comments > 0)
-            Text(
-              '$comments',
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
-            ),
         ],
+      ),
+    );
+  }
+
+  /// Um botão de ação em pílula: ícone e contagem juntos, e o toque cobre os
+  /// dois — antes o número ficava fora do botão e tocar nele não fazia nada.
+  ///
+  /// Zero não desenha número: "0" debaixo de um post novo é ruído.
+  Widget _pill({
+    required Key key,
+    required String tooltip,
+    required VoidCallback onTap,
+    required int count,
+    required bool active,
+    required Widget icon,
+  }) {
+    final shape = BorderRadius.circular(20);
+
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        // Curtido, a pílula ganha o vermelho bem claro do coração: o estado
+        // se lê de longe, sem depender de distinguir o ícone cheio do vazado.
+        color: active ? Colors.red.shade50 : Colors.transparent,
+        borderRadius: shape,
+        child: InkWell(
+          key: key,
+          borderRadius: shape,
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                icon,
+                if (count > 0) ...[
+                  const SizedBox(width: 6),
+                  Text(
+                    '$count',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: active
+                          ? Colors.red.shade400
+                          : Colors.grey.shade700,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -14,9 +14,12 @@ import 'package:iter/services/postImage.dart';
 import 'package:iter/widget/blockDialog.dart';
 import 'package:iter/widget/commentsSheet.dart';
 import 'package:iter/widget/feedBannerSlot.dart';
+import 'package:iter/widget/glassSurface.dart';
 import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/postCard.dart';
+import 'package:iter/widget/profileAvatar.dart';
 import 'package:iter/widget/reportSheet.dart';
+import 'package:iter/widget/sectionCard.dart';
 
 /// O mural: o que todos os entregadores publicaram.
 ///
@@ -115,6 +118,9 @@ class _FeedTabState extends State<FeedTab> {
     _scroll.addListener(_onScroll);
     _load();
     _abrirThreadPedida();
+    // O próprio perfil, para o avatar e o primeiro nome do compositor. Pelo
+    // mesmo prefetch dos autores: ele já não busca quem o mapa tem.
+    widget.onNeedProfiles([widget.uid]);
   }
 
   /// Abre a thread que a notificação pediu, buscando o post por id.
@@ -444,10 +450,16 @@ class _FeedTabState extends State<FeedTab> {
   /// Um botão flutuante cairia no mesmo canto do `+` da navBar, que o
   /// `extendBody` da Home deixa por cima do conteúdo; e é aqui que dá para
   /// recarregar a lista quando o post volta publicado.
-  Future<void> _compose() async {
-    final published = await Navigator.of(
-      context,
-    ).push<bool>(MaterialPageRoute(builder: (_) => AddPost(uid: widget.uid)));
+  Future<void> _compose({bool photo = false}) async {
+    final published = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => AddPost(
+          uid: widget.uid,
+          me: widget.profiles[widget.uid],
+          startWithPhoto: photo,
+        ),
+      ),
+    );
     if (published == true && mounted) await _refresh();
   }
 
@@ -467,19 +479,7 @@ class _FeedTabState extends State<FeedTab> {
       return ListView(
         controller: _scroll,
         padding: EdgeInsets.fromLTRB(16, 12, 16, widget.bottomGap),
-        children: [
-          _composer(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 40, 16, 32),
-            child: Text(
-              _failed
-                  ? 'Não foi possível carregar o mural.'
-                  : 'Ninguém publicou ainda. Seja o primeiro.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey.shade700),
-            ),
-          ),
-        ],
+        children: [_composer(), _vazio()],
       );
     }
 
@@ -566,29 +566,89 @@ class _FeedTabState extends State<FeedTab> {
     );
   }
 
+  /// O compositor: o seu avatar, a pergunta e a câmera, num card como os
+  /// posts.
+  ///
+  /// Antes era uma pílula cinza solta com um lápis — parecia campo de busca, e
+  /// nada nela dizia de quem era a publicação. O avatar diz; o primeiro nome na
+  /// pergunta diz de novo, do jeito que se fala.
   Widget _composer() {
+    final me = widget.profiles[widget.uid];
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        key: const ValueKey('publicar-post'),
-        onTap: _compose,
-        borderRadius: BorderRadius.circular(24),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(24),
-          ),
+      padding: const EdgeInsets.only(bottom: 14),
+      child: DecoratedBox(
+        decoration: SectionCard.decoration,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 6, 12),
           child: Row(
             children: [
-              Icon(Icons.edit_outlined, size: 18, color: Colors.grey.shade600),
+              ProfileAvatar(profile: me, radius: 20),
               const SizedBox(width: 10),
-              Text(
-                'Como foi o dia?',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+              Expanded(
+                child: Material(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(22),
+                  child: InkWell(
+                    key: const ValueKey('publicar-post'),
+                    onTap: _compose,
+                    borderRadius: BorderRadius.circular(22),
+                    child: Container(
+                      height: 44,
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        composerPrompt(me),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 14.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              IconButton(
+                key: const ValueKey('publicar-foto'),
+                tooltip: 'Publicar foto',
+                icon: Icon(
+                  Icons.photo_camera_outlined,
+                  color: GlassIndicator.accent.withValues(alpha: 0.85),
+                ),
+                onPressed: () => _compose(photo: true),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  /// Mural vazio ou que não carregou: no mesmo card branco, com um ícone —
+  /// o texto solto no fundo lilás parecia sobra de tela.
+  Widget _vazio() {
+    return DecoratedBox(
+      decoration: SectionCard.decoration,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
+        child: Column(
+          children: [
+            Icon(
+              _failed ? Icons.cloud_off_outlined : Icons.forum_outlined,
+              size: 40,
+              color: Colors.grey.shade400,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _failed
+                  ? 'Não foi possível carregar o mural.'
+                  : 'Ninguém publicou ainda. Seja o primeiro.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey.shade700, fontSize: 14.5),
+            ),
+          ],
         ),
       ),
     );

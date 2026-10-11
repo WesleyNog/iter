@@ -285,6 +285,13 @@ tentador — embrulhar o banner no mesmo `Container` do `PostCard`
 exatamente o que a regra proíbe. **O slot tem de ler como outro objeto**, com
 rótulo "Publicidade" visível.
 
+> **2026-10-11 — o card mudou, a moldura acompanhou.** No redesenho do Feed o
+> post virou o card branco do Ranking (sombra, cantos de 20), e a moldura, que
+> era branca, ficaria da mesma cor dele. O teste "não imita o card de post"
+> ficou vermelho, como devia. A moldura passou a **transparente**, chapada, com
+> borda e cantos de 6; o teste ganhou a sombra como quarta diferença. Ver
+> `docs/specs/redesenho-amigos.md` (**O Feed**).
+
 **4. Banner ancorado no rodapé está descartado.** É desencorajado "ads
 sandwiched between app content and navigation menus", e a Home é
 `body: screens[current]` seguido de `bottomNavigationBar` — um banner fixo ali

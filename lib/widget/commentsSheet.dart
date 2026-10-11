@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:iter/Utils/profileDisplay.dart';
 import 'package:iter/Utils/relativeTime.dart';
@@ -10,8 +9,11 @@ import 'package:iter/model/comment.dart';
 import 'package:iter/model/post.dart';
 import 'package:iter/model/publicProfile.dart';
 import 'package:iter/model/report.dart';
+import 'package:iter/widget/appMenu.dart';
 import 'package:iter/widget/blockDialog.dart';
+import 'package:iter/widget/glassSurface.dart';
 import 'package:iter/widget/notificationPush.dart';
+import 'package:iter/widget/profileAvatar.dart';
 import 'package:iter/widget/reportSheet.dart';
 import 'package:uuid/uuid.dart';
 
@@ -33,6 +35,9 @@ Future<void> showCommentsSheet(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
+    // Branco, como os cards do mural. O padrão do Material 3 é o lilás claro
+    // do tema, e a folha parecia de outro app por cima do feed.
+    backgroundColor: Colors.white,
     builder: (_) => _CommentsSheet(
       post: post,
       uid: uid,
@@ -248,18 +253,18 @@ class _CommentsSheetState extends State<_CommentsSheet> {
         child: Column(
           children: [
             const Padding(
-              padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+              padding: EdgeInsets.fromLTRB(20, 0, 20, 10),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
                   'Comentários',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                 ),
               ),
             ),
-            const Divider(height: 1),
+            const Divider(height: 1, thickness: 1, color: _line),
             Expanded(child: _thread()),
-            const Divider(height: 1),
+            const Divider(height: 1, thickness: 1, color: _line),
             _composer(),
           ],
         ),
@@ -303,10 +308,16 @@ class _CommentsSheetState extends State<_CommentsSheet> {
     );
   }
 
+  /// Um comentário: o avatar e um balão com o nome e o texto, e o "quando"
+  /// embaixo do balão.
+  ///
+  /// O balão é o que separa um comentário do outro sem divisória — antes os
+  /// nomes e os textos corriam numa coluna só, e numa thread de dez linhas
+  /// não se via onde terminava cada um. O seu sai em azul-claro, como a sua
+  /// linha no Ranking: achar-se na conversa não depende de ler os nomes.
   Widget _tile(Comment comment) {
     final author = widget.profiles[comment.uid];
     final name = displayName(author);
-    final photo = author?.photoUrl;
     final isMine = comment.uid == widget.uid;
 
     // O dono do post modera a própria thread: é a única moderação que existe
@@ -319,53 +330,55 @@ class _CommentsSheetState extends State<_CommentsSheet> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            radius: 15,
-            backgroundColor: Colors.blue.shade50,
-            backgroundImage: hasPhoto(photo)
-                ? CachedNetworkImageProvider(photo!)
-                : null,
-            child: hasPhoto(photo)
-                ? null
-                : Text(
-                    displayInitial(name),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.blue.shade700,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-          ),
-          const SizedBox(width: 10),
+          ProfileAvatar(profile: author, radius: 16),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
+                Container(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+                  decoration: BoxDecoration(
+                    color: isMine ? Colors.blue.shade50 : Colors.grey.shade100,
+                    // O canto de cima à esquerda quase reto aponta para o
+                    // avatar: o balão sai da pessoa.
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(4),
+                      topRight: Radius.circular(16),
+                      bottomLeft: Radius.circular(16),
+                      bottomRight: Radius.circular(16),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
                         name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w700,
                           fontSize: 13.5,
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      relativeWhen(comment.createdAt),
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey.shade600,
+                      const SizedBox(height: 2),
+                      Text(
+                        comment.text,
+                        style: const TextStyle(fontSize: 14.5, height: 1.35),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 2),
-                Text(comment.text, style: const TextStyle(fontSize: 14)),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 0, 0),
+                  child: Text(
+                    relativeWhen(comment.createdAt),
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -380,29 +393,40 @@ class _CommentsSheetState extends State<_CommentsSheet> {
     required bool isMine,
     required bool canDelete,
   }) {
-    return PopupMenuButton<String>(
+    final neutral = appMenuNeutral();
+    final danger = appMenuDanger(context);
+
+    return appMenuButton<String>(
       key: ValueKey('menu-comentario-${comment.id}'),
       tooltip: 'Opções',
-      iconSize: 16,
       padding: EdgeInsets.zero,
-      icon: Icon(Icons.more_horiz, color: Colors.grey.shade500),
+      icon: Icon(Icons.more_horiz, size: 18, color: Colors.grey.shade500),
       itemBuilder: (_) => [
         if (canDelete)
-          const PopupMenuItem(
-            key: ValueKey('apagar-comentario'),
+          appMenuItem(
+            key: const ValueKey('apagar-comentario'),
             value: 'apagar',
-            child: Text('Apagar'),
+            icon: Icons.delete_outline_rounded,
+            label: 'Apagar',
+            ink: danger.ink,
+            tile: danger.tile,
           ),
         if (!isMine) ...[
-          const PopupMenuItem(
-            key: ValueKey('denunciar-comentario'),
+          appMenuItem(
+            key: const ValueKey('denunciar-comentario'),
             value: 'denunciar',
-            child: Text('Denunciar'),
+            icon: Icons.flag_outlined,
+            label: 'Denunciar',
+            ink: neutral.ink,
+            tile: neutral.tile,
           ),
-          const PopupMenuItem(
-            key: ValueKey('bloquear-comentario'),
+          appMenuItem(
+            key: const ValueKey('bloquear-comentario'),
             value: 'bloquear',
-            child: Text('Bloquear'),
+            icon: Icons.block_rounded,
+            label: 'Bloquear',
+            ink: danger.ink,
+            tile: danger.tile,
           ),
         ],
       ],
@@ -415,11 +439,16 @@ class _CommentsSheetState extends State<_CommentsSheet> {
     );
   }
 
+  /// O campo numa pílula cinza e o enviar num círculo azul — o mesmo azul do
+  /// indicador das abas. Antes era texto solto sobre a folha, com uma seta
+  /// cinza que não parecia botão nem quando estava ligada.
   Widget _composer() {
+    final canSend = _controller.text.trim().isNotEmpty && !_sending;
+
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
@@ -433,9 +462,19 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => _send(),
                 onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   hintText: 'Escreva um comentário',
-                  border: InputBorder.none,
+                  filled: true,
+                  fillColor: Colors.grey.shade100,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(22),
+                    borderSide: BorderSide.none,
+                  ),
                   // O teto da regra não pode virar surpresa no envio, mas o
                   // contador em cima de cada comentário seria ruído: só
                   // aparece quando o texto se aproxima do limite.
@@ -443,19 +482,40 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                 ),
               ),
             ),
-            IconButton(
-              key: const ValueKey('enviar-comentario'),
-              tooltip: 'Enviar',
-              onPressed: _controller.text.trim().isEmpty || _sending
-                  ? null
-                  : _send,
-              icon: _sending
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.send_rounded),
+            const SizedBox(width: 8),
+            Tooltip(
+              message: 'Enviar',
+              child: Material(
+                color: canSend || _sending
+                    ? GlassIndicator.accent
+                    : Colors.grey.shade300,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  key: const ValueKey('enviar-comentario'),
+                  customBorder: const CircleBorder(),
+                  onTap: canSend ? _send : null,
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Center(
+                      child: _sending
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.send_rounded,
+                              size: 20,
+                              color: Colors.white,
+                            ),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -467,12 +527,26 @@ class _CommentsSheetState extends State<_CommentsSheet> {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
-        child: Text(
-          message,
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.grey.shade600),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.chat_bubble_outline_rounded,
+              size: 36,
+              color: Colors.grey.shade400,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey.shade600),
+            ),
+          ],
         ),
       ),
     );
   }
 }
+
+/// O traço das divisórias da folha: o mesmo das seções e do card do post.
+const _line = Color(0xFFEEE9F2);

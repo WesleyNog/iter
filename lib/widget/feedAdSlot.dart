@@ -14,13 +14,19 @@ import 'package:iter/Utils/adUnits.dart';
 /// - **Não pode parecer um post.** É violação escrita nos dois sentidos —
 ///   "format ads so that they become indistinguishable from other content" e
 ///   "format site content so that it is difficult to distinguish it from ads".
-///   O desenho mais tentador seria reusar o `Container` do `PostCard`
-///   (`grey.shade50`, raio 14) "para combinar com o feed": é exatamente o que a
-///   regra proíbe. Daí o fundo branco, a borda — que o card não tem — e o raio
-///   menor.
+///   O desenho mais tentador seria reusar a superfície do `PostCard` "para
+///   combinar com o feed": é exatamente o que a regra proíbe. O card é branco,
+///   flutua com sombra e tem cantos de 20; a moldura é **transparente**, chapada,
+///   com borda — que o card não tem — e cantos de 6.
+///
+///   Até o redesenho do Feed (2026-10-11) era o contrário: o card era
+///   cinza-claro e a moldura, branca. Quando o card ficou branco a moldura
+///   teria virado a mesma cor dele — o teste "não imita o card de post" ficou
+///   vermelho, e é para isso que ele existe. Quem mudou foi a moldura, nunca o
+///   teste.
 /// - **O rótulo fica visível.** "Publicidade", sempre, sem depender de o
 ///   anúncio ter carregado.
-/// - **A folga é de 24 px**, contra os 12 px de margem do `PostCard`. O card
+/// - **A folga é de 24 px**, contra os 14 px de margem do `PostCard`. O card
 ///   termina numa fileira de curtir e comentar, e a política nomeia esse caso:
 ///   banner não deve ficar "next to interactive buttons", porque proximidade é
 ///   "one of the biggest causes of accidental clicks". Suspensão de conta
@@ -79,10 +85,12 @@ class FeedAdSlot extends StatelessWidget {
           Container(
             height: child == null ? reservedHeight : null,
             decoration: BoxDecoration(
-              color: Colors.white,
-              // Raio menor que os 14 do card, e borda onde o card não tem
-              // nenhuma: são as duas diferenças que fazem o slot ler como
-              // outro objeto ao rolar depressa.
+              // Sem cor: o branco é do card de post. O banner, quando chega,
+              // traz o próprio fundo; até lá a moldura é só a borda.
+              //
+              // Cantos de 6 contra os 20 do card, borda onde o card não tem
+              // nenhuma e nenhuma sombra onde o card flutua: são as diferenças
+              // que fazem o slot ler como outro objeto ao rolar depressa.
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
                 color: Colors.grey.shade300,

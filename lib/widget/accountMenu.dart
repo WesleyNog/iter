@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:iter/widget/appMenu.dart';
 
 /// O que o menu da conta, na `AppBar`, oferece.
 enum AccountAction { signOut, delete }
@@ -11,6 +12,8 @@ enum AccountAction { signOut, delete }
 ///
 /// Saiu da `HomeScreen` para ter teste: aquela tela abre o Firestore no
 /// `initState`, e nada que mora dentro dela é alcançável por teste de widget.
+/// A superfície do menu é a de `appMenu.dart`, a mesma do post e do
+/// comentário.
 class AccountMenu extends StatelessWidget {
   const AccountMenu({super.key, required this.busy, required this.onSelected});
 
@@ -22,27 +25,14 @@ class AccountMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final danger = Theme.of(context).colorScheme.error;
+    final neutral = appMenuNeutral();
+    final danger = appMenuDanger(context);
 
-    return PopupMenuButton<AccountAction>(
+    return appMenuButton<AccountAction>(
       key: const ValueKey('menu-conta'),
       tooltip: 'Conta',
       enabled: !busy,
       onSelected: onSelected,
-      // Embaixo do botão, e não por cima dele: o menu abria tapando o próprio
-      // "⋮" e metade das abas.
-      position: PopupMenuPosition.under,
-      offset: const Offset(0, 6),
-      // Branco de verdade. O Material 3 tinge o menu com a cor primária do
-      // tema — o lilás do `deepPurple` —, e era isso que o deixava acinzentado
-      // ao lado do branco das abas e do vidro.
-      color: Colors.white,
-      surfaceTintColor: Colors.transparent,
-      elevation: 10,
-      shadowColor: const Color(0x400D47A1),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      menuPadding: const EdgeInsets.symmetric(vertical: 6),
-      constraints: const BoxConstraints(minWidth: 220),
       icon: busy
           ? const SizedBox(
               width: 20,
@@ -51,12 +41,13 @@ class AccountMenu extends StatelessWidget {
             )
           : const Icon(Icons.more_vert),
       itemBuilder: (context) => [
-        _item(
-          AccountAction.signOut,
+        appMenuItem(
+          key: const ValueKey('menu-conta-signOut'),
+          value: AccountAction.signOut,
           icon: Icons.logout_rounded,
           label: 'Sair',
-          ink: Colors.grey.shade800,
-          tile: Colors.grey.shade100,
+          ink: neutral.ink,
+          tile: neutral.tile,
         ),
         // A divisória separa o que se desfaz no próximo login do que não se
         // desfaz nunca: os dois itens colados convidavam o toque errado.
@@ -67,53 +58,15 @@ class AccountMenu extends StatelessWidget {
           endIndent: 16,
           color: Color(0xFFEEE9F2),
         ),
-        _item(
-          AccountAction.delete,
+        appMenuItem(
+          key: const ValueKey('menu-conta-delete'),
+          value: AccountAction.delete,
           icon: Icons.delete_outline_rounded,
           label: 'Excluir conta',
-          ink: danger,
-          tile: danger.withValues(alpha: 0.1),
+          ink: danger.ink,
+          tile: danger.tile,
         ),
       ],
-    );
-  }
-
-  /// Ícone num quadrado de cantos suaves, como o botão do veículo ao lado: o
-  /// menu fala a mesma língua da `AppBar` que o abriu.
-  PopupMenuItem<AccountAction> _item(
-    AccountAction value, {
-    required IconData icon,
-    required String label,
-    required Color ink,
-    required Color tile,
-  }) {
-    return PopupMenuItem(
-      key: ValueKey('menu-conta-${value.name}'),
-      value: value,
-      height: 52,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: tile,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, size: 19, color: ink),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              color: ink,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

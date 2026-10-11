@@ -450,12 +450,62 @@ pessoas — e registrar a cabeça fixa como dívida. ✅ **Decidido: rolar junto
   responde isso.
 - **Avatares coloridos por pessoa**, como na imagem. Cor que não codifica nada
   vira paleta decorativa para manter.
-- **O Feed** além das abas.
+- ~~**O Feed** além das abas.~~ Feito depois, no mesmo dia — ver **O Feed**,
+  abaixo.
 - **Fade de saída de quem deixa o ranking.** Exigiria guardar a linha que saiu
   até o fim da animação. A sub-tela é desmontada ao trocar de aba, então quem
   desfaz uma amizade na aba Amigos volta para um Ranking montado do zero — só a
   amizade desfeita **pelo outro lado**, com o Ranking aberto, passaria por aqui.
 - **A cabeça do card fixa no topo** enquanto a lista rola (decisão 3).
+
+## O Feed — feito depois, em 2026-10-11
+
+Pedido depois do Ranking e das telas de período: o mural continuava com cards
+cinza-claros soltos no fundo lilás, um compositor que parecia campo de busca e
+uma folha de comentários tingida de lilás.
+
+- **O post é o card branco** do placar e das seções (`SectionCard.decoration`).
+  Avatar de 40, nome em 15/700, e a empresa vira um **selo ao lado do
+  "quando"** — no canto direito ela flutuava longe do autor e disputava lugar
+  com o menu. Foto com cantos de 14, recuada das bordas.
+- **Curtir e comentar são pílulas**: ícone e contagem no mesmo botão (antes o
+  número ficava fora dele, e tocar no número não fazia nada). Curtido, a pílula
+  ganha o vermelho claro do coração, e o coração entra crescendo — só o ícone
+  se move, o número troca seco.
+- **O compositor** é um card com o seu avatar, a pergunta com o seu primeiro
+  nome (`composerPrompt`: "Como foi o dia, Wesley?" — sem vocativo quando só
+  há `@apelido`) e uma câmera que abre o `AddPost` já escolhendo a foto
+  (`startWithPhoto`).
+- **A folha de comentários** é branca (`backgroundColor` explícito: o padrão do
+  Material 3 é o lilás claro do tema). Cada comentário vira um balão com o nome
+  e o texto, o "quando" embaixo; o seu sai em azul-claro, como a sua linha no
+  Ranking. O campo é uma pílula cinza e o enviar um círculo azul.
+- **Os três menus "⋯"** (conta, post, comentário) passam por `appMenu.dart`:
+  branco de verdade, cantos de 18, ícone num quadrado tingido — cinza para o
+  que se desfaz, a cor de erro para apagar e bloquear.
+- **A moldura do anúncio mudou junto.** Ela era branca porque o post era
+  cinza-claro — cor diferente é uma das exigências da política de "não
+  parecer conteúdo". Com o post branco, o teste `não imita o card de post`
+  ficou vermelho, como devia; a moldura passou a transparente (borda, cantos de
+  6, sem sombra) e o teste ganhou a sombra como quarta diferença. Ver
+  `docs/specs/anuncios-no-feed.md`.
+- **A tela de publicar** ("Nova publicação") é o post como ele vai sair: um
+  card com quem publica e "Aparece no mural para todos" — o mural é global, e
+  dizer isso antes é o mínimo —, o texto sem moldura, a foto com cantos de 14 e,
+  no rodapé, câmera, galeria e o contador (laranja nos últimos 50). Publicar
+  virou uma pílula azul.
+- **A empresa é o trilho de logos da Lista**, de escolha única (vidro, pílula
+  branca) — tocar na marcada desmarca. **Publicar sem empresa pergunta antes**
+  (`askPublishWithoutCompany`), a pedido do dono, para a marcação ser sempre
+  lembrada: "Marcar empresa" volta com o trilho contornado de azul e o teclado
+  fechado; "Publicar sem empresa" segue. A pergunta nunca bloqueia — o vínculo
+  continua opcional.
+- `ProfileAvatar` nasceu para os três avatares do Feed. `FriendTile` e
+  `RankTile` ainda montam o deles e passam a usá-lo quando forem mexidos.
+
+A folha de comentários não tem teste de widget: ela escuta o Firestore no
+`build`. O card, o `composerPrompt`, o estilo de menu e a tela de publicar (até
+o aviso de empresa; o envio chama o Firebase) têm.
 
 # Plano de implementação
 
