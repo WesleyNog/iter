@@ -38,6 +38,10 @@ class CompanyFilter extends StatelessWidget {
   Widget build(BuildContext context) {
     return SegmentedSelector<Company>.multi(
       keyPrefix: 'filtro',
+      // Vidro, como as abas de Amigos e do período — mas com a pílula branca
+      // de cada empresa: múltipla escolha não cabe numa pílula que desliza, e
+      // o logo azul da Amazon sumiria numa pílula azul.
+      tone: SegmentedTone.glass,
       selected: selected,
       onChanged: onToggle,
       segments: [

@@ -188,6 +188,31 @@ void main() {
       expect(_acesos(tester), 2);
     });
 
+    testWidgets('no vidro: um blur só, e ainda um Opacity por segmento', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SegmentedSelector<_Aba>.multi(
+              keyPrefix: 'filtro',
+              segments: _abas(),
+              selected: const {_Aba.amigos, _Aba.feed},
+              onChanged: (_) {},
+              tone: SegmentedTone.glass,
+            ),
+          ),
+        ),
+      );
+
+      // O trilho do filtro de empresas: o mesmo material das abas de vidro,
+      // com uma camada de blur — duas deixam o vidro leitoso.
+      expect(find.byType(BackdropFilter), findsOneWidget);
+      // E a regra que o `CompanyFilter` conta continua valendo no vidro.
+      expect(find.byType(Opacity), findsNWidgets(3));
+      expect(_acesos(tester), 2);
+    });
+
     testWidgets('não usa a pílula que desliza', (tester) async {
       await _pumpMulti(tester, selected: {_Aba.amigos, _Aba.feed});
 

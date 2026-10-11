@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:iter/widget/glassSurface.dart';
 import 'package:iter/widget/slidingIndicator.dart';
 
 /// Uma opção do trilho.
@@ -33,6 +34,12 @@ enum SegmentedTone {
   /// Trilho branco translúcido sobre a cabeça azul do Ranking. O rótulo aceso
   /// fica azul sobre a pílula branca; os apagados, brancos sobre o azul.
   onBlue,
+
+  /// Trilho de vidro no topo de uma tela — o filtro de empresas da Lista, ao
+  /// lado das abas de vidro de Amigos e do período. A pílula **continua
+  /// branca**: os logos têm a cor das marcas, e o X azul da Amazon sumiria
+  /// sobre a pílula azul das abas.
+  glass,
 }
 
 /// Controle segmentado: um trilho com uma pílula branca no selecionado.
@@ -88,9 +95,10 @@ class SegmentedSelector<T> extends StatelessWidget {
     required this.segments,
     required Set<T> selected,
     required this.onChanged,
-  }) : _single = null,
-       _multiple = selected,
-       tone = SegmentedTone.light;
+    this.tone = SegmentedTone.light,
+  }) : assert(tone != SegmentedTone.onBlue),
+       _single = null,
+       _multiple = selected;
 
   /// Prefixo das `ValueKey` dos segmentos: `'filtro'` vira `filtro-amazon`.
   final String keyPrefix;
@@ -98,11 +106,20 @@ class SegmentedSelector<T> extends StatelessWidget {
   final List<SegmentOption<T>> segments;
   final ValueChanged<T> onChanged;
 
-  /// Só a escolha única aceita outro tom — a múltipla só existe no filtro de
-  /// empresa, sobre fundo claro.
+  /// A múltipla escolha aceita `light` e `glass` — ela só existe no filtro de
+  /// empresa, que nunca fica sobre o azul.
   final SegmentedTone tone;
 
   bool get _onBlue => tone == SegmentedTone.onBlue;
+  bool get _glass => tone == SegmentedTone.glass;
+
+  /// A altura do trilho de vidro: a mesma das abas de vidro e do botão de
+  /// filtros ao lado dele, para os três alinharem.
+  static const double _glassHeight = 48;
+
+  /// A pílula acompanha a curva do trilho: dentro de uma cápsula, um canto de
+  /// 9 px fica quadrado demais.
+  double get _pillRadius => _glass ? (_glassHeight - 10) / 2 : 9;
 
   /// O valor aceso na escolha única. Só é lido quando [_multiple] é `null`.
   final T? _single;
@@ -129,6 +146,43 @@ class SegmentedSelector<T> extends StatelessWidget {
         ? segments.indexWhere((option) => option.value == _single)
         : -1;
 
+    final content = _multiple != null
+        ? Row(children: [for (final option in segments) _multiSegment(option)])
+        : Stack(
+            children: [
+              // Valor fora da lista: nenhuma pílula, em vez de uma acesa no
+              // segmento errado.
+              if (selectedIndex >= 0)
+                Positioned.fill(
+                  child: SlidingIndicator(
+                    count: segments.length,
+                    index: selectedIndex,
+                    // O mesmo recuo do `margin` de cada segmento: a pílula
+                    // assenta exatamente onde o toque cai.
+                    inset: 2,
+                    child: _pill(),
+                  ),
+                ),
+              Row(
+                children: [
+                  for (final option in segments) _singleSegment(option),
+                ],
+              ),
+            ],
+          );
+
+    if (_glass) {
+      return GlassSurface(
+        // Superfície com o que ler — a opacidade de texto do material.
+        opacity: 0.75,
+        borderRadius: BorderRadius.circular(_glassHeight / 2),
+        padding: const EdgeInsets.all(4),
+        shadow: GlassSurface.pillShadow,
+        // 48 menos o recuo de 4 e a borda de 1 px do vidro, dos dois lados.
+        child: SizedBox(height: _glassHeight - 10, child: content),
+      );
+    }
+
     return Container(
       height: 42,
       padding: const EdgeInsets.all(4),
@@ -138,32 +192,7 @@ class SegmentedSelector<T> extends StatelessWidget {
             : Colors.grey.shade100,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: _multiple != null
-          ? Row(
-              children: [for (final option in segments) _multiSegment(option)],
-            )
-          : Stack(
-              children: [
-                // Valor fora da lista: nenhuma pílula, em vez de uma acesa no
-                // segmento errado.
-                if (selectedIndex >= 0)
-                  Positioned.fill(
-                    child: SlidingIndicator(
-                      count: segments.length,
-                      index: selectedIndex,
-                      // O mesmo recuo do `margin` de cada segmento: a pílula
-                      // assenta exatamente onde o toque cai.
-                      inset: 2,
-                      child: _pill(),
-                    ),
-                  ),
-                Row(
-                  children: [
-                    for (final option in segments) _singleSegment(option),
-                  ],
-                ),
-              ],
-            ),
+      child: content,
     );
   }
 
@@ -171,7 +200,7 @@ class SegmentedSelector<T> extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(_pillRadius),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: _onBlue ? 0.18 : 0.08),
@@ -241,7 +270,7 @@ class SegmentedSelector<T> extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 2),
         decoration: BoxDecoration(
           color: isOn ? Colors.white : Colors.transparent,
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: BorderRadius.circular(_pillRadius),
           boxShadow: isOn
               ? [
                   BoxShadow(

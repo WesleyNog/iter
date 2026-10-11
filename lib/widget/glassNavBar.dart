@@ -39,13 +39,7 @@ class GlassPill extends StatelessWidget {
       // era deriva, não escolha.
       borderRadius: BorderRadius.circular(radius),
       padding: padding,
-      shadow: const [
-        BoxShadow(
-          color: Color(0x1A000000),
-          blurRadius: 12,
-          offset: Offset(0, 4),
-        ),
-      ],
+      shadow: GlassSurface.pillShadow,
       child: child,
     );
   }
@@ -198,6 +192,11 @@ class GlassCircleButton extends StatelessWidget {
   final Color iconColor;
   final VoidCallback onTap;
   final double size;
+
+  /// Metade do diâmetro, no padrão: o "+" de 64 leva 32. O botão de filtros da
+  /// Lista, de 48 para alinhar com o trilho, pede um ícone menor.
+  final double iconSize;
+
   final double blur;
   final String? tooltip;
 
@@ -207,6 +206,7 @@ class GlassCircleButton extends StatelessWidget {
     required this.onTap,
     this.iconColor = const Color(0xFF1976D2),
     this.size = 64,
+    this.iconSize = 32,
     this.blur = GlassSurface.defaultBlur,
     this.tooltip,
   });
@@ -234,7 +234,9 @@ class GlassCircleButton extends StatelessWidget {
           child: InkWell(
             customBorder: const CircleBorder(),
             onTap: onTap,
-            child: Center(child: Icon(icon, color: iconColor, size: 32)),
+            child: Center(
+              child: Icon(icon, color: iconColor, size: iconSize),
+            ),
           ),
         ),
       ),

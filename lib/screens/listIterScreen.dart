@@ -13,6 +13,7 @@ import 'package:iter/model/vehicle.dart';
 import 'package:iter/screens/addIter.dart';
 import 'package:iter/screens/packageReader.dart';
 import 'package:iter/widget/companyFilter.dart';
+import 'package:iter/widget/glassNavBar.dart';
 import 'package:iter/widget/notificationPush.dart';
 import 'package:iter/widget/routeCard.dart';
 import 'package:iter/widget/routeFilterSheet.dart';
@@ -141,10 +142,14 @@ class _ListIterScreenState extends State<ListIterScreen> {
   /// Zero não desenha badge nenhum: um "0" pendurado no ícone é ruído
   /// justamente no estado em que a lista está inteira.
   Widget _filterButton() {
-    final button = IconButton(
+    // Um círculo de vidro da altura do trilho ao lado: os dois são o mesmo
+    // material, e um ícone solto ao lado de uma pílula de vidro parecia sobra.
+    final button = GlassCircleButton(
       key: const ValueKey('abrir-filtros'),
-      onPressed: _openFilterSheet,
-      icon: const Icon(Icons.tune),
+      onTap: _openFilterSheet,
+      icon: Icons.tune,
+      size: 48,
+      iconSize: 22,
       tooltip: 'Mais filtros',
     );
 
